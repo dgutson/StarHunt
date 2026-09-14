@@ -31,7 +31,7 @@ end
 -- Suite order is fixed rather than directory order, so a failure reads the same
 -- way on every machine.
 local suites = {
-    "core", "catalog", "audit", "difficulty", "pairing", "i18n",
+    "core", "catalog", "audit", "selfcheck", "difficulty", "pairing", "i18n",
     "save", "team", "world", "caps", "interact", "hud", "mechanics", "modifiers", "boss", "boss_readers",
     "chaos",
     "round", "round_host", "round_client",

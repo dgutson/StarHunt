@@ -302,6 +302,25 @@ end
 
 -- ---------------------------------------------------------------------------
 
+--- Run `fn` with print() captured, and return the lines it wrote.
+-- The mod reports a failed self-check by printing rather than by raising, so a
+-- test that wants to see one has to read what it wrote. Returns the captured
+-- lines, then the pcall status and error, so the caller decides what a throw
+-- means; the real print is restored either way.
+-- harness.capture_print(fn) -> lines, ok, err
+function harness.capture_print(fn)
+    local real_print = print
+    local lines = {}
+    _G.print = function(...)
+        local parts = {}
+        for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
+        lines[#lines + 1] = table.concat(parts, "\t")
+    end
+    local ok, err = pcall(fn)
+    _G.print = real_print
+    return lines, ok, err
+end
+
 --- Load the mod fresh and return its test API.
 -- Every call re-executes the mod from disk with a clean engine, so a test that
 -- changes synchronized state cannot leak into the next one.
@@ -335,15 +354,7 @@ function harness.load(setup)
     if not chunk then error("cannot load " .. entry .. ": " .. tostring(err), 0) end
 
     -- the mod prints its self-check banner on load; keep test output readable
-    local real_print = print
-    local banner = {}
-    _G.print = function(...)
-        local parts = {}
-        for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
-        banner[#banner + 1] = table.concat(parts, "\t")
-    end
-    local ok, loaderr = pcall(chunk)
-    _G.print = real_print
+    local banner, ok, loaderr = harness.capture_print(chunk)
 
     if not ok then error("mod failed to load: " .. tostring(loaderr), 0) end
     if STARHUNT_TEST_API == nil then

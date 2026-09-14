@@ -27,9 +27,13 @@ local selected_mode = core.selected_mode
 local is_boss_mode = core.is_boss_mode
 local translated = require("i18n").translated
 local goals = require("goals")
+local GOALS = goals.GOALS
 local get_local_goal = goals.get_local_goal
 local goal_matches_player_area = goals.goal_matches_player_area
-local NORMAL_MODIFIER_CATALOG = require("audit").NORMAL_MODIFIER_CATALOG
+local audit = require("audit")
+local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
+local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
+local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
 local BOSS_PLAYER_MODIFIERS = require("boss").BOSS_PLAYER_MODIFIERS
 local on_allow_pvp_attack = require("team").on_allow_pvp_attack
 
@@ -694,15 +698,131 @@ Team.register_mod_compatibility = function()
     end
 end
 
+-- The load-time self-check, and the list of modifier kinds it accepts.
+--
+-- main.lua calls run_static_modifier_checks() as the very last thing it does,
+-- once every module has been required, so the audit matrix it inspects is
+-- already finished. The check lives in this file rather than next to GOALS
+-- because it reads NORMAL_MODIFIER_CATALOG, MODIFIER_AUDIT and
+-- MODIFIER_AUDIT_COUNTS from audit.lua as well as the three pure helpers
+-- above, and audit.lua requires goals.lua, so goals.lua may not import it back.
+--
+-- MODIFIER_KINDS is written out by hand instead of being derived from
+-- NORMAL_MODIFIER_CATALOG on purpose. A list built from the catalog would
+-- accept whatever the catalog happened to contain, which is the one thing this
+-- check exists to disagree with.
+local MODIFIER_KINDS = {
+    no_b = true,
+    floor_doom = true,
+    speed_cap = true,
+    low_jump = true,
+    water_cap = true,
+    jump_limit = true,
+    reverse_controls = true,
+    periodic_freeze = true,
+    fragile = true,
+    high_gravity = true,
+    wind_gust = true,
+    no_z = true,
+    air_brake = true,
+    lava_clock = true,
+    turbo = true,
+    slippery = true,
+    swap_ab = true,
+    keep_moving = true,
+    jump_cooldown = true,
+    coin_surge = true,
+    control_drift = true,
+    coin_toll = true,
+    darkness_pulse = true,
+    mirrored_steering = true,
+    coin_leak = true,
+    slow_pulse = true,
+    air_mirror = true,
+    momentum_burst = true,
+    control_pulse = true,
+    coin_weight = true,
+    gravity_wave = true,
+    overheat = true,
+}
+
+local function run_static_modifier_checks()
+    local valid = #GOALS == 93
+    for index, goal in ipairs(GOALS) do
+        if goal.power ~= nil and goal.power ~= "wing" and goal.power ~= "metal"
+            and goal.power ~= "vanish" and goal.power ~= "metal_vanish" then
+            print("[StarHunt v1.1] Invalid required power in slot " .. index .. ".")
+            valid = false
+        end
+        if goal.act == 7 and (goal.level == LEVEL_BOB or goal.level == LEVEL_WF or goal.level == LEVEL_JRB
+            or goal.level == LEVEL_CCM or goal.level == LEVEL_BBH or goal.level == LEVEL_HMC or goal.level == LEVEL_LLL
+            or goal.level == LEVEL_SSL or goal.level == LEVEL_DDD or goal.level == LEVEL_SL
+            or goal.level == LEVEL_WDW or goal.level == LEVEL_TTM or goal.level == LEVEL_THI
+            or goal.level == LEVEL_TTC or goal.level == LEVEL_RR) then
+            print("[StarHunt v1.1] 100-coin goal slipped into slot " .. index .. ".")
+            valid = false
+        end
+        if goal.mods == nil or #goal.mods == 0 then
+            print("[StarHunt v1.1] Goal " .. index .. " has no modifier choices.")
+            valid = false
+        else
+            for _, modifier_data in ipairs(goal.mods) do
+                if not MODIFIER_KINDS[modifier_data.kind] or modifier_data.kind == "auto_crouch" then
+                    print("[StarHunt v1.1] Invalid modifier: " .. tostring(modifier_data.kind))
+                    valid = false
+                end
+                if modifier_data.kind == "floor_doom" and (modifier_data.value < 4 or modifier_data.value > 9) then
+                    print("[StarHunt v1.1] Invalid cursed-floor duration: " .. tostring(modifier_data.value))
+                    valid = false
+                end
+            end
+        end
+    end
+    local x1, z1 = capped_horizontal_velocity(80, 60, 20)
+    local x2, z2 = capped_horizontal_velocity(x1, z1, 20)
+    if math.abs(x1 - x2) > 0.001 or math.abs(z1 - z2) > 0.001 then
+        print("[StarHunt v1.1] Water-cap safety test failed.")
+        valid = false
+    end
+    local expected_audits = #GOALS * #NORMAL_MODIFIER_CATALOG
+    if MODIFIER_AUDIT_COUNTS.checked ~= expected_audits
+        or MODIFIER_AUDIT_COUNTS.approved + MODIFIER_AUDIT_COUNTS.rejected ~= expected_audits then
+        print("[StarHunt v1.1] Modifier audit matrix is incomplete.")
+        valid = false
+    end
+    for goal_id = 1, #GOALS do
+        for _, template in ipairs(NORMAL_MODIFIER_CATALOG) do
+            if MODIFIER_AUDIT[goal_id] == nil or MODIFIER_AUDIT[goal_id][template.kind] == nil then
+                print("[StarHunt v1.1] Missing audit entry at goal " .. goal_id .. ": " .. template.kind)
+                valid = false
+            end
+        end
+    end
+    local swapped = swap_button_bits(A_BUTTON, A_BUTTON, B_BUTTON)
+    if swapped ~= B_BUTTON then
+        print("[StarHunt v1.1] A/B swap safety test failed.")
+        valid = false
+    end
+    local drift_x, drift_y = rotate_stick(32, 0, math.pi * 0.5)
+    if math.abs(drift_x) > 0.01 or math.abs(drift_y - 32) > 0.01 then
+        print("[StarHunt v1.1] Control-drift rotation test failed.")
+        valid = false
+    end
+    if valid then
+        print("[StarHunt v1.1] 93 goals, 32 modifiers, " .. MODIFIER_AUDIT_COUNTS.checked
+            .. " audited pairs (" .. MODIFIER_AUDIT_COUNTS.approved .. " approved, "
+            .. MODIFIER_AUDIT_COUNTS.rejected .. " rejected), and checks passed.")
+    end
+end
+
 -- The Team.* functions above attach to the shared Team table. These are the
--- file-local ones main.lua still calls, from its hook block and its load-time
--- self-check.
+-- file-local ones main.lua still needs: for its hook block, for its load-time
+-- self-check, and for the test API.
 return {
     is_local_player_on_floor = is_local_player_on_floor,
     reset_local_modifier_state = reset_local_modifier_state,
     capped_horizontal_velocity = capped_horizontal_velocity,
-    swap_button_bits = swap_button_bits,
-    rotate_stick = rotate_stick,
     grant_infinite_lives = grant_infinite_lives,
     keep_moat_lowered = keep_moat_lowered,
+    run_static_modifier_checks = run_static_modifier_checks,
 }

@@ -50,8 +50,6 @@ local players_have_private_variant = goals.players_have_private_variant
 local players_can_share_world = goals.players_can_share_world
 local audit = require("modules/audit")
 local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
-local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
-local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
 -- Attaches the difficulty scaling to Team; nothing to bind here.
 require("modules/difficulty")
 local on_allow_pvp_attack = require("modules/team").on_allow_pvp_attack
@@ -71,10 +69,9 @@ local local_modifiers = require("modules/modifiers")
 local is_local_player_on_floor = local_modifiers.is_local_player_on_floor
 local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
 local capped_horizontal_velocity = local_modifiers.capped_horizontal_velocity
-local swap_button_bits = local_modifiers.swap_button_bits
-local rotate_stick = local_modifiers.rotate_stick
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
+local run_static_modifier_checks = local_modifiers.run_static_modifier_checks
 local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
 local local_round = require("modules/round")
 local force_return_to_lobby = local_round.force_return_to_lobby
@@ -94,40 +91,6 @@ local host_add_late_joiner = local_round.host_add_late_joiner
 local remember_player_index = local_round.remember_player_index
 local remember_disconnected_player = local_round.remember_disconnected_player
 local mark_connected_player_unenrolled = local_round.mark_connected_player_unenrolled
-local MODIFIER_KINDS = {
-    no_b = true,
-    floor_doom = true,
-    speed_cap = true,
-    low_jump = true,
-    water_cap = true,
-    jump_limit = true,
-    reverse_controls = true,
-    periodic_freeze = true,
-    fragile = true,
-    high_gravity = true,
-    wind_gust = true,
-    no_z = true,
-    air_brake = true,
-    lava_clock = true,
-    turbo = true,
-    slippery = true,
-    swap_ab = true,
-    keep_moving = true,
-    jump_cooldown = true,
-    coin_surge = true,
-    control_drift = true,
-    coin_toll = true,
-    darkness_pulse = true,
-    mirrored_steering = true,
-    coin_leak = true,
-    slow_pulse = true,
-    air_mirror = true,
-    momentum_burst = true,
-    control_pulse = true,
-    coin_weight = true,
-    gravity_wave = true,
-    overheat = true,
-}
 
 local local_seen_round = nil
 local local_seen_result = nil
@@ -1513,75 +1476,6 @@ local function starhunt_command(message)
     return true
 end
 
-local function run_static_modifier_checks()
-    local valid = #GOALS == 93
-    for index, goal in ipairs(GOALS) do
-        if goal.power ~= nil and goal.power ~= "wing" and goal.power ~= "metal"
-            and goal.power ~= "vanish" and goal.power ~= "metal_vanish" then
-            print("[StarHunt v1.1] Invalid required power in slot " .. index .. ".")
-            valid = false
-        end
-        if goal.act == 7 and (goal.level == LEVEL_BOB or goal.level == LEVEL_WF or goal.level == LEVEL_JRB
-            or goal.level == LEVEL_CCM or goal.level == LEVEL_BBH or goal.level == LEVEL_HMC or goal.level == LEVEL_LLL
-            or goal.level == LEVEL_SSL or goal.level == LEVEL_DDD or goal.level == LEVEL_SL
-            or goal.level == LEVEL_WDW or goal.level == LEVEL_TTM or goal.level == LEVEL_THI
-            or goal.level == LEVEL_TTC or goal.level == LEVEL_RR) then
-            print("[StarHunt v1.1] 100-coin goal slipped into slot " .. index .. ".")
-            valid = false
-        end
-        if goal.mods == nil or #goal.mods == 0 then
-            print("[StarHunt v1.1] Goal " .. index .. " has no modifier choices.")
-            valid = false
-        else
-            for _, modifier_data in ipairs(goal.mods) do
-                if not MODIFIER_KINDS[modifier_data.kind] or modifier_data.kind == "auto_crouch" then
-                    print("[StarHunt v1.1] Invalid modifier: " .. tostring(modifier_data.kind))
-                    valid = false
-                end
-                if modifier_data.kind == "floor_doom" and (modifier_data.value < 4 or modifier_data.value > 9) then
-                    print("[StarHunt v1.1] Invalid cursed-floor duration: " .. tostring(modifier_data.value))
-                    valid = false
-                end
-            end
-        end
-    end
-    local x1, z1 = capped_horizontal_velocity(80, 60, 20)
-    local x2, z2 = capped_horizontal_velocity(x1, z1, 20)
-    if math.abs(x1 - x2) > 0.001 or math.abs(z1 - z2) > 0.001 then
-        print("[StarHunt v1.1] Water-cap safety test failed.")
-        valid = false
-    end
-    local expected_audits = #GOALS * #NORMAL_MODIFIER_CATALOG
-    if MODIFIER_AUDIT_COUNTS.checked ~= expected_audits
-        or MODIFIER_AUDIT_COUNTS.approved + MODIFIER_AUDIT_COUNTS.rejected ~= expected_audits then
-        print("[StarHunt v1.1] Modifier audit matrix is incomplete.")
-        valid = false
-    end
-    for goal_id = 1, #GOALS do
-        for _, template in ipairs(NORMAL_MODIFIER_CATALOG) do
-            if MODIFIER_AUDIT[goal_id] == nil or MODIFIER_AUDIT[goal_id][template.kind] == nil then
-                print("[StarHunt v1.1] Missing audit entry at goal " .. goal_id .. ": " .. template.kind)
-                valid = false
-            end
-        end
-    end
-    local swapped = swap_button_bits(A_BUTTON, A_BUTTON, B_BUTTON)
-    if swapped ~= B_BUTTON then
-        print("[StarHunt v1.1] A/B swap safety test failed.")
-        valid = false
-    end
-    local drift_x, drift_y = rotate_stick(32, 0, math.pi * 0.5)
-    if math.abs(drift_x) > 0.01 or math.abs(drift_y - 32) > 0.01 then
-        print("[StarHunt v1.1] Control-drift rotation test failed.")
-        valid = false
-    end
-    if valid then
-        print("[StarHunt v1.1] 93 goals, 32 modifiers, " .. MODIFIER_AUDIT_COUNTS.checked
-            .. " audited pairs (" .. MODIFIER_AUDIT_COUNTS.approved .. " approved, "
-            .. MODIFIER_AUDIT_COUNTS.rejected .. " rejected), and checks passed.")
-    end
-end
-
 -- The engine never sets this flag. The standalone test harness uses named
 -- references so adding or reordering hooks cannot silently test the wrong
 -- function.
@@ -1597,6 +1491,11 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         boss_modifier_translations = Team.boss_modifier_translations,
         menu_lock_labels = Team.menu_lock_labels,
         normal_modifier_catalog = NORMAL_MODIFIER_CATALOG,
+        -- The audit matrix and its tallies are published for the self-check
+        -- suite alone: it is the only test that needs to damage them on
+        -- purpose to see whether run_static_modifier_checks notices.
+        modifier_audit = audit.MODIFIER_AUDIT,
+        modifier_audit_counts = audit.MODIFIER_AUDIT_COUNTS,
         boss_player_modifiers = BOSS_PLAYER_MODIFIERS,
         boss_modifiers = BOSS_MODIFIERS,
         boss_attack_queue_size = BOSS_ATTACK_QUEUE_SIZE,
@@ -1617,6 +1516,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         post_moveset_limits = Team.apply_post_moveset_limits,
         get_local_modifier_base = Team.get_local_modifier_base,
         capped_horizontal_velocity = capped_horizontal_velocity,
+        static_checks = run_static_modifier_checks,
         boss_hazards = apply_boss_hazards,
         power = apply_goal_power,
         host_update = host_update_round,
