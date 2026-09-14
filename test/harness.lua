@@ -228,7 +228,13 @@ end
 --- Load the mod fresh and return its test API.
 -- Every call re-executes the mod from disk with a clean engine, so a test that
 -- changes synchronized state cannot leak into the next one.
-function harness.load()
+-- harness.load(setup)
+--
+-- `setup` is optional and runs after the engine stub is installed but before
+-- main.lua executes, which is the only window in which a test can stage what
+-- the mod reads AT LOAD TIME -- stored settings, most importantly. Anything
+-- that can be set afterwards should be, through the returned control table.
+function harness.load(setup)
     -- wipe anything a previous load left behind
     STARHUNT_TEST_API = nil
     for _, name in ipairs({ "gGlobalSyncTable", "gPlayerSyncTable", "gNetworkPlayers",
@@ -239,6 +245,13 @@ function harness.load()
     install_engine()
     install_require()
     STARHUNT_TEST_MODE = true
+
+    if setup ~= nil then
+        if type(setup) ~= "function" then
+            error("harness.load: setup must be a function, got " .. type(setup), 2)
+        end
+        setup(harness.ctl)
+    end
 
     local entry = harness.mod_root .. "/main.lua"
     local chunk, err = loadfile(entry)

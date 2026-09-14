@@ -139,7 +139,10 @@ hook-registration block (order within a hook type matters), and the `STARHUNT_TE
 Leaf-first, running `lua5.4 test/run.lua` after **each** module, one commit each:
 
 1. ~~`local_runtime` migration (no files moved)~~ — **done**
-2. i18n → 3. save → 4. audit → 5. difficulty → 6. goals
+1b. ~~`modules/core.lua`~~ — **done**. Not in the original layout, and a prerequisite
+   for everything else: `Team` was a `local` in main.lua, so no required module could
+   see it. core.lua declares `Team` and `FRAMES_PER_SECOND` and returns both.
+2. ~~i18n~~ — **done** → 3. save → 4. audit → 5. difficulty → 6. goals
 7. team → 8. modifiers → 9. chaos → 10. boss → 11. round → 12. hud → 13. menu
 
 The test harness reimplements the engine's folder-relative `require()`, so a wrong require path
@@ -152,7 +155,19 @@ fails in tests exactly as it would in the game. Require paths are folder-relativ
 - Five declarations have no natural home and need a decision during extraction:
   `remove_castle_lakitu`, `remove_existing_castle_lakitu`, `local_lakitu_scan_at`,
   `on_find_water_level`, `gServerSettings.skipIntro`.
-- `STARHUNT_TEST_API` must keep the same keys or the suite stops compiling.
+- `STARHUNT_TEST_API` must keep the same keys or the suite stops compiling. It already
+  contains a `set_language` that clamps to the valid range; do not add a second one.
+- **The suite does not cover everything being moved.** Extracting i18n left the run green
+  even with `translated()` rewired to always return English, so a green run proves the
+  module loads, not that the moved code is right. Two habits close that: verify each
+  extraction is a pure relocation by diffing the moved lines against the removed ones, and
+  add a suite for any area the mutation check shows is uncovered. i18n now has 9 tests that
+  catch all 8 mutations tried against it.
+- `different-requires` is disabled in `.luarc.json`. sm64coopdx resolves a require path
+  relative to the folder of the requiring file, so main.lua's `require("modules/core")` and
+  a sibling module's `require("core")` are the same file spelled correctly in both places.
+  lua-language-server reads that as an inconsistency; it is not one, and it would otherwise
+  recur once per module.
 - Docs to update when the refactor lands: `PROJECT_STATUS.md` and `DEVELOPMENT_CHECKLIST.md`
   both record the single-file SHA-256, which the split invalidates; install instructions change
   from "copy main.lua" to "copy the StarHunt/ folder".

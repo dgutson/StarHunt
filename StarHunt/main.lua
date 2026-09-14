@@ -4748,6 +4748,13 @@ end
 if rawget(_G, "STARHUNT_TEST_MODE") then
     STARHUNT_TEST_API = {
         goals = GOALS,
+        translated = translated,
+        language_codes = Team.language_codes,
+        language_names = Team.language_names,
+        ui_translations = Team.ui_translations,
+        modifier_translations = Team.modifier_translations,
+        boss_modifier_translations = Team.boss_modifier_translations,
+        menu_lock_labels = Team.menu_lock_labels,
         normal_modifier_catalog = NORMAL_MODIFIER_CATALOG,
         boss_player_modifiers = BOSS_PLAYER_MODIFIERS,
         menu_input = update_config_input,
