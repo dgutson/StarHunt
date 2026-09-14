@@ -28,6 +28,86 @@ return function(t, harness)
         return api, ctl
     end
 
+    -- the Boss data itself ---------------------------------------------------
+    -- Three rules in modules/boss.lua are written down in comments and were
+    -- enforced by nothing. Each is the kind that fails quietly: the round still
+    -- runs, it is just no longer winnable, or fair, or reliable.
+
+    s.test("no Boss player modifier can take the B button away", function()
+        -- Bowser is beaten by grabbing his tail, which is B. A modifier that
+        -- removes B leaves the round unwinnable for whoever draws it, and
+        -- nothing else in the mod would report a problem.
+        local api = harness.load()
+        for i, m in ipairs(api.boss_player_modifiers) do
+            t.ne(m.kind, "no_b", "Boss player modifier " .. i .. " locks B")
+            t.ne(m.kind, "swap_ab", "Boss player modifier " .. i .. " moves B elsewhere")
+        end
+    end)
+
+    s.test("every Boss modifier draw contains an attack of its own", function()
+        -- Rage and Desperate only accelerate other attacks and Instakill only
+        -- changes damage, so a draw of those three produces a Bowser who never
+        -- attacks at all. BOSS_ACTIVE_ATTACK_LOOKUP is what prevents it.
+        local api = harness.load()
+        local active, passive = 0, 0
+        for index, m in ipairs(api.boss_modifiers) do
+            if api.boss_active_attack_lookup[index] then
+                active = active + 1
+                t.ne(m.kind, "rage", "rage counted as an attack")
+                t.ne(m.kind, "desperate", "desperate counted as an attack")
+                t.ne(m.kind, "instakill", "instakill counted as an attack")
+            else
+                passive = passive + 1
+            end
+        end
+        t.ok(active > 0, "no modifier counts as creating an attack")
+        t.ok(passive > 0, "every modifier counts as creating an attack, so the "
+            .. "check cannot reject anything")
+        -- Three drawn from twelve, so a draw of three passives must be possible
+        -- to be worth guarding against.
+        t.ok(passive >= 3, "fewer than three passive modifiers: " .. passive)
+    end)
+
+    s.test("Bowser's attacks queue across eight slots, not one", function()
+        -- CHANGELOG.md records a single "latest attack" field losing attacks
+        -- under lag. The queue is what replaced it, and its size has to match
+        -- the sh5_boss_attack_queue_N fields the host actually writes.
+        local api = harness.load()
+        t.eq(api.boss_attack_queue_size, 8)
+        for slot = 1, api.boss_attack_queue_size do
+            t.ne(gGlobalSyncTable["sh5_boss_attack_queue_" .. slot], nil,
+                "slot " .. slot .. " has no synchronized field")
+        end
+    end)
+
+    s.test("every Boss modifier is named in both languages", function()
+        local api = harness.load()
+        t.eq(#api.boss_modifiers, 12, "the Boss modifier list changed size")
+        local seen = {}
+        for i, m in ipairs(api.boss_modifiers) do
+            t.ok(not seen[m.kind], "duplicate Boss modifier " .. tostring(m.kind))
+            seen[m.kind] = true
+            for _, field in ipairs({ "label", "label_es" }) do
+                t.ok(type(m[field]) == "string" and #m[field] > 0,
+                    "Boss modifier " .. i .. " is missing " .. field)
+            end
+        end
+    end)
+
+    s.test("Bowser always has at least one hit point left to take", function()
+        -- sh5_boss_max_health is synchronized, so a client can read it before
+        -- the host has written it. Zero would mean a Bowser already dead, and
+        -- the health bar divides by it.
+        local api = harness.load()
+        for _, value in ipairs({ 0, -1 }) do
+            gGlobalSyncTable.sh5_boss_max_health = value
+            t.ok(api.boss_max_health() >= 1,
+                "max health " .. value .. " resolved to " .. tostring(api.boss_max_health()))
+        end
+        gGlobalSyncTable.sh5_boss_max_health = 7
+        t.eq(api.boss_max_health(), 7, "a real value should be used as-is")
+    end)
+
     s.test("Easy and Normal never add bombs", function()
         -- These difficulties need at most five hits, so the native arena is
         -- already enough and must be left exactly as the game built it.

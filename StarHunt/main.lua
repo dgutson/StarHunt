@@ -33,7 +33,6 @@ local translated = require("modules/i18n").translated
 local is_round_active = core.is_round_active
 local selected_mode = core.selected_mode
 local is_boss_mode = core.is_boss_mode
-local modifier = core.modifier
 local save = require("modules/save")
 local remove_starhunt_save_flag = save.remove_starhunt_save_flag
 local flush_starhunt_save_removals = save.flush_starhunt_save_removals
@@ -57,25 +56,21 @@ local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
 -- Attaches the difficulty scaling to Team; nothing to bind here.
 require("modules/difficulty")
 local on_allow_pvp_attack = require("modules/team").on_allow_pvp_attack
+local boss = require("modules/boss")
+local BOSS_HEALTH = boss.BOSS_HEALTH
+local BOSS_LEVELS = boss.BOSS_LEVELS
+local BOSS_PLAYER_MODIFIERS = boss.BOSS_PLAYER_MODIFIERS
+local BOSS_MODIFIERS = boss.BOSS_MODIFIERS
+local BOSS_MODIFIER_FIELDS = boss.BOSS_MODIFIER_FIELDS
+local BOSS_ATTACK_QUEUE_SIZE = boss.BOSS_ATTACK_QUEUE_SIZE
+local BOSS_ACTIVE_ATTACK_MODIFIERS = boss.BOSS_ACTIVE_ATTACK_MODIFIERS
+local BOSS_ACTIVE_ATTACK_LOOKUP = boss.BOSS_ACTIVE_ATTACK_LOOKUP
 local TEAM_SCORE_PRIORITY_GAP = 2
-local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
 Team.chaos_maps = {
     LEVEL_BOB, LEVEL_WF, LEVEL_JRB, LEVEL_CCM, LEVEL_BBH,
     LEVEL_HMC, LEVEL_LLL, LEVEL_SSL, LEVEL_DDD, LEVEL_SL,
     LEVEL_WDW, LEVEL_TTM, LEVEL_THI, LEVEL_TTC, LEVEL_RR,
-}
-
--- The final arena contains the full five-bomb layout used by Medium. Hard and
--- Nightmare can request one synchronized reserve wave after all five native
--- bombs are gone.
-local BOSS_LEVELS = { LEVEL_BOWSER_3 }
-Team.bossBombPositions = {
-    { x = -2122, y = 512, z = -2912 },
-    { x = -3362, y = 512, z = 1121 },
-    { x = 0, y = 512, z = 3584 },
-    { x = 3363, y = 512, z = 1121 },
-    { x = 2123, y = 512, z = -2912 },
 }
 
 local MODIFIER_KINDS = {
@@ -112,48 +107,6 @@ local MODIFIER_KINDS = {
     gravity_wave = true,
     overheat = true,
 }
-
--- Boss player modifiers never remove B: every Bowser must remain grabbable.
-local BOSS_PLAYER_MODIFIERS = {
-    modifier("reverse_controls", 0, "REVERSED CONTROLS"),
-    modifier("periodic_freeze", 7, "TIME FREEZE: EVERY 7 SEC"),
-    modifier("fragile", 0, "FRAGILE: 4 HEALTH"),
-    modifier("high_gravity", 1.1, "HIGH GRAVITY"),
-    modifier("wind_gust", 6, "WIND GUSTS"),
-    modifier("floor_doom", 8, "CURSED FLOOR: 8 SEC"),
-    modifier("turbo", 70, "TURBO MODE"),
-}
-
-local BOSS_MODIFIERS = {
-    { kind = "instakill", label = "BOWSER: INSTANT KNOCKOUT", label_es = "BOWSER: GOLPE MORTAL" },
-    { kind = "shockwaves", label = "BOWSER: PARALYZING WAVES", label_es = "BOWSER: ONDAS PARALIZANTES" },
-    { kind = "violet_fire", label = "BOWSER: VIOLET SPLITFIRE", label_es = "BOWSER: FUEGO VIOLETA DIVIDIDO" },
-    { kind = "rage", label = "BOWSER: RAGE", label_es = "BOWSER: FURIA" },
-    { kind = "meteor_rain", label = "BOWSER: METEOR RAIN", label_es = "BOWSER: LLUVIA DE METEORITOS" },
-    { kind = "fire_ring", label = "BOWSER: FLAME RING", label_es = "BOWSER: ANILLO DE FUEGO" },
-    { kind = "bomb_barrage", label = "BOWSER: BOMB BARRAGE", label_es = "BOWSER: BOMBARDEO DE BOMBAS" },
-    { kind = "arena_quake", label = "BOWSER: ARENA QUAKE", label_es = "BOWSER: TERREMOTO DE ARENA" },
-    { kind = "teleport", label = "BOWSER: WARP WAVE", label_es = "BOWSER: ONDA DE DISTORSION" },
-    { kind = "double_wave", label = "BOWSER: DOUBLE WAVE", label_es = "BOWSER: DOBLE ONDA" },
-    { kind = "hunter_fire", label = "BOWSER: HUNTER FIRE", label_es = "BOWSER: FUEGO PERSEGUIDOR" },
-    { kind = "desperate", label = "BOWSER: DESPERATE PHASE", label_es = "BOWSER: FASE DESESPERADA" },
-}
-
-local BOSS_MODIFIER_FIELDS = {
-    "sh5_boss_modifier_1",
-    "sh5_boss_modifier_2",
-    "sh5_boss_modifier_3",
-}
-local BOSS_ATTACK_QUEUE_SIZE = 8
-
--- Rage and Desperate only accelerate other attacks, while Instakill changes
--- damage. Every draw must therefore include at least one modifier that creates
--- an attack of its own.
-local BOSS_ACTIVE_ATTACK_MODIFIERS = { 2, 3, 5, 6, 7, 8, 9, 10, 11 }
-local BOSS_ACTIVE_ATTACK_LOOKUP = {}
-for _, index in ipairs(BOSS_ACTIVE_ATTACK_MODIFIERS) do
-    BOSS_ACTIVE_ATTACK_LOOKUP[index] = true
-end
 
 -- The goal pool has 93 stars. Large lobbies still get shorter rounds, but
 -- now have enough distinct goals for every player to receive several.
@@ -212,15 +165,6 @@ local local_power_original_timer = 0
 local host_previous_player_interactions = nil
 local host_previous_pvp_type = nil
 
-
-Team.boss_health_for_difficulty = function()
-    local values = { 3, BOSS_HEALTH, 7, 9 }
-    return values[Team.selected_difficulty() + 1] or BOSS_HEALTH
-end
-
-Team.boss_max_health = function()
-    return math.max(1, gGlobalSyncTable.sh5_boss_max_health or Team.boss_health_for_difficulty())
-end
 
 Team.modifier_override = nil
 
@@ -3576,6 +3520,11 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         menu_lock_labels = Team.menu_lock_labels,
         normal_modifier_catalog = NORMAL_MODIFIER_CATALOG,
         boss_player_modifiers = BOSS_PLAYER_MODIFIERS,
+        boss_modifiers = BOSS_MODIFIERS,
+        boss_attack_queue_size = BOSS_ATTACK_QUEUE_SIZE,
+        boss_active_attack_lookup = BOSS_ACTIVE_ATTACK_LOOKUP,
+        boss_max_health = Team.boss_max_health,
+        boss_health_for_difficulty = Team.boss_health_for_difficulty,
         menu_input = update_config_input,
         freeze_menu_mario = Team.freeze_menu_mario,
         goal_warp = local_goal_warp_update,
