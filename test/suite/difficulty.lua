@@ -151,6 +151,80 @@ return function(t, harness)
         end
     end)
 
+    s.test("Nightmare is harder than Medium, in the right direction per kind", function()
+        -- Which way "harder" runs is written out here instead of being read
+        -- from Team.lower_is_harder, and that is the whole point of the test.
+        -- The monotonicity check above infers the direction from the values it
+        -- happens to see, so if an entry of lower_is_harder were wrong the
+        -- entire scale for that modifier would invert and still look perfectly
+        -- monotonic. An inverted entry means Nightmare is KINDER than Medium.
+        local SMALLER_IS_HARDER = {
+            floor_doom = "seconds before the cursed floor kills you",
+            speed_cap = "top running speed",
+            low_jump = "jump height",
+            water_cap = "swimming speed",
+            jump_limit = "jumps the round allows at all",
+            periodic_freeze = "seconds between freezes",
+            wind_gust = "seconds between gusts",
+            air_brake = "percent of air control kept",
+            lava_clock = "seconds between damage ticks",
+            keep_moving = "seconds you may stand still",
+            coin_leak = "seconds between losing a coin",
+            slow_pulse = "speed left during the pulse",
+            coin_weight = "speed before your coins weigh you down",
+            overheat = "seconds of warning before the slowdown",
+        }
+        local BIGGER_IS_HARDER = {
+            high_gravity = "downward pull",
+            turbo = "speed you must control",
+            jump_cooldown = "frames you cannot jump for",
+            coin_surge = "coins the surge demands",
+            control_drift = "how far the stick wanders",
+            coin_toll = "coins the toll takes",
+            darkness_pulse = "frames of darkness",
+            momentum_burst = "size of the involuntary shove",
+            control_pulse = "frames of reversed control",
+            gravity_wave = "strength of the wave",
+        }
+
+        for _, base in ipairs(api.normal_modifier_catalog) do
+            -- A binary restriction carries no magnitude: its value is 0 and
+            -- difficulty speaks through pulse_frames instead.
+            if base.value ~= 0 then
+                local smaller = SMALLER_IS_HARDER[base.kind]
+                local bigger = BIGGER_IS_HARDER[base.kind]
+                t.ok(smaller ~= nil or bigger ~= nil,
+                    base.kind .. " is graded but this test does not say which way "
+                    .. "harder runs for it")
+                t.ok(not (smaller ~= nil and bigger ~= nil),
+                    base.kind .. " is listed in both directions")
+
+                local medium = at(D.medium, function()
+                    return api.effective_modifier(base).value end)
+                local nightmare = at(D.nightmare, function()
+                    return api.effective_modifier(base).value end)
+                local easy = at(D.easy, function()
+                    return api.effective_modifier(base).value end)
+
+                if smaller then
+                    t.ok(nightmare < medium, base.kind .. " (" .. smaller
+                        .. ") should shrink from Medium " .. tostring(medium)
+                        .. " to Nightmare " .. tostring(nightmare))
+                    t.ok(easy > medium, base.kind .. " (" .. smaller
+                        .. ") should grow from Medium " .. tostring(medium)
+                        .. " to Easy " .. tostring(easy))
+                else
+                    t.ok(nightmare > medium, base.kind .. " (" .. bigger
+                        .. ") should grow from Medium " .. tostring(medium)
+                        .. " to Nightmare " .. tostring(nightmare))
+                    t.ok(easy < medium, base.kind .. " (" .. bigger
+                        .. ") should shrink from Medium " .. tostring(medium)
+                        .. " to Easy " .. tostring(easy))
+                end
+            end
+        end
+    end)
+
     s.test("no difficulty pushes a modifier past the stage-4 safety limits", function()
         -- The property the whole audit exists to guarantee, checked across
         -- every goal, every approved modifier and all four difficulties.

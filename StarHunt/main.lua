@@ -41,9 +41,10 @@ local goal_already_collected = save.goal_already_collected
 local GOALS = require("modules/goals").GOALS
 local audit = require("modules/audit")
 local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
-local audit_modifier = audit.audit_modifier
 local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
 local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
+-- Attaches the difficulty scaling to Team; nothing to bind here.
+require("modules/difficulty")
 local TEAM_SCORE_PRIORITY_GAP = 2
 local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
@@ -219,11 +220,6 @@ Team.is_chaos_mode = function()
     return selected_mode() == Team.CHAOS
 end
 
-Team.selected_difficulty = function()
-    return clamp(math.floor(gGlobalSyncTable.sh5_difficulty or Team.MEDIUM),
-        Team.EASY, Team.NIGHTMARE)
-end
-
 Team.boss_health_for_difficulty = function()
     local values = { 3, BOSS_HEALTH, 7, 9 }
     return values[Team.selected_difficulty() + 1] or BOSS_HEALTH
@@ -231,73 +227,6 @@ end
 
 Team.boss_max_health = function()
     return math.max(1, gGlobalSyncTable.sh5_boss_max_health or Team.boss_health_for_difficulty())
-end
-
-Team.lower_is_harder = {
-    floor_doom=true, speed_cap=true, low_jump=true, water_cap=true, jump_limit=true,
-    periodic_freeze=true, wind_gust=true, air_brake=true, lava_clock=true,
-    keep_moving=true, coin_leak=true, slow_pulse=true, coin_weight=true, overheat=true,
-}
-
-Team.effective_modifier = function(base)
-    if base == nil then return nil end
-    local result = {}
-    for key, value in pairs(base) do result[key] = value end
-    local difficulty = Team.selected_difficulty()
-    if difficulty == Team.MEDIUM then return result end
-
-    local kind, value = result.kind, result.value
-    if difficulty == Team.EASY then
-        if kind == "no_b" or kind == "no_z" or kind == "reverse_controls"
-            or kind == "swap_ab" or kind == "mirrored_steering" then
-            result.pulse_period, result.pulse_frames = 10, 3 * FRAMES_PER_SECOND
-        elseif kind == "fragile" then
-            result.health_cap = 0x600
-        elseif kind == "slippery" or kind == "air_mirror" then
-            result.pulse_period, result.pulse_frames = 10, 4 * FRAMES_PER_SECOND
-        elseif Team.lower_is_harder[kind] then
-            result.value = math.max(1, value * 1.35)
-        else
-            result.value = value * 0.75
-        end
-        result.freeze_frames = 15
-        result.damage_amount = 0x80
-    elseif difficulty == Team.HARD then
-        if kind == "fragile" then
-            result.health_cap = 0x300
-        elseif Team.lower_is_harder[kind] then
-            result.value = math.max(1, value * 0.82)
-        else
-            result.value = value * 1.25
-        end
-        result.freeze_frames = 36
-        result.damage_amount = 0x180
-    else
-        if kind == "fragile" then
-            result.health_cap = 0x200
-        elseif Team.lower_is_harder[kind] then
-            result.value = math.max(1, value * 0.65)
-        else
-            result.value = value * 1.6
-        end
-        result.freeze_frames = 54
-        result.damage_amount = 0x200
-    end
-
-    -- Preserve integer semantics where the modifier is measured in frames,
-    -- seconds, coins or jumps.
-    if kind ~= "high_gravity" and kind ~= "gravity_wave" then
-        result.value = math.max(1, math.floor(result.value + 0.5))
-    end
-    return result
-end
-
-Team.effective_modifier_for_goal = function(goal, base)
-    local result = Team.effective_modifier(base)
-    if goal == nil or result == nil then return result end
-    local approved = audit_modifier(goal, result)
-    if not approved then return nil end
-    return result
 end
 
 local function get_goal(id)
@@ -383,12 +312,6 @@ Team.darkness_active = function(modifier_data)
     local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
     local phase = elapsed % (10 * FRAMES_PER_SECOND)
     return phase >= 10 * FRAMES_PER_SECOND - modifier_data.value
-end
-
-Team.periodic_window = function(period_seconds, duration_frames)
-    local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
-    local period = math.max(1, period_seconds) * FRAMES_PER_SECOND
-    return elapsed % period >= period - duration_frames
 end
 
 local function goal_world_text(goal)
@@ -604,11 +527,6 @@ Team.pick_chaos_pair = function(previous_first)
     end
     if #second_choices == 0 then return 0, 0 end
     return first_index, second_choices[math.random(#second_choices)]
-end
-
-Team.difficulty_modifier_allowed = function(goal, candidate)
-    if candidate == nil then return false end
-    return Team.effective_modifier_for_goal(goal, candidate) ~= nil
 end
 
 Team.pick_second_modifier = function(goal, first_index)
@@ -3998,6 +3916,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         selected_difficulty = Team.selected_difficulty,
         effective_modifier = Team.effective_modifier,
         effective_modifier_for_goal = Team.effective_modifier_for_goal,
+        periodic_window = Team.periodic_window,
         boss_mode = Team.BOSS,
         team_mode = Team.MODE,
         chaos_mode = Team.CHAOS,

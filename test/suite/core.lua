@@ -11,6 +11,28 @@ return function(t, harness)
     local api = harness.load()
     local rt = api.runtime
 
+    s.test("another module sees the same runtime table, not a copy of it", function()
+        -- The whole split rests on this. `local x = other.x` copies the value,
+        -- so a module that took a copy of a table would keep writing into its
+        -- own -- and nothing would error; the writes would simply never meet.
+        --
+        -- Team.periodic_window lives in modules/difficulty.lua and measures
+        -- from local_runtime.modifier_start_frame. Writing that field here and
+        -- watching difficulty.lua change its answer is the proof, because the
+        -- two files reached the table by separate require() calls.
+        local live, ctl = harness.load()
+        ctl.timer = 1000
+
+        live.runtime.modifier_start_frame = 1000
+        t.eq(live.periodic_window(10, 90), false,
+            "the cycle should have only just begun")
+
+        live.runtime.modifier_start_frame = 1000 - 250
+        t.eq(live.periodic_window(10, 90), true,
+            "writing modifier_start_frame never reached modules/difficulty.lua, "
+            .. "so the two files are holding different tables")
+    end)
+
     s.test("timing sentinels start before frame zero", function()
         -- Each of these is compared against get_global_timer() or a round
         -- sequence number, and both of those start at 0. Starting one AT 0
