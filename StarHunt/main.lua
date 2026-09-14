@@ -871,10 +871,6 @@ local host_used_goals = {}
 local host_seen_done = {}
 local host_seen_forfeit = {}
 local host_player_records = {}
-local local_goal_id = 0
-local local_goal_warp_at = -1
-local local_death_lock = false
-local local_death_warp_pending = false
 local local_seen_round = nil
 local local_seen_result = nil
 local local_seen_return_seq = 0
@@ -951,6 +947,10 @@ local local_runtime = {
     boss_damage_lock = 0,
     pending_double_waves = {},
     pending_meteors = {},
+    goal_id = 0,
+    goal_warp_at = -1,
+    death_lock = false,
+    death_warp_pending = false,
 }
 
 local function clamp(value, low, high)
@@ -3130,28 +3130,28 @@ local function local_goal_warp_update(m)
         local desired_speed = current_goal.act == 6 and TTC_SPEED_STOPPED or TTC_SPEED_SLOW
         if get_ttc_speed_setting() ~= desired_speed then set_ttc_speed_setting(desired_speed) end
     end
-    if is_round_active() and current_goal_id ~= local_goal_id then
-        local_goal_id = current_goal_id
-        local_goal_warp_at = get_global_timer() + (local_death_warp_pending and 0 or NEXT_GOAL_DELAY)
+    if is_round_active() and current_goal_id ~= local_runtime.goal_id then
+        local_runtime.goal_id = current_goal_id
+        local_runtime.goal_warp_at = get_global_timer() + (local_runtime.death_warp_pending and 0 or NEXT_GOAL_DELAY)
         local_star_visibility_next = 0
         local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     elseif not is_round_active() then
-        local_goal_id = 0
-        local_goal_warp_at = -1
+        local_runtime.goal_id = 0
+        local_runtime.goal_warp_at = -1
         local_runtime.modifier_ready_key = nil
-        local_death_lock = false
-        local_death_warp_pending = false
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
         reset_local_modifier_state()
     end
 
-    if is_round_active() and current_goal_id ~= 0 and local_goal_warp_at >= 0
-        and get_global_timer() >= local_goal_warp_at and not is_transition_playing() then
+    if is_round_active() and current_goal_id ~= 0 and local_runtime.goal_warp_at >= 0
+        and get_global_timer() >= local_runtime.goal_warp_at and not is_transition_playing() then
         local goal = get_goal(current_goal_id)
         if goal ~= nil then warp_to_level(goal.level, 1, goal.act) end
-        local_goal_warp_at = -1
-        local_death_lock = false
-        local_death_warp_pending = false
+        local_runtime.goal_warp_at = -1
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
     end
 end
 
@@ -3208,7 +3208,7 @@ local function local_boss_warp_update(m)
         local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     end
-    if local_death_warp_pending then
+    if local_runtime.death_warp_pending then
         -- Respawn only Mario. Reloading the whole level here can recreate or
         -- transfer ownership of Bowser while the other players are fighting.
         if gNetworkPlayers[0].currLevelNum == LEVEL_BOWSER_3 then
@@ -3222,8 +3222,8 @@ local function local_boss_warp_update(m)
             set_mario_action(m, ACT_FREEFALL, 0)
             if m.area ~= nil and m.area.camera ~= nil then soft_reset_camera(m.area.camera) end
             local_runtime.boss_warp_at = -1
-            local_death_lock = false
-            local_death_warp_pending = false
+            local_runtime.death_lock = false
+            local_runtime.death_warp_pending = false
             reset_local_modifier_state()
             return
         end
@@ -3235,8 +3235,8 @@ local function local_boss_warp_update(m)
         and not is_transition_playing() then
         warp_to_level(level, 1, 1)
         local_runtime.boss_warp_at = -1
-        local_death_lock = false
-        local_death_warp_pending = false
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
     end
 end
 
@@ -4219,9 +4219,9 @@ local function on_death(m)
     m.invincTimer = 90
     -- Returning false cancels SM64's flying/death animation entirely.
     if is_boss_mode() then
-        if not local_death_lock then
-            local_death_lock = true
-            local_death_warp_pending = true
+        if not local_runtime.death_lock then
+            local_runtime.death_lock = true
+            local_runtime.death_warp_pending = true
             local_runtime.boss_warp_at = get_global_timer()
             djui_popup_create(translated("BACK TO THE BATTLE!", "DE VUELTA A LA BATALLA!"), 1)
         end
@@ -4236,9 +4236,9 @@ local function on_death(m)
         end
         return false
     end
-    if local_runtime.done_lock or local_death_lock or get_local_goal() == nil then return false end
-    local_death_lock = true
-    local_death_warp_pending = true
+    if local_runtime.done_lock or local_runtime.death_lock or get_local_goal() == nil then return false end
+    local_runtime.death_lock = true
+    local_runtime.death_warp_pending = true
     gPlayerSyncTable[0].sh5_forfeit = (gPlayerSyncTable[0].sh5_forfeit or 0) + 1
     djui_popup_create(translated("NEW GOAL INCOMING...", "NUEVO RETO..."), 1)
     return false
