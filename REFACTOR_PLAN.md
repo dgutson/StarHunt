@@ -13,8 +13,9 @@ left behind because they call into the round loop. `round.lua` is finished: its 
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
-came out once `player_record_key` had moved into `core.lua`. `goals.lua` has taken the
-required-cap code and still owes the interaction handlers and star visibility.
+came out once `player_record_key` had moved into `core.lua`. `goals.lua` is now finished as
+well, in three passes: the catalog and its readers, then the required-cap code, then the
+interaction handlers and star visibility.
 
 ## The rule that makes the split safe
 
@@ -91,6 +92,7 @@ is gone.
    ```
    audit     -> goals    (GOALS)   so goals may not require audit
    modifiers -> goals              so goals may not require modifiers
+   goals     -> core, i18n, save, boss
    ```
 
    That is why `run_static_modifier_checks` cannot live in `goals.lua` even though it walks
@@ -118,10 +120,11 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **twelve of the fourteen** passes so far, most recently the cap code that
-   moved into `goals.lua`, where the whole area was untested: no suite mentioned `capTimer` or
-   any cap flag, and `apply_goal_power` was published in `STARHUNT_TEST_API` and called by no
-   test at all. Write tests until every
+   coverage gap in **thirteen of the fifteen** passes so far, most recently the interaction
+   handlers and star visibility, where the whole area was untested: `allow_interact` and
+   `interact` were published in `STARHUNT_TEST_API` and called by no test at all, and
+   `update_star_visibility` and `reset_hidden_object_tracking` were not published at all.
+   Write tests until every
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
@@ -199,10 +202,12 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   Grep for the intended handle name before adding the import, and run luacheck after.
 - **Naming a module parameter or local `goal` reintroduces the shadowing warnings** once the
   function sits in the same file as the `goal()` constructor. Use `goal_data`, as `audit.lua`
-  does. This has now happened twice -- `audit.lua`'s parameter, and `apply_goal_power`'s
-  `local goal` when the cap code moved into `goals.lua` -- and it is the only kind of change a
-  move is allowed to make that is not byte-identical. Say so in the commit message and show
-  the diff, so the exception stays visible rather than looking like drift.
+  does. This has now happened three times -- `audit.lua`'s parameter, `apply_goal_power`'s
+  `local goal`, and three more in the interaction handlers -- and it is the only kind of change
+  a move is allowed to make that is not byte-identical. Say so in the commit message and show
+  the diff, so the exception stays visible rather than looking like drift. Rename only the
+  variable: `rejection.goal` and the `goal = goal_id` table key in `on_allow_interact` look
+  identical to a careless `\bgoal\b` substitution and are not variables at all.
 - **`awk` word boundaries (`\<`, `\>`) silently match nothing here.** Use
   `grep -n "\bname\b" | awk -F: '$1<A || $1>B'`.
 - **Check the require graph before assuming a dependency is satisfied.**
@@ -223,9 +228,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   command. Never read the target file while a sweep is running: it will show you a mutant and
   you will believe it.
 
-- **A generated engine stub can silently disable a guard.** `test/engine_stub.lua` returns
-  `nil` from most engine functions, which is right for a function whose return value nothing
-  reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
+- **A generated engine stub can silently disable a guard. Seven now.** `test/engine_stub.lua`
+  returns `nil` from most engine functions, which is right for a function whose return value
+  nothing reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
   "hold this warp back while the level loads" guard could be deleted with no test noticing;
   it is now driven by `ctl.transition`. The same thing was true of
   `obj_get_first_with_behavior_id`, which returned `nil` and so made **the entire Boss attack
@@ -234,9 +239,22 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `djui_popup_create_global` was discarding its second argument for the same reason, and
   `update_mod_menu_element_name` only recorded a rename that landed on a button that exists,
   so a call aimed at a nil index left no trace at all and the guard protecting engines with no
-  mod menu could be deleted with the suite still green. That is five stubs now needing real
-  implementations, after `ctl.palettes`. **When a mutation survives, check whether the stub
-  made the branch unreachable before concluding the test is wrong.**
+  mod menu could be deleted with the suite still green. Two more turned up with the interaction
+  handlers: `obj_has_behavior_id` returned `false`, so `obj_has_behavior_id(o, id) == 0` was
+  never true and the HMC Metal Cap portal guard could not fire, and `obj_get_first` returned
+  nil, so the object walk inside `update_star_visibility` never ran a single iteration. Objects
+  now carry `behavior_id`, and tests supply the level's contents through `ctl.level_objects`.
+  **When a mutation survives, check whether the stub made the branch unreachable before
+  concluding the test is wrong.**
+
+- **A harness stub of an engine function is a global, and lua-language-server merges it with
+  the engine's own definition.** Giving `obj_get_first` and `obj_get_next` real bodies made the
+  type checker read them as returning `unknown|nil`, which turned the untouched
+  `object = obj_get_next(object)` walk in `goals.lua` into an `assign-type-mismatch` and raised
+  the baseline from 10 problems in 2 files to 11 in 3. The fix is to annotate the stub with the
+  engine's own `@return` type and suppress the mismatch inside the stub, not to touch the code
+  that moved: sm64coopdx declares `@return Object` for both and returns NULL at the end of a
+  list anyway, the same inaccuracy already recorded for `save_file_do_save(file, true)`.
 - **A table of test callbacks must have uniform arity**, or lua-language-server reports
   `redundant-parameter` at the call site and the type-checker baseline rises -- which counts
   as a regression exactly like a new luacheck warning. A `cases` table whose `setup` entries

@@ -55,6 +55,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Sistema | Responsabilidad | Zona |
 |---|---|---|
 | Objetivos | Lista de estrellas, mundo, acto, poder y retos | `modules/goals.lua` (`GOALS`) |
+| Reclamo de estrella | Qué estrella cuenta, y oculta las demás | `modules/goals.lua` (`on_allow_interact`, `on_interact`, `update_star_visibility`) |
 | Auditoría | Acepta/rechaza cada reto para cada estrella | `modules/audit.lua` (`goal_traits`, `audit_modifier`, `rebuild_audited_modifiers`) |
 | Dificultad | Escala cada reto y vuelve a auditarlo | `modules/difficulty.lua` (`effective_modifier_for_goal`) |
 | Ronda normal | Asigna objetivos, puntos, ganador y retornos | `modules/round.lua` (`host_start_round`, `host_update_round`, `host_end_round`) |
@@ -66,7 +67,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |
 | Privacidad/PvP | Oculta jugadores con geometría o área incompatible | `modules/goals.lua` (`players_have_private_variant`, `players_can_share_world`) |
-| Lobby | Agua, puertas, Lakitu y retorno al castillo | `main.lua` (`keep_moat_lowered`, `on_allow_interact`, `remove_castle_lakitu`) |
+| Lobby | Agua, puertas, Lakitu y retorno al castillo | `modules/goals.lua` (`on_allow_interact`); `modules/modifiers.lua` (`keep_moat_lowered`); `main.lua` (`remove_castle_lakitu`) |
 | HUD y menú | Marcadores, timer, salud, menú `/starhunt` | `main.lua` (`draw_hud`, `draw_player_health_bar`, `draw_config_menu`) |
 | Compartido | `Team`, `local_runtime` y los ayudantes transversales | `modules/core.lua` |
 
@@ -75,7 +76,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Problema | Causa | Solución actual | Comprobación |
 |---|---|---|---|
 | Estrellas guardadas o borrado del curso equivocado | Curso de juego es 1-based; guardado es 0-based | `save_course_index_for()` resta 1 | La prueba verifica el índice correcto |
-| Lakitu reaparecía | Se comparaban símbolos C no disponibles en Lua | Usar `id_bhvCameraLakitu` | Prueba de borrado por behavior ID |
+| Lakitu reaparecía | Se comparaban símbolos C no disponibles en Lua | Usar `id_bhvCameraLakitu` | **Sin prueba.** Nada en `test/` menciona a Lakitu; la comprobación que esta fila nombraba no existe. El stub `obj_has_behavior_id` ya distingue behaviors, así que escribirla es posible |
 | Gorras desaparecían o quedaban permanentes | Estado de StarHunt y de otros mods se mezclaba | Guardar timer, flags propios y cap externa | `test/suite/caps.lua` (12 pruebas) |
 | Vidas quedaban en 99 | No se restauraba el valor previo | Guardar vidas al empezar y restaurar al terminar | Prueba de vidas |
 | HUD de otro mod se mostraba de nuevo | StarHunt siempre llamaba a `hud_show()` | Recordar si estaba oculto antes de la ronda | Prueba de HUD oculto |

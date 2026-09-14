@@ -13,6 +13,54 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-14 — R-002, third part: `modules/goals.lua` is finished
+
+The interaction handlers and star visibility left `main.lua` for `goals.lua`: `is_hmc_metal_portal`,
+`in_castle_lock_level`, `has_interaction`, `on_allow_interact`, `on_interact`,
+`reset_hidden_object_tracking` and `update_star_visibility`. `main.lua` fell from 1,972 to 1,835
+lines and `goals.lua` grew from 721 to 877, which makes it the second-largest file in the mod
+after `round.lua`. Two new require edges were needed and neither is a cycle: `save.lua` for
+`remove_starhunt_save_flag` and `boss.lua` for `boss_has_modifier`, both of which require only
+`core.lua`.
+
+Byte-identical in both directions, with the same single exception for the third time: three
+`local goal` declarations shadow this file's own `goal()` constructor and are `goal_data` here,
+as `audit.lua` already does. That is 13 lines and nothing else — `rejection.goal` and the
+`goal = goal_id` table key are not variables and were left alone.
+
+**The mutation check found the area completely uncovered, exactly as it did for the cap code.**
+`allow_interact` and `interact` were published in `STARHUNT_TEST_API` and called by no test at
+all, and `update_star_visibility` and `reset_hidden_object_tracking` were not published at all.
+Every guarantee in these 142 lines could be deleted with a green 353-test run: the castle lock
+that stops a player leaving the lobby, the HMC Metal Cap portal, the whole star gate, Boss's
+one-hit-death modifier, and the rule that only the invisibility flags StarHunt itself set are
+ever cleared.
+
+The most valuable thing the suite now pins is the rejection memory. Once a player has attempted
+a star object that did not belong to their goal, that object stays refused for that player, goal
+and round — because a spawned star keeps receiving object-sync updates, and without the memory an
+act value arriving late would turn a star the player already tried into a valid target. Three
+tests pin it, one per key, and a fourth proves one player's attempt does not bind another.
+
+`test/suite/interact.lua` adds 29 tests and the suite is now 382. **All 78 mutations are caught**,
+each by the test written for it — the first pass in this refactor with no survivor and no
+unreachable case to document.
+
+Two engine stubs had to be made real before any of it was reachable, which is the fifth and
+sixth time that trap has been hit. `obj_has_behavior_id` returned `false`, so
+`obj_has_behavior_id(o, id) == 0` was never true and the portal guard could not fire;
+`obj_get_first` returned nil, so the object walk inside `update_star_visibility` never ran a
+single iteration. Both now carry the engine's own `@return Object` annotation, which is not
+decoration: lua-language-server merges a global defined in `test/harness.lua` with the engine
+definition of the same name, and without the annotation the `object = obj_get_next(object)` walk
+in `goals.lua` became a type error that raised the checker baseline from 10 problems in 2 files
+to 11 in 3.
+
+Also found and left alone, because it belongs to R-004 rather than here:
+`DEVELOPMENT_CHECKLIST.md` names "Prueba de borrado por behavior ID" as the check guarding the
+Lakitu fix, and **no such test exists** — nothing under `test/` mentions Lakitu. The stub change
+made in this pass is what would let one be written.
+
 ### 2026-09-14 — R-002, second part: the required-cap code moves into `modules/goals.lua`
 
 `power_flags`, `restore_starhunt_power`, `apply_goal_power` and their four state locals
