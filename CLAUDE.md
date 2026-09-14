@@ -4,9 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-StarHunt v1.1 is a single-file Lua mod for **SM64CoopDX** (`main.lua`, ~5,200 lines). There is
-no build system, no package manager and no directory structure: the whole mod is one file plus
-four Markdown documents. The mod is installed by copying `main.lua` into the game's mods folder.
+StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
+
+    StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
+      main.lua
+    test/            <- test suite, deliberately OUTSIDE the mod folder
+    tools/           <- generators for the test stub and linter data
+
+The mod folder is a strict boundary: sm64coopdx scans a mod's root **recursively** for `.lua`
+and loads every file it finds, so anything with a `.lua` extension placed inside `StarHunt/`
+becomes part of the shipped mod. Tests and tooling must stay outside it.
 
 The project is closed. `PROJECT_STATUS.md` declares v1.1 final (2026-07-30) and says only
 corrective maintenance is accepted — no new features, modes, goals, modifiers or scoring
@@ -28,17 +35,21 @@ past sessions have followed it. In short:
 
 `PROJECT_STATUS.md` and `DEVELOPMENT_CHECKLIST.md` both record the SHA-256 of `main.lua`
 (currently `EBC76DBE…A906B883`, and it matches). Any edit invalidates it; recompute with
-`sha256sum main.lua` and update both documents.
+`sha256sum StarHunt/main.lua` and update both documents.
 
 ## Commands
 
 ```bash
 # Syntax/load check. MUST be lua5.4: main.lua uses 5.3+ bitwise operators (`|`),
 # and on this machine `lua` is the 5.1 alternative, which fails at main.lua:921.
-lua5.4 -e "assert(loadfile('main.lua'))"
+lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
+
+# Tests (72 of them). Needs lua5.4 for the same reason.
+lua5.4 test/run.lua
+lua5.4 test/run.lua audit difficulty     # only matching suites
 
 # Lint: scope, shadowing, unused values. Uses .luacheckrc.
-luacheck main.lua
+luacheck StarHunt/ test/
 
 # Type-aware check against the real sm64coopdx API (undefined globals and fields,
 # wrong arity, type mismatches). Pass the DIRECTORY, never the file: given a file
@@ -47,12 +58,12 @@ lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning \
   --logpath=/tmp/lls-log
 
 # Recompute the recorded hash after any edit
-sha256sum main.lua
+sha256sum StarHunt/main.lua
 ```
 
 ### How the checkers know the engine API
 
-`main.lua` calls about 59 engine functions and reads roughly 1,090 engine constants. Without
+`StarHunt/main.lua` calls about 59 engine functions and reads roughly 1,090 engine constants. Without
 the game's API these are all undefined globals and the linters are useless, so the API list is
 generated from sm64coopdx's own `autogen/lua_definitions` (6,337 globals: 2,008 functions,
 4,307 constants, 22 mutable engine tables) and stored **outside this folder**, because the game
@@ -92,13 +103,18 @@ call inside such a scope would be a runtime error rather than a lint error.
 `lua51` and `luau` grammars, so it cannot parse this file's 5.4 syntax. Do not add a
 `selene.toml`; use luacheck and lua-language-server instead.
 
-### The regression suite
+### The test suite
 
-The full suite the checklist names, `work/starhunt_v11_load_test.lua`, is **not in this
-directory** and is not elsewhere on this machine. If a change needs testing, the harness has to
-be located or rewritten; it drives the mod through `STARHUNT_TEST_API` (below). The static
-checks above are not a substitute for it, and neither is a substitute for a real multiplayer
-game session, which the project documents insist on.
+`test/` loads the mod outside the game against a generated stub of exactly the engine surface
+it uses, and drives it through `STARHUNT_TEST_API`. See `test/README.md` for the layout and for
+what each suite guards. The suite was mutation-checked, so a green run means something.
+
+It does not replace a real multiplayer session in sm64coopdx, and the project documents are
+explicit about that. Rendering, networking, warping, collision and other-mod interaction are
+all outside its reach.
+
+The original harness named in DEVELOPMENT_CHECKLIST.md, `work/starhunt_v11_load_test.lua`, was
+never in this repository and is not on this machine; `test/` is a fresh implementation.
 
 ## Architecture
 

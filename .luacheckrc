@@ -12,3 +12,9 @@ max_line_length = false
 -- STARHUNT_TEST_MODE is set by the harness; STARHUNT_TEST_API is published for it.
 globals[#globals + 1] = "STARHUNT_TEST_API"
 read_globals[#read_globals + 1] = "STARHUNT_TEST_MODE"
+
+-- The test harness and the generated engine stub exist precisely to define the
+-- engine surface, so inside test/ those names are writable rather than read-only.
+files["test/"] = {
+    globals = api.read,
+}
