@@ -5,12 +5,21 @@ v1.1 file (sha256 `ebc76dbe…a906b883`, 5,171 lines, 271 top-level declarations
 the time of writing: 72 tests pass, luacheck 0 errors, lua-language-server 4 known false
 positives.
 
-**Progress.** Six modules are out — core, i18n, save, goals, audit, difficulty — and
-`main.lua` is down from 5,171 to 4,056 lines. The suite has grown from 72 tests to 93.
-Current baseline, which must hold after every commit:
+**Work one module per session.** The user asked for this directly: extract one module,
+verify it, commit it, update this file, and stop. Each extraction here carries a lot of
+supporting work — proving byte-identity, mutation-checking, and usually writing a new
+suite because the mutation check finds the area uncovered — and several in a row fill
+the context window and invite mistakes. One such mistake already happened: a mutation
+was left applied to `modules/modifiers.lua` and only caught by diffing the file against
+its pre-move original. **Always re-diff the module against the original before
+committing, not just after the move.**
+
+**Progress.** Nine modules are out — core, i18n, save, goals, audit, difficulty, team,
+boss, modifiers — and `main.lua` is down from 5,171 to 3,083 lines. The suite has grown
+from 72 tests to 138. Current baseline, which must hold after every commit:
 
 ```bash
-lua5.4 test/run.lua                       # 93 passed, 0 failed
+lua5.4 test/run.lua                       # 138 passed, 0 failed
 luacheck StarHunt/ test/                  # 2 warnings / 0 errors
 lua-language-server --check . --checklevel=Warning --logpath=/tmp/lls-log   # 10 problems
 ```
@@ -161,7 +170,23 @@ Leaf-first, running `lua5.4 test/run.lua` after **each** module, one commit each
    `modifier()`, `clamp()` and `is_round_active()`.
 2. ~~i18n~~ — **done** → 3. ~~save~~ — **done** → 4. ~~goals (the catalog only)~~ —
    **done** → 5. ~~audit~~ — **done** → 6. ~~difficulty~~ — **done**
-7. team → 8. modifiers → 9. chaos → 10. boss → 11. round → 12. hud → 13. menu
+7. ~~team (rosters, palettes, PvP)~~ — **done** → 8. ~~boss (data + health)~~ —
+   **done** → 9. ~~modifiers~~ — **done**
+10. chaos → 11. round → 12. hud → 13. menu
+
+**Three modules are out in two passes and will need a second visit**, the same way goals
+did. `goals.lua` still lacks the interaction handlers, star visibility and power flags;
+`team.lua` lacks participant_stats, pick_late, update_scores (all three read round's
+`host_player_records`, which round REBINDS, so they must wait for round) and
+update_manual_reroll_menu; `boss.lua` lacks the round loop, the attack queue and the
+hazards.
+
+**How to find out what a module still needs.** Do not guess from the appendix. List the
+declarations the plan assigns to the module, find their line ranges, concatenate those
+ranges, and grep the result for every top-level name still declared in `main.lua`. That
+scan is what showed modifiers was blocked on exactly three things rather than the dozen
+the appendix implied, and it is worth rebuilding as a script in `tools/` if it is needed
+much more.
 
 **The order changed at step 4, and the leaf-first order past here is still not
 validated against real dependencies.** audit was meant to be next, but
