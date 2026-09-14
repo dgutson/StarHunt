@@ -12,17 +12,25 @@
 -- that recolour a player without changing the model are handled the other way
 -- round, by keeping only the parts they actually changed.
 --
--- Not here yet, because each needs a module that has not been extracted:
--- participant_stats, pick_late and update_scores read round's host-side player
--- records, on_allow_pvp_attack needs players_can_share_world from goals, and
--- update_manual_reroll_menu needs manual_reroll_label from modifiers. They
--- join this module as those come out.
+-- The module is complete. Two of its functions reach code in other modules
+-- without importing them: update_manual_reroll_menu calls a label built in
+-- modifiers.lua, and both of them are fields on the shared Team table, so they
+-- are reached by reference. That matters here, because team.lua cannot import
+-- modifiers.lua or round.lua at all -- modifiers.lua requires this module for
+-- on_allow_pvp_attack, and round.lua requires modifiers.lua, so either import
+-- would close a require cycle.
 
 local core = require("core")
 local Team = core.Team
 local is_round_active = core.is_round_active
 local is_boss_mode = core.is_boss_mode
+local player_record_key = core.player_record_key
 local players_can_share_world = require("goals").players_can_share_world
+
+-- How far one team's score must trail before pick_late, its only caller, puts
+-- a new player on that team. Two points rather than one, so that a tie does
+-- not shuffle players between teams on every star.
+local TEAM_SCORE_PRIORITY_GAP = 2
 
 Team.build_balanced = function()
     Team.initial = {}
@@ -73,6 +81,69 @@ Team.build_balanced = function()
             blue_skill = blue_skill + player.skill
         end
     end
+end
+
+Team.participant_stats = function()
+    local stats = {
+        [Team.RED] = { count = 0, skill = 0, score = 0 },
+        [Team.BLUE] = { count = 0, skill = 0, score = 0 },
+    }
+    local connected_keys = {}
+    for i = 0, MAX_PLAYERS - 1 do
+        local sync = gPlayerSyncTable[i]
+        if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1 then
+            local team = sync.sh5_team or Team.NONE
+            if stats[team] ~= nil then
+                stats[team].count = stats[team].count + 1
+                stats[team].skill = stats[team].skill + math.max(0, sync.sh5_lifetime_stars or 0)
+                stats[team].score = stats[team].score + math.max(0, sync.sh5_score or 0)
+            end
+            local key = player_record_key(i)
+            if key ~= nil then connected_keys[key] = true end
+        end
+    end
+    for key, record in pairs(Team.host_player_records) do
+        local team = record.team or Team.NONE
+        if not connected_keys[key] and record.enrolled == 1 and stats[team] ~= nil then
+            -- Preserve disconnected players' earned points, but do not count
+            -- them as active roster slots when assigning a new participant.
+            stats[team].score = stats[team].score + math.max(0, record.score or 0)
+        end
+    end
+    return stats
+end
+
+Team.pick_late = function(preferred_team)
+    local stats = Team.participant_stats()
+    -- Player count is the hard constraint. A new or returning participant
+    -- always fills the smaller active roster before any other consideration.
+    if stats[Team.RED].count < stats[Team.BLUE].count then return Team.RED end
+    if stats[Team.BLUE].count < stats[Team.RED].count then return Team.BLUE end
+
+    -- With equal rosters, help a team that trails by at least two points.
+    -- A one-point gap is intentionally too small to override reconnection or
+    -- experience balance, preventing constant team changes around a tie.
+    if stats[Team.RED].score - stats[Team.BLUE].score >= TEAM_SCORE_PRIORITY_GAP then
+        return Team.BLUE
+    end
+    if stats[Team.BLUE].score - stats[Team.RED].score >= TEAM_SCORE_PRIORITY_GAP then
+        return Team.RED
+    end
+
+    -- Preserve a reconnect's previous team whenever the two stronger rules
+    -- above do not require a different assignment.
+    if preferred_team == Team.RED or preferred_team == Team.BLUE then return preferred_team end
+
+    if stats[Team.RED].skill < stats[Team.BLUE].skill then return Team.RED end
+    if stats[Team.BLUE].skill < stats[Team.RED].skill then return Team.BLUE end
+    return math.random(2) == 1 and Team.RED or Team.BLUE
+end
+
+Team.update_scores = function()
+    if not network_is_server() or not Team.is_mode() then return end
+    local stats = Team.participant_stats()
+    gGlobalSyncTable.sh5_red_score = stats[Team.RED].score
+    gGlobalSyncTable.sh5_blue_score = stats[Team.BLUE].score
 end
 
 Team.colors = {
@@ -157,6 +228,17 @@ Team.update_palettes = function()
                 network_player_set_override_palette_color(player, part, color)
             end
         end
+    end
+end
+
+Team.update_manual_reroll_menu = function()
+    if Team.rerollMenuIndex == nil or type(update_mod_menu_element_name) ~= "function" then
+        return
+    end
+    local label = Team.manual_reroll_label()
+    if label ~= Team.rerollMenuLabel then
+        Team.rerollMenuLabel = label
+        update_mod_menu_element_name(Team.rerollMenuIndex, label)
     end
 end
 

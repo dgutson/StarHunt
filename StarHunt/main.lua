@@ -89,7 +89,6 @@ local host_add_late_joiner = local_round.host_add_late_joiner
 local remember_player_index = local_round.remember_player_index
 local remember_disconnected_player = local_round.remember_disconnected_player
 local mark_connected_player_unenrolled = local_round.mark_connected_player_unenrolled
-local TEAM_SCORE_PRIORITY_GAP = 2
 local MODIFIER_KINDS = {
     no_b = true,
     floor_doom = true,
@@ -228,69 +227,6 @@ Team.pick_second_modifier = function(goal, first_index)
     end
     if #choices == 0 then return 0 end
     return choices[math.random(#choices)]
-end
-
-Team.participant_stats = function()
-    local stats = {
-        [Team.RED] = { count = 0, skill = 0, score = 0 },
-        [Team.BLUE] = { count = 0, skill = 0, score = 0 },
-    }
-    local connected_keys = {}
-    for i = 0, MAX_PLAYERS - 1 do
-        local sync = gPlayerSyncTable[i]
-        if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1 then
-            local team = sync.sh5_team or Team.NONE
-            if stats[team] ~= nil then
-                stats[team].count = stats[team].count + 1
-                stats[team].skill = stats[team].skill + math.max(0, sync.sh5_lifetime_stars or 0)
-                stats[team].score = stats[team].score + math.max(0, sync.sh5_score or 0)
-            end
-            local key = player_record_key(i)
-            if key ~= nil then connected_keys[key] = true end
-        end
-    end
-    for key, record in pairs(Team.host_player_records) do
-        local team = record.team or Team.NONE
-        if not connected_keys[key] and record.enrolled == 1 and stats[team] ~= nil then
-            -- Preserve disconnected players' earned points, but do not count
-            -- them as active roster slots when assigning a new participant.
-            stats[team].score = stats[team].score + math.max(0, record.score or 0)
-        end
-    end
-    return stats
-end
-
-Team.pick_late = function(preferred_team)
-    local stats = Team.participant_stats()
-    -- Player count is the hard constraint. A new or returning participant
-    -- always fills the smaller active roster before any other consideration.
-    if stats[Team.RED].count < stats[Team.BLUE].count then return Team.RED end
-    if stats[Team.BLUE].count < stats[Team.RED].count then return Team.BLUE end
-
-    -- With equal rosters, help a team that trails by at least two points.
-    -- A one-point gap is intentionally too small to override reconnection or
-    -- experience balance, preventing constant team changes around a tie.
-    if stats[Team.RED].score - stats[Team.BLUE].score >= TEAM_SCORE_PRIORITY_GAP then
-        return Team.BLUE
-    end
-    if stats[Team.BLUE].score - stats[Team.RED].score >= TEAM_SCORE_PRIORITY_GAP then
-        return Team.RED
-    end
-
-    -- Preserve a reconnect's previous team whenever the two stronger rules
-    -- above do not require a different assignment.
-    if preferred_team == Team.RED or preferred_team == Team.BLUE then return preferred_team end
-
-    if stats[Team.RED].skill < stats[Team.BLUE].skill then return Team.RED end
-    if stats[Team.BLUE].skill < stats[Team.RED].skill then return Team.BLUE end
-    return math.random(2) == 1 and Team.RED or Team.BLUE
-end
-
-Team.update_scores = function()
-    if not network_is_server() or not Team.is_mode() then return end
-    local stats = Team.participant_stats()
-    gGlobalSyncTable.sh5_red_score = stats[Team.RED].score
-    gGlobalSyncTable.sh5_blue_score = stats[Team.BLUE].score
 end
 
 Team.boss_reserve_bomb_count = function()
@@ -951,17 +887,6 @@ local function on_find_water_level(_, _, water_level)
     -- Returning a fixed height here would create water under every coordinate
     -- on the castle grounds, including places outside those water boxes.
     return water_level
-end
-
-Team.update_manual_reroll_menu = function()
-    if Team.rerollMenuIndex == nil or type(update_mod_menu_element_name) ~= "function" then
-        return
-    end
-    local label = Team.manual_reroll_label()
-    if label ~= Team.rerollMenuLabel then
-        Team.rerollMenuLabel = label
-        update_mod_menu_element_name(Team.rerollMenuIndex, label)
-    end
 end
 
 local function config_option_count()
@@ -1971,6 +1896,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         nightmare = Team.NIGHTMARE,
         team_red = Team.RED,
         team_blue = Team.BLUE,
+        team_participant_stats = Team.participant_stats,
         team_update_scores = Team.update_scores,
         team_pick_late = Team.pick_late,
         team_update_palettes = Team.update_palettes,

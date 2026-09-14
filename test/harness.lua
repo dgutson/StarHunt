@@ -89,6 +89,7 @@ local function install_engine()
         hooks = {},              -- hook type -> list of functions
         chat_commands = {},
         menu_buttons = {},
+        menu_renames = {},     -- every update_mod_menu_element_name call
         hud = { text = {}, rects = 0, textures = 0, colors = {} },
         popups = {},
         chat = {},
@@ -177,7 +178,12 @@ local function install_engine()
         table.insert(ctl.menu_buttons, { label = label, fn = fn })
         return #ctl.menu_buttons
     end
+    -- Every rename is recorded, including one aimed at an index that does not
+    -- exist. update_manual_reroll_menu is guarded against an engine with no mod
+    -- menu, and a test can only see that guard hold if the call it must not
+    -- make leaves a trace.
     function update_mod_menu_element_name(index, label)
+        table.insert(ctl.menu_renames, { index = index, label = label })
         if ctl.menu_buttons[index] then ctl.menu_buttons[index].label = label end
     end
 
