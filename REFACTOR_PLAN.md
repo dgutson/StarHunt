@@ -5,6 +5,22 @@ v1.1 file (sha256 `ebc76dbe…a906b883`, 5,171 lines, 271 top-level declarations
 the time of writing: 72 tests pass, luacheck 0 errors, lua-language-server 4 known false
 positives.
 
+**Progress.** Six modules are out — core, i18n, save, goals, audit, difficulty — and
+`main.lua` is down from 5,171 to 4,056 lines. The suite has grown from 72 tests to 93.
+Current baseline, which must hold after every commit:
+
+```bash
+lua5.4 test/run.lua                       # 93 passed, 0 failed
+luacheck StarHunt/ test/                  # 2 warnings / 0 errors
+lua-language-server --check . --checklevel=Warning --logpath=/tmp/lls-log   # 10 problems
+```
+
+The 2 luacheck warnings (`empty if branch`, `shadowing upvalue alpha`) and the 10
+type-checker problems (3 × `save_file_do_save`, 7 × partial engine stubs in
+`test/harness.lua`) are all pre-existing. luacheck fell from 26 to 2 as modules left,
+because the `shadowing upvalue goal` warnings went with the `goal()` constructor. A
+further fall is expected; **a rise is a regression.**
+
 The measurements below come from a tree-sitter parse of `main.lua` plus the code graph in
 codebase-memory-mcp. The scripts live in the session scratchpad and are disposable; every
 number here can be re-derived by re-running them.
@@ -141,9 +157,36 @@ Leaf-first, running `lua5.4 test/run.lua` after **each** module, one commit each
 1. ~~`local_runtime` migration (no files moved)~~ — **done**
 1b. ~~`modules/core.lua`~~ — **done**. Not in the original layout, and a prerequisite
    for everything else: `Team` was a `local` in main.lua, so no required module could
-   see it. core.lua declares `Team` and `FRAMES_PER_SECOND` and returns both.
-2. ~~i18n~~ — **done** → 3. ~~save~~ — **done** → 4. audit → 5. difficulty → 6. goals
+   see it. core.lua now holds `Team`, `local_runtime`, `FRAMES_PER_SECOND`,
+   `modifier()`, `clamp()` and `is_round_active()`.
+2. ~~i18n~~ — **done** → 3. ~~save~~ — **done** → 4. ~~goals (the catalog only)~~ —
+   **done** → 5. ~~audit~~ — **done** → 6. ~~difficulty~~ — **done**
 7. team → 8. modifiers → 9. chaos → 10. boss → 11. round → 12. hud → 13. menu
+
+**The order changed at step 4, and the leaf-first order past here is still not
+validated against real dependencies.** audit was meant to be next, but
+`rebuild_audited_modifiers()` walks `GOALS`, so the goal catalog had to leave first.
+The alternative was passing `GOALS` into audit as a parameter; that hides a real
+dependency in order to preserve an arbitrary sequence, so the sequence moved instead.
+Expect the same question at each remaining step and answer it the same way: follow the
+real dependency, do not fake a leaf.
+
+`modules/goals.lua` deliberately holds **only the catalog** — `WORLD_NAMES`, `goal()`
+and the 93 `GOALS` entries, which depend on nothing but `modifier()` and the engine's
+`LEVEL_` constants. The goal-related runtime code the appendix also assigns to goals
+(`on_allow_interact`, `on_interact`, `update_star_visibility`, `apply_goal_power`,
+`players_have_private_variant`, …) is still in main.lua and joins the module when its
+own dependencies come out. A module growing in two passes is fine; dragging its
+dependencies out early is not.
+
+Three shared helpers moved into `core.lua` as the module that needed them was reached,
+each in its own commit:
+
+| helper | moved for | why core |
+|---|---|---|
+| `modifier()` | audit's 32-entry catalog | 3 lines, no dependencies, and the goal, audit and two Boss catalogs all build modifiers from three different modules |
+| `local_runtime` | difficulty's `periodic_window` | the second of the two field-only tables the whole split rests on; core already existed to hold the first |
+| `clamp()` | difficulty's `selected_difficulty` | 5 lines, no dependencies, 24 callers spread across most modules |
 
 The test harness reimplements the engine's folder-relative `require()`, so a wrong require path
 fails in tests exactly as it would in the game. Require paths are folder-relative: from
@@ -168,6 +211,41 @@ fails in tests exactly as it would in the game. Require paths are folder-relativ
 - Shared helpers move into `core.lua` when the first module needs them, rather than being
   moved there speculatively. `is_round_active` went in for save, which calls it three times;
   it is also the highest fan-in function in the mod, so most later modules will want it.
+
+- **What the mutation checks have found so far.** Every extraction is verified twice: the
+  moved lines are diffed against the removed lines and asserted byte-identical, and the moved
+  code is then mutated to see whether the suite notices. The second check has found a real
+  coverage gap in four of the six modules, which is the reason to keep doing it:
+
+  | module | what was uncovered | what closed it |
+  |---|---|---|
+  | i18n | everything — `translated()` could return English always | 9 tests |
+  | save | the flush and retry logic; one assertion could never fail | 10 tests |
+  | goals | all catalog data — swapped English/Spanish columns, a retuned value, a typo'd world name | 18 pinned world names, and a digest over the whole catalog |
+  | core | every `local_runtime` initial value — a sentinel starting at 0, a dropped queue, a lock starting engaged | 4 invariants in `test/suite/core.lua` |
+  | difficulty | which direction "harder" runs per modifier | a per-kind direction table stated in the test |
+
+  Two of those are worth understanding rather than just noting, because both were tests that
+  looked like they covered the thing and did not:
+
+  - *"difficulty is monotonic for every modifier"* derives the direction from the values it
+    observes, so a wrong entry in `Team.lower_is_harder` inverts the whole scale for that
+    modifier and the sequence is still perfectly monotonic — Nightmare would be **kinder**
+    than Medium. A test can only catch that by stating the direction independently of the
+    code, which the new one does, with the reason for each of the 24 graded kinds.
+  - The first attempt at a runtime-table liveness test drove `Team.darkness_active`, which
+    still lived in main.lua. main.lua and the test both read the table through
+    `STARHUNT_TEST_API`, so it passed whether or not core's table was the shared one. It only
+    became a real test once `periodic_window` moved into `difficulty.lua` and the two files
+    reached the table through separate `require()` calls. **A liveness test has to cross a
+    module boundary that actually exists.**
+
+- **The catalog digest.** `test/suite/catalog.lua` pins an FNV-1a digest over every goal's
+  level, act, world names, titles, power and hand-tuned modifier values. It was computed from
+  the release commit `2111c0b`, and the catalog in `modules/goals.lua` was confirmed
+  byte-identical to the released file, so the digest asserts what shipped rather than what
+  merely happens to be here. `PROJECT_STATUS.md` closes v1.1 to balance changes, so this is
+  fixed data; if a change is ever deliberate, the failure prints the new digest to paste in.
 - `different-requires` is disabled in `.luarc.json`. sm64coopdx resolves a require path
   relative to the folder of the requiring file, so main.lua's `require("modules/core")` and
   a sibling module's `require("core")` are the same file spelled correctly in both places.
