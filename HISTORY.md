@@ -13,6 +13,48 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-14 — R-002, second part: the required-cap code moves into `modules/goals.lua`
+
+`power_flags`, `restore_starhunt_power`, `apply_goal_power` and their four state locals
+(`STARHUNT_SPECIAL_CAP_MASK`, `local_starhunt_power`, `local_starhunt_added_flags`,
+`local_power_original_timer`) left `main.lua` for `goals.lua`. `main.lua` fell from 2,033 to
+1,972 lines and `goals.lua` grew from 645 to 721. One `require` line was needed in `main.lua`
+and none in `goals.lua`: every name the block referenced was already there -- `local_runtime`,
+`is_round_active` and `is_boss_mode` from `core.lua`, and `get_local_goal` and
+`goal_matches_player_area` from `goals.lua` itself.
+
+Byte-identical in both directions, with one deliberate exception that is now the second time
+this exact trap has been hit: `apply_goal_power` declares `local goal`, which shadows this
+file's own `goal()` constructor, so it is `goal_data` here exactly as `audit.lua` does.
+
+**The mutation check found the area completely uncovered.** `apply_goal_power` was published
+in `STARHUNT_TEST_API` as `power` and called by no test at all, and no suite mentioned
+`capTimer` or any cap flag. That matters more here than in most passes, because
+`DEVELOPMENT_CHECKLIST.md` lists "gorras desaparecían o quedaban permanentes" as a fixed bug
+whose fix must not be undone, and the whole of that fix lives in these 57 lines. Every
+guarantee in it could be deleted with a green 341-test run: removing the wrong cap, keeping a
+cap forever, stealing a cap another mod granted, or never restoring the player's own cap timer.
+
+`test/suite/caps.lua` adds 12 tests and the suite is now 353. 31 of 34 mutations are caught,
+each by the test written for it. The three survivors are unreachable rather than untested and
+are documented in the suite's header: `restore_starhunt_power`'s resets of
+`local_starhunt_added_flags`, `local_runtime.power_external_timer` and
+`local_runtime.power_original_head` are all written again by `apply_goal_power` on the only
+path that can reach the next restore, so a stale value is never read. Confirmed by
+`grep -rn "power_external_timer\|power_original_head" StarHunt/` -- nothing outside this block
+reads either field.
+
+One test found a real hole the first sweep exposed: a player who walks onto a Wing-cap star
+already wearing a Wing cap from another mod. StarHunt adds nothing, so it must take nothing
+away at the end -- and recording the whole required cap as "added" instead of only the missing
+part passed every other test in the suite.
+
+**`run_static_modifier_checks` cannot go to `goals.lua`, and this was measured rather than
+assumed.** It needs `NORMAL_MODIFIER_CATALOG`, `MODIFIER_AUDIT` and `MODIFIER_AUDIT_COUNTS`
+from `audit.lua` and `capped_horizontal_velocity`, `swap_button_bits` and `rotate_stick` from
+`modifiers.lua`, and both of those modules already require `goals.lua`. R-002 had listed it as
+part of this pass; it is now recorded against `modifiers.lua`, which already imports both.
+
 ### 2026-09-14 — R-002, first part: `modules/team.lua` is complete
 
 The five declarations `team.lua` had been waiting for moved out of `main.lua`:

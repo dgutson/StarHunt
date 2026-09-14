@@ -42,8 +42,8 @@ de los siete pasos:
   direcciones: el cuerpo del módulo contra las líneas extraídas, y el
   `main.lua` reconstruido desde el commit anterior contra el archivo nuevo.
 - Mutar el código movido y comprobar que la prueba lo detecta. Una ejecución
-  verde no demuestra que el traslado sea correcto; en ocho de los diez módulos
-  ya extraídos la mutación encontró un área sin ninguna cobertura.
+  verde no demuestra que el traslado sea correcto; en doce de los catorce traslados
+  ya hechos la mutación encontró un área sin ninguna cobertura.
 - Volver a comparar el módulo contra su original **justo antes** de hacer
   commit. Una vez quedó una mutación aplicada y la prueba siguió pasando.
 
@@ -57,11 +57,11 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Objetivos | Lista de estrellas, mundo, acto, poder y retos | `modules/goals.lua` (`GOALS`) |
 | Auditoría | Acepta/rechaza cada reto para cada estrella | `modules/audit.lua` (`goal_traits`, `audit_modifier`, `rebuild_audited_modifiers`) |
 | Dificultad | Escala cada reto y vuelve a auditarlo | `modules/difficulty.lua` (`effective_modifier_for_goal`) |
-| Ronda normal | Asigna objetivos, puntos, ganador y retornos | `main.lua` (`host_start_round`, `host_update_round`, `host_end_round`) |
+| Ronda normal | Asigna objetivos, puntos, ganador y retornos | `modules/round.lua` (`host_start_round`, `host_update_round`, `host_end_round`) |
 | Retos | Aplica el modificador personal del jugador local | `modules/modifiers.lua` (`apply_local_modifier`) |
-| Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `main.lua` (`apply_goal_power`, `restore_starhunt_power`) |
+| Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `modules/goals.lua` (`apply_goal_power`, `restore_starhunt_power`) |
 | Guardado | Quita solo la bandera temporal de la estrella obtenida | `modules/save.lua` (`save_course_index_for`, `remove_starhunt_save_flag`) |
-| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos y vida); `main.lua` (`host_update_boss_round`, `apply_boss_hazards`) |
+| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos y vida); `modules/round.lua` (`host_update_boss_round`); `main.lua` (`apply_boss_hazards`) |
 | Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `main.lua` (`host_update_chaos_round`) |
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |
@@ -76,7 +76,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 |---|---|---|---|
 | Estrellas guardadas o borrado del curso equivocado | Curso de juego es 1-based; guardado es 0-based | `save_course_index_for()` resta 1 | La prueba verifica el índice correcto |
 | Lakitu reaparecía | Se comparaban símbolos C no disponibles en Lua | Usar `id_bhvCameraLakitu` | Prueba de borrado por behavior ID |
-| Gorras desaparecían o quedaban permanentes | Estado de StarHunt y de otros mods se mezclaba | Guardar timer, flags propios y cap externa | Pruebas de cambio de gorra y gorra externa |
+| Gorras desaparecían o quedaban permanentes | Estado de StarHunt y de otros mods se mezclaba | Guardar timer, flags propios y cap externa | `test/suite/caps.lua` (12 pruebas) |
 | Vidas quedaban en 99 | No se restauraba el valor previo | Guardar vidas al empezar y restaurar al terminar | Prueba de vidas |
 | HUD de otro mod se mostraba de nuevo | StarHunt siempre llamaba a `hud_show()` | Recordar si estaba oculto antes de la ronda | Prueba de HUD oculto |
 | Ataques de Bowser se perdían con lag | Solo existía el último ataque sincronizado | Cola circular de 8 ataques | Prueba de dos ataques juntos |

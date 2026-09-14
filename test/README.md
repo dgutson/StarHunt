@@ -45,6 +45,7 @@ something the mod uses, this is what picks it up. Run
 | `difficulty` | Normal preserving v0.9 values, Easy pulses, monotonicity, and that no difficulty pushes a modifier past a stage-4 safety limit on any goal |
 | `pairing` | all 496 pairs validated in both orders, the documented forbidden combinations, Nightmare finding a legal pair for every goal |
 | `save` | the one-based to zero-based course conversion, per-act star bits, flushing |
+| `caps` | the Wing/Metal/Vanish cap a goal requires: the right flags per power, none outside the goal's own level, act, round and mode, none for remote players, and the handing-back that DEVELOPMENT_CHECKLIST forbids undoing — a cap another mod granted, a cap it refreshed underneath StarHunt, the player's own cap timer and cap-on-head flag |
 | `hud` | no colon ever reaching `FONT_HUD`, which renders it as an X |
 | `mechanics` | the load-time self-checks, darkness timing, Easy pulse width |
 | `boss` | the reserve bomb wave: 0/0/2/4 by difficulty, distinct original positions, not armed before the native five are seen, one wave per round, host only |

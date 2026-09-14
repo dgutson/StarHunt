@@ -13,7 +13,8 @@ left behind because they call into the round loop. `round.lua` is finished: its 
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
-came out once `player_record_key` had moved into `core.lua`.
+came out once `player_record_key` had moved into `core.lua`. `goals.lua` has taken the
+required-cap code and still owes the interaction handlers and star visibility.
 
 ## The rule that makes the split safe
 
@@ -84,7 +85,20 @@ is gone.
    ```
 
    The middle one reaches further than it looks: `team.lua` cannot import `round.lua` either,
-   because `round.lua` imports `modifiers.lua`, which imports `team.lua`. Print the whole
+   because `round.lua` imports `modifiers.lua`, which imports `team.lua`. Two more edges out
+   of `goals.lua` forbid the reverse import and settled where one function goes:
+
+   ```
+   audit     -> goals    (GOALS)   so goals may not require audit
+   modifiers -> goals              so goals may not require modifiers
+   ```
+
+   That is why `run_static_modifier_checks` cannot live in `goals.lua` even though it walks
+   `GOALS`: it also reads `NORMAL_MODIFIER_CATALOG`, `MODIFIER_AUDIT` and
+   `MODIFIER_AUDIT_COUNTS` from `audit.lua` and `capped_horizontal_velocity`,
+   `swap_button_bits` and `rotate_stick` from `modifiers.lua`, and goals may import neither.
+   `modifiers.lua` already imports both and is where it goes, along with `MODIFIER_KINDS` --
+   a top-level local of `main.lua` that nothing else reads. Print the whole
    graph before every move -- `tools/module_deps.py` does not answer this question:
 
    ```bash
@@ -104,8 +118,10 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **eleven of the thirteen** passes so far, most recently `team`, where 25
-   of 28 mutations survived a green 325-test run. Write tests until every
+   coverage gap in **twelve of the fourteen** passes so far, most recently the cap code that
+   moved into `goals.lua`, where the whole area was untested: no suite mentioned `capTimer` or
+   any cap flag, and `apply_goal_power` was published in `STARHUNT_TEST_API` and called by no
+   test at all. Write tests until every
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
@@ -181,9 +197,12 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   happened twice: a handle named `round` would have been shadowed by the five functions that
   declare `local round = gGlobalSyncTable.sh5_round or 0`, so that one is `local_round` too.
   Grep for the intended handle name before adding the import, and run luacheck after.
-- **Naming a module parameter `goal` reintroduces the shadowing warnings** once the function
-  sits in the same file as the `goal()` constructor. Use `goal_data`, as `audit.lua` does.
-  This is the one place a move was deliberately not byte-identical.
+- **Naming a module parameter or local `goal` reintroduces the shadowing warnings** once the
+  function sits in the same file as the `goal()` constructor. Use `goal_data`, as `audit.lua`
+  does. This has now happened twice -- `audit.lua`'s parameter, and `apply_goal_power`'s
+  `local goal` when the cap code moved into `goals.lua` -- and it is the only kind of change a
+  move is allowed to make that is not byte-identical. Say so in the commit message and show
+  the diff, so the exception stays visible rather than looking like drift.
 - **`awk` word boundaries (`\<`, `\>`) silently match nothing here.** Use
   `grep -n "\bname\b" | awk -F: '$1<A || $1>B'`.
 - **Check the require graph before assuming a dependency is satisfied.**
@@ -218,6 +237,13 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   mod menu could be deleted with the suite still green. That is five stubs now needing real
   implementations, after `ctl.palettes`. **When a mutation survives, check whether the stub
   made the branch unreachable before concluding the test is wrong.**
+- **A table of test callbacks must have uniform arity**, or lua-language-server reports
+  `redundant-parameter` at the call site and the type-checker baseline rises -- which counts
+  as a regression exactly like a new luacheck warning. A `cases` table whose `setup` entries
+  were a mix of `function()` and `function(api)` did this; writing the unused ones as
+  `function(_)` fixes it and luacheck accepts `_`. The type checker only sees it when the
+  whole repository directory is passed, so run it before committing a new test suite, not
+  only after moving code.
 - **`STARHUNT_TEST_API` must keep its existing keys** or the suite stops compiling, and
   duplicate keys are reported by lua-language-server as `duplicate-index`. It already contains
   a `set_language` that clamps to the valid range; do not add a second one. Being in that
