@@ -103,6 +103,77 @@ return function(t, harness)
         t.ok(blue_got_three, "across 40 draws the spare player never went to BLUE")
     end)
 
+    -- who may damage whom ----------------------------------------------------
+
+    --- Put players 0 and 1 on the same star, in the same place, in `mode`.
+    local function together(api, ctl, mode)
+        ctl.player_count = 2
+        for i = 0, 15 do gNetworkPlayers[i].connected = i < 2 end
+        for i = 0, 1 do
+            gPlayerSyncTable[i].sh5_goal = 1
+            gNetworkPlayers[i].currLevelNum = api.goals[1].level
+            gNetworkPlayers[i].currAreaIndex = 1
+            gNetworkPlayers[i].currActNum = api.goals[1].act
+            gPlayerSyncTable[i].sh5_chaos_eliminated = 0
+        end
+        ctl.begin_round(api, mode, api.medium)
+    end
+
+    s.test("Boss mode allows no PvP at all", function()
+        -- Every player is fighting Bowser, not each other.
+        local api, ctl = harness.load()
+        together(api, ctl, api.boss_mode)
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "players could attack each other during a Boss round")
+    end)
+
+    s.test("Normal mode allows PvP only where the two players actually meet", function()
+        local api, ctl = harness.load()
+        together(api, ctl, api.normal_mode)
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), true,
+            "two players standing together could not attack each other")
+
+        gNetworkPlayers[1].currAreaIndex = 2
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "a player was attacked from another area")
+    end)
+
+    s.test("Team mode allows attacks across the colours and blocks friendly fire", function()
+        local api, ctl = harness.load()
+        together(api, ctl, api.team_mode)
+
+        gPlayerSyncTable[0].sh5_team = api.team_red
+        gPlayerSyncTable[1].sh5_team = api.team_blue
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), true,
+            "red could not attack blue")
+
+        gPlayerSyncTable[1].sh5_team = api.team_red
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "friendly fire was allowed between two red players")
+
+        gPlayerSyncTable[1].sh5_team = 0            -- Team.NONE, never enrolled
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "a player on no team was attackable")
+    end)
+
+    s.test("Chaos leaves eliminated players out of the fight", function()
+        -- An eliminated player is a spectator. Attacking them, or being
+        -- attacked by them, would keep them in a round they have already lost.
+        local api, ctl = harness.load()
+        together(api, ctl, api.chaos_mode)
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), true,
+            "two surviving players could not fight")
+
+        gPlayerSyncTable[1].sh5_chaos_eliminated = 1
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "an eliminated player was still attackable")
+
+        gPlayerSyncTable[1].sh5_chaos_eliminated = 0
+        gPlayerSyncTable[0].sh5_chaos_eliminated = 1
+        t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
+            "an eliminated player could still attack")
+    end)
+
     -- palettes ----------------------------------------------------------------
 
     local function paint_a_round(api, ctl)

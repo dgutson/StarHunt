@@ -56,8 +56,7 @@ local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
 local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
 -- Attaches the difficulty scaling to Team; nothing to bind here.
 require("modules/difficulty")
--- Team-mode rosters and palettes; also attaches to Team, nothing to bind.
-require("modules/team")
+local on_allow_pvp_attack = require("modules/team").on_allow_pvp_attack
 local TEAM_SCORE_PRIORITY_GAP = 2
 local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
@@ -2405,24 +2404,6 @@ local function update_star_visibility()
         end
         object = obj_get_next(object)
     end
-end
-
-local function on_allow_pvp_attack(attacker, victim, _)
-    local attacker_index = attacker.playerIndex
-    local victim_index = victim.playerIndex
-    if Team.is_chaos_mode()
-        and ((gPlayerSyncTable[attacker_index].sh5_chaos_eliminated or 0) == 1
-            or (gPlayerSyncTable[victim_index].sh5_chaos_eliminated or 0) == 1) then
-        return false
-    end
-    if not players_can_share_world(attacker_index, victim_index) then return false end
-    if Team.is_mode() then
-        local attacker_team = gPlayerSyncTable[attacker_index].sh5_team or Team.NONE
-        local victim_team = gPlayerSyncTable[victim_index].sh5_team or Team.NONE
-        return attacker_team ~= Team.NONE and victim_team ~= Team.NONE
-            and attacker_team ~= victim_team
-    end
-    return not is_boss_mode()
 end
 
 Team.local_index_from_global = function(global_index)

@@ -21,6 +21,8 @@
 local core = require("core")
 local Team = core.Team
 local is_round_active = core.is_round_active
+local is_boss_mode = core.is_boss_mode
+local players_can_share_world = require("goals").players_can_share_world
 
 Team.build_balanced = function()
     Team.initial = {}
@@ -158,5 +160,30 @@ Team.update_palettes = function()
     end
 end
 
--- Everything above attaches to the shared Team table.
-return {}
+-- Who may damage whom. Every mode answers differently: Chaos excludes players
+-- already eliminated, Team allows only opposing colours, Boss allows none at
+-- all, and Normal allows anyone who is genuinely in the same place. The
+-- same-place question is players_can_share_world, so two players racing
+-- different stars in one course cannot hit each other.
+local function on_allow_pvp_attack(attacker, victim, _)
+    local attacker_index = attacker.playerIndex
+    local victim_index = victim.playerIndex
+    if Team.is_chaos_mode()
+        and ((gPlayerSyncTable[attacker_index].sh5_chaos_eliminated or 0) == 1
+            or (gPlayerSyncTable[victim_index].sh5_chaos_eliminated or 0) == 1) then
+        return false
+    end
+    if not players_can_share_world(attacker_index, victim_index) then return false end
+    if Team.is_mode() then
+        local attacker_team = gPlayerSyncTable[attacker_index].sh5_team or Team.NONE
+        local victim_team = gPlayerSyncTable[victim_index].sh5_team or Team.NONE
+        return attacker_team ~= Team.NONE and victim_team ~= Team.NONE
+            and attacker_team ~= victim_team
+    end
+    return not is_boss_mode()
+end
+
+-- The roster and palette functions above attach to the shared Team table.
+return {
+    on_allow_pvp_attack = on_allow_pvp_attack,
+}
