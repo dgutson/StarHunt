@@ -98,6 +98,7 @@ local function install_engine()
         screen = { w = 1920, h = 1009 },
         player_count = 2,
         bomb_count = 0,          -- what count_objects_with_behavior reports
+        transition = false,      -- what is_transition_playing reports
     }
     harness.ctl = ctl
 
@@ -214,6 +215,10 @@ local function install_engine()
     function warp_to_level(level, area, act)
         table.insert(ctl.warps, { level = level, area = area, act = act })
     end
+
+    -- The generated stub returns nil for this, so a guard that holds a warp back
+    -- during a level transition could be deleted without any test noticing.
+    function is_transition_playing() return ctl.transition end
 
     function hud_is_hidden() return false end
     function hud_get_value() return 0 end

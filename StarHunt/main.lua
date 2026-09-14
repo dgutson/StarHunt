@@ -69,14 +69,8 @@ local swap_button_bits = local_modifiers.swap_button_bits
 local rotate_stick = local_modifiers.rotate_stick
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
+local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
 local TEAM_SCORE_PRIORITY_GAP = 2
-local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
-Team.chaos_maps = {
-    LEVEL_BOB, LEVEL_WF, LEVEL_JRB, LEVEL_CCM, LEVEL_BBH,
-    LEVEL_HMC, LEVEL_LLL, LEVEL_SSL, LEVEL_DDD, LEVEL_SL,
-    LEVEL_WDW, LEVEL_TTM, LEVEL_THI, LEVEL_TTC, LEVEL_RR,
-}
-
 local MODIFIER_KINDS = {
     no_b = true,
     floor_doom = true,
@@ -296,53 +290,6 @@ local function host_pick_goal(avoid_level)
     end
     if #choices == 0 then return 0 end
     return choices[math.random(#choices)]
-end
-
-Team.chaos_conflicts = {
-    no_b={ swap_ab=true }, swap_ab={ no_b=true },
-    reverse_controls={ mirrored_steering=true, control_pulse=true, air_mirror=true },
-    mirrored_steering={ reverse_controls=true, air_mirror=true },
-    air_mirror={ reverse_controls=true, mirrored_steering=true },
-    control_pulse={ reverse_controls=true, mirrored_steering=true, air_mirror=true },
-    low_jump={ high_gravity=true }, high_gravity={ low_jump=true },
-    coin_toll={ coin_leak=true }, coin_leak={ coin_toll=true },
-    coin_surge={ speed_cap=true, slow_pulse=true, coin_weight=true },
-    speed_cap={ coin_surge=true }, slow_pulse={ coin_surge=true }, coin_weight={ coin_surge=true },
-    periodic_freeze={ keep_moving=true, floor_doom=true },
-}
-
-Team.chaos_pair_allowed = function(first, second)
-    if first == nil or second == nil or first.kind == second.kind then return false end
-    local first_conflicts = Team.chaos_conflicts[first.kind]
-    local second_conflicts = Team.chaos_conflicts[second.kind]
-    return not ((first_conflicts ~= nil and first_conflicts[second.kind])
-        or (second_conflicts ~= nil and second_conflicts[first.kind]))
-end
-
-Team.chaos_modifier_allowed = function(candidate)
-    -- Coin Toll only gates a target star, and Chaos deliberately has none.
-    return candidate ~= nil and candidate.kind ~= "coin_toll"
-end
-
-Team.pick_chaos_pair = function(previous_first)
-    local first_choices = {}
-    for index, candidate in ipairs(NORMAL_MODIFIER_CATALOG) do
-        if Team.chaos_modifier_allowed(candidate) and index ~= previous_first then
-            table.insert(first_choices, index)
-        end
-    end
-    if #first_choices == 0 then return 0, 0 end
-    local first_index = first_choices[math.random(#first_choices)]
-    if Team.selected_difficulty() ~= Team.NIGHTMARE then return first_index, 0 end
-    local second_choices = {}
-    for index, candidate in ipairs(NORMAL_MODIFIER_CATALOG) do
-        if Team.chaos_modifier_allowed(candidate)
-            and Team.chaos_pair_allowed(NORMAL_MODIFIER_CATALOG[first_index], candidate) then
-            table.insert(second_choices, index)
-        end
-    end
-    if #second_choices == 0 then return 0, 0 end
-    return first_index, second_choices[math.random(#second_choices)]
 end
 
 Team.pick_second_modifier = function(goal, first_index)
@@ -1134,35 +1081,6 @@ local function on_before_boss_cutscene(m, incoming_action, _)
     return 1
 end
 
-Team.host_reroll_chaos_modifiers = function()
-    if not Team.is_chaos_mode() then return end
-    local now = get_global_timer()
-    if now < (gGlobalSyncTable.sh5_chaos_next_reroll or 0) then return end
-    local assigned = false
-    for i = 0, MAX_PLAYERS - 1 do
-        local sync = gPlayerSyncTable[i]
-        if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1
-            and (sync.sh5_chaos_eliminated or 0) == 0 then
-            local first, second
-            first, second = Team.pick_chaos_pair(sync.sh5_modifier or 0)
-            if first ~= 0 then
-                sync.sh5_modifier = first
-                sync.sh5_modifier_2 = second
-                assigned = true
-            end
-            local first_data = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[first])
-            local second_data = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[second])
-            sync.sh5_jump_count = first_data ~= nil and first_data.kind == "jump_limit" and first_data.value
-                or (second_data ~= nil and second_data.kind == "jump_limit" and second_data.value or -1)
-        end
-    end
-    if assigned then
-        gGlobalSyncTable.sh5_chaos_modifier_seq =
-            (gGlobalSyncTable.sh5_chaos_modifier_seq or 0) + 1
-    end
-    gGlobalSyncTable.sh5_chaos_next_reroll = now + CHAOS_REROLL_FRAMES
-end
-
 Team.host_update_chaos_round = function()
     Team.host_reroll_chaos_modifiers()
     local alive_count, alive_name = 0, "Nobody"
@@ -1356,42 +1274,6 @@ local function local_goal_warp_update(m)
         local_runtime.goal_warp_at = -1
         local_runtime.death_lock = false
         local_runtime.death_warp_pending = false
-    end
-end
-
-Team.update_chaos_warp = function(m)
-    if m.playerIndex ~= 0 then return end
-    if not is_round_active() or not Team.is_chaos_mode() then
-        local_runtime.chaos_round_seen = -1
-        local_runtime.chaos_warp_at = -1
-        local_runtime.chaos_spectator_warped = false
-        return
-    end
-
-    local round = gGlobalSyncTable.sh5_round or 0
-    if local_runtime.chaos_round_seen ~= round then
-        local_runtime.chaos_round_seen = round
-        local_runtime.chaos_warp_at = get_global_timer() + NEXT_GOAL_DELAY
-        local_runtime.chaos_spectator_warped = false
-        local_runtime.modifier_ready_key = nil
-        reset_local_modifier_state()
-    end
-
-    if (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1 then
-        if not local_runtime.chaos_spectator_warped and not is_transition_playing() then
-            warp_to_level(LEVEL_CASTLE_GROUNDS, 1, 1)
-            local_runtime.chaos_spectator_warped = true
-        end
-        return
-    end
-
-    if local_runtime.chaos_warp_at >= 0
-        and get_global_timer() >= local_runtime.chaos_warp_at
-        and not is_transition_playing() then
-        local level = gGlobalSyncTable.sh5_chaos_level
-        local act = gGlobalSyncTable.sh5_chaos_act or 1
-        if level ~= nil and level ~= 0 then warp_to_level(level, 1, act) end
-        local_runtime.chaos_warp_at = -1
     end
 end
 
@@ -2961,6 +2843,12 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         darkness_active = Team.darkness_active,
         local_modifiers = Team.get_local_modifiers,
         chaos_pair_allowed = Team.chaos_pair_allowed,
+        chaos_modifier_allowed = Team.chaos_modifier_allowed,
+        chaos_maps = Team.chaos_maps,
+        pick_chaos_pair = Team.pick_chaos_pair,
+        chaos_reroll = Team.host_reroll_chaos_modifiers,
+        chaos_reroll_frames = CHAOS_REROLL_FRAMES,
+        next_goal_delay = NEXT_GOAL_DELAY,
         pick_second_modifier = Team.pick_second_modifier,
         draw_darkness_behind = Team.draw_darkness_behind,
         draw_gun_mod_hud_compatibility = Team.draw_gun_mod_hud_compatibility,
