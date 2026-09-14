@@ -873,11 +873,6 @@ local host_seen_forfeit = {}
 local host_player_records = {}
 local local_goal_id = 0
 local local_goal_warp_at = -1
-local local_floor_frames = 0
-local local_slip_speed = 0
-local local_modifier_tick = -1
-local local_modifier_start_frame = 0
-local local_modifier_ready_key = nil
 local local_boss_round_seen = 0
 local local_boss_warp_at = -1
 local local_boss_hazard_seq = 0
@@ -885,9 +880,6 @@ local local_boss_stun_frames = 0
 local local_boss_damage_lock = 0
 local local_pending_double_waves = {}
 local local_pending_meteors = {}
-local local_idle_frames = 0
-local local_jump_cooldown_frames = 0
-local local_done_lock = false
 local local_death_lock = false
 local local_death_warp_pending = false
 local local_seen_round = nil
@@ -951,6 +943,14 @@ local local_runtime = {
     chaos_round_seen = -1,
     chaos_warp_at = -1,
     chaos_spectator_warped = false,
+    floor_frames = 0,
+    slip_speed = 0,
+    modifier_tick = -1,
+    modifier_start_frame = 0,
+    modifier_ready_key = nil,
+    idle_frames = 0,
+    jump_cooldown_frames = 0,
+    done_lock = false,
 }
 
 local function clamp(value, low, high)
@@ -1142,13 +1142,13 @@ end
 
 Team.darkness_active = function(modifier_data)
     if modifier_data == nil or modifier_data.kind ~= "darkness_pulse" then return false end
-    local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+    local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
     local phase = elapsed % (10 * FRAMES_PER_SECOND)
     return phase >= 10 * FRAMES_PER_SECOND - modifier_data.value
 end
 
 Team.periodic_window = function(period_seconds, duration_frames)
-    local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+    local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
     local period = math.max(1, period_seconds) * FRAMES_PER_SECOND
     return elapsed % period >= period - duration_frames
 end
@@ -1565,15 +1565,15 @@ local function is_local_player_on_floor(m)
 end
 
 local function reset_local_modifier_state()
-    local_floor_frames = 0
-    local_slip_speed = 0
-    local_modifier_tick = -1
-    local_modifier_start_frame = get_global_timer()
+    local_runtime.floor_frames = 0
+    local_runtime.slip_speed = 0
+    local_runtime.modifier_tick = -1
+    local_runtime.modifier_start_frame = get_global_timer()
     local_boss_stun_frames = 0
     local_boss_damage_lock = 0
     local_pending_double_waves = {}
     local_pending_meteors = {}
-    local_idle_frames = 0
+    local_runtime.idle_frames = 0
     local_runtime.last_move_x = nil
     local_runtime.last_move_z = nil
     local_runtime.wind_tick = -1
@@ -1584,8 +1584,8 @@ local function reset_local_modifier_state()
     local_runtime.coin_leak_tick = -1
     local_runtime.momentum_tick = -1
     local_runtime.overheat_frames = 0
-    local_jump_cooldown_frames = 0
-    local_done_lock = false
+    local_runtime.jump_cooldown_frames = 0
+    local_runtime.done_lock = false
 end
 
 local function host_pick_goal(avoid_level)
@@ -2679,9 +2679,9 @@ Team.apply_one_local_modifier = function(m)
         if goal == nil or not goal_matches_player_area(goal, 0) then return end
         ready_key = gPlayerSyncTable[0].sh5_goal_seq or (gPlayerSyncTable[0].sh5_goal or 0)
     end
-    if local_modifier_ready_key ~= ready_key then
+    if local_runtime.modifier_ready_key ~= ready_key then
         reset_local_modifier_state()
-        local_modifier_ready_key = ready_key
+        local_runtime.modifier_ready_key = ready_key
     end
 
     -- Initialize the modifier clock before testing a pulsed Easy effect.
@@ -2695,7 +2695,7 @@ Team.apply_one_local_modifier = function(m)
         elseif modifier_data.kind == "slippery" then
             -- Easy leaves Slippery inactive for six seconds. A new pulse must
             -- start from the current movement, not revive its previous speed.
-            local_slip_speed = 0
+            local_runtime.slip_speed = 0
         end
         return
     end
@@ -2706,14 +2706,14 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "floor_doom" then
         if is_local_player_on_floor(m) then
-            local_floor_frames = local_floor_frames + 1
-            if local_floor_frames >= modifier_data.value * FRAMES_PER_SECOND then
+            local_runtime.floor_frames = local_runtime.floor_frames + 1
+            if local_runtime.floor_frames >= modifier_data.value * FRAMES_PER_SECOND then
                 m.health = 0
-                local_floor_frames = 0
+                local_runtime.floor_frames = 0
                 djui_popup_create(translated("THE CURSED FLOOR GOT YOU!", "EL PISO MALDITO TE ATRAPO!"), 1)
             end
         else
-            local_floor_frames = 0
+            local_runtime.floor_frames = 0
         end
 
     elseif modifier_data.kind == "speed_cap" then
@@ -2762,7 +2762,7 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "periodic_freeze" then
         local period = math.max(3, modifier_data.value) * FRAMES_PER_SECOND
-        local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+        local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
         local tick = math.floor(elapsed / period)
         if tick > 0 and tick ~= local_runtime.freeze_tick then
             local_runtime.freeze_tick = tick
@@ -2794,7 +2794,7 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "wind_gust" then
         local period = math.max(4, modifier_data.value) * FRAMES_PER_SECOND
-        local elapsed = get_global_timer() - local_modifier_start_frame
+        local elapsed = get_global_timer() - local_runtime.modifier_start_frame
         local tick = math.floor(math.max(0, elapsed) / period)
         if tick > 0 and tick ~= local_runtime.wind_tick then
             local_runtime.wind_tick = tick
@@ -2821,10 +2821,10 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "lava_clock" then
         local period = math.max(6, modifier_data.value) * FRAMES_PER_SECOND
-        local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+        local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
         local tick = math.floor(elapsed / period)
-        if tick > 0 and tick ~= local_modifier_tick then
-            local_modifier_tick = tick
+        if tick > 0 and tick ~= local_runtime.modifier_tick then
+            local_runtime.modifier_tick = tick
             local damage = modifier_data.damage_amount or 0x100
             if m.health <= damage + 0x80 then m.health = 0 else m.health = m.health - damage end
         end
@@ -2837,18 +2837,18 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "slippery" then
         if is_local_player_on_floor(m) then
-            if math.abs(m.forwardVel) > math.abs(local_slip_speed) then
-                local_slip_speed = m.forwardVel
-            elseif math.abs(local_slip_speed) > math.abs(m.forwardVel) then
-                m.forwardVel = local_slip_speed
+            if math.abs(m.forwardVel) > math.abs(local_runtime.slip_speed) then
+                local_runtime.slip_speed = m.forwardVel
+            elseif math.abs(local_runtime.slip_speed) > math.abs(m.forwardVel) then
+                m.forwardVel = local_runtime.slip_speed
             end
-            if local_slip_speed > 0 then
-                local_slip_speed = math.max(0, local_slip_speed - 0.35)
+            if local_runtime.slip_speed > 0 then
+                local_runtime.slip_speed = math.max(0, local_runtime.slip_speed - 0.35)
             else
-                local_slip_speed = math.min(0, local_slip_speed + 0.35)
+                local_runtime.slip_speed = math.min(0, local_runtime.slip_speed + 0.35)
             end
         else
-            local_slip_speed = m.forwardVel
+            local_runtime.slip_speed = m.forwardVel
         end
 
     elseif modifier_data.kind == "swap_ab" then
@@ -2866,28 +2866,28 @@ Team.apply_one_local_modifier = function(m)
         local_runtime.last_move_z = m.pos.z
         if is_local_player_on_floor(m) then
             if moved then
-                local_idle_frames = 0
+                local_runtime.idle_frames = 0
             else
-                local_idle_frames = local_idle_frames + 1
-                if local_idle_frames >= modifier_data.value * FRAMES_PER_SECOND then
+                local_runtime.idle_frames = local_runtime.idle_frames + 1
+                if local_runtime.idle_frames >= modifier_data.value * FRAMES_PER_SECOND then
                     m.health = 0
-                    local_idle_frames = 0
+                    local_runtime.idle_frames = 0
                     djui_popup_create(translated("KEEP MOVING!", "SIGUE MOVIENDOTE!"), 1)
                 end
             end
         else
-            local_idle_frames = 0
+            local_runtime.idle_frames = 0
         end
 
     elseif modifier_data.kind == "jump_cooldown" then
-        if local_jump_cooldown_frames > 0 then
-            local_jump_cooldown_frames = local_jump_cooldown_frames - 1
+        if local_runtime.jump_cooldown_frames > 0 then
+            local_runtime.jump_cooldown_frames = local_runtime.jump_cooldown_frames - 1
             if (m.controller.buttonPressed & A_BUTTON) ~= 0 then
                 m.controller.buttonPressed = m.controller.buttonPressed & ~A_BUTTON
                 m.controller.buttonDown = m.controller.buttonDown & ~A_BUTTON
             end
         elseif is_local_player_on_floor(m) and (m.controller.buttonPressed & A_BUTTON) ~= 0 then
-            local_jump_cooldown_frames = modifier_data.value
+            local_runtime.jump_cooldown_frames = modifier_data.value
         end
 
     elseif modifier_data.kind == "coin_surge" then
@@ -2899,7 +2899,7 @@ Team.apply_one_local_modifier = function(m)
         local_runtime.last_coin_count = coins
 
     elseif modifier_data.kind == "control_drift" then
-        local elapsed = get_global_timer() - local_modifier_start_frame
+        local elapsed = get_global_timer() - local_runtime.modifier_start_frame
         local max_angle = math.rad(modifier_data.value)
         local angle = math.sin(elapsed / 24) * max_angle
         m.controller.stickX, m.controller.stickY = rotate_stick(m.controller.stickX, m.controller.stickY, angle)
@@ -2912,7 +2912,7 @@ Team.apply_one_local_modifier = function(m)
 
     elseif modifier_data.kind == "coin_leak" then
         local period = math.max(3, modifier_data.value) * FRAMES_PER_SECOND
-        local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+        local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
         local tick = math.floor(elapsed / period)
         if tick > 0 and tick ~= local_runtime.coin_leak_tick then
             local_runtime.coin_leak_tick = tick
@@ -2932,7 +2932,7 @@ Team.apply_one_local_modifier = function(m)
         end
 
     elseif modifier_data.kind == "momentum_burst" then
-        local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+        local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
         local tick = math.floor(elapsed / (8 * FRAMES_PER_SECOND))
         if tick > 0 and tick ~= local_runtime.momentum_tick then
             local_runtime.momentum_tick = tick
@@ -2956,7 +2956,7 @@ Team.apply_one_local_modifier = function(m)
         if m.intendedMag > speed then m.intendedMag = speed end
 
     elseif modifier_data.kind == "gravity_wave" then
-        local elapsed = math.max(0, get_global_timer() - local_modifier_start_frame)
+        local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
         if math.floor(elapsed / (3 * FRAMES_PER_SECOND)) % 2 == 1
             and (m.action & ACT_FLAG_AIR) ~= 0 then
             m.vel.y = math.max(-75, m.vel.y - modifier_data.value)
@@ -3134,12 +3134,12 @@ local function local_goal_warp_update(m)
         local_goal_id = current_goal_id
         local_goal_warp_at = get_global_timer() + (local_death_warp_pending and 0 or NEXT_GOAL_DELAY)
         local_star_visibility_next = 0
-        local_modifier_ready_key = nil
+        local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     elseif not is_round_active() then
         local_goal_id = 0
         local_goal_warp_at = -1
-        local_modifier_ready_key = nil
+        local_runtime.modifier_ready_key = nil
         local_death_lock = false
         local_death_warp_pending = false
         reset_local_modifier_state()
@@ -3169,7 +3169,7 @@ Team.update_chaos_warp = function(m)
         local_runtime.chaos_round_seen = round
         local_runtime.chaos_warp_at = get_global_timer() + NEXT_GOAL_DELAY
         local_runtime.chaos_spectator_warped = false
-        local_modifier_ready_key = nil
+        local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     end
 
@@ -3205,7 +3205,7 @@ local function local_boss_warp_update(m)
         -- A late joiner starts from the current attack sequence. Old attacks
         -- must not all replay while that player is entering the arena.
         local_boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-        local_modifier_ready_key = nil
+        local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     end
     if local_death_warp_pending then
@@ -3564,14 +3564,14 @@ local function on_interact(m, object, interaction, did_interact)
         return
     end
     if Team.is_chaos_mode() then return end
-    if local_done_lock then return end
+    if local_runtime.done_lock then return end
     if not did_interact or not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return end
 
     local goal = get_local_goal()
     if goal ~= nil and goal_matches_player_area(goal, 0) and goal_matches_star_object(goal, object) then
         if not Team.all_coin_tolls_paid(m) then return end
         remove_starhunt_save_flag(goal)
-        local_done_lock = true
+        local_runtime.done_lock = true
         Team.lifetime = Team.lifetime + 1
         mod_storage_save("starhunt_lifetime_stars", tostring(Team.lifetime))
         Team.update_lifetime_sync()
@@ -4236,7 +4236,7 @@ local function on_death(m)
         end
         return false
     end
-    if local_done_lock or local_death_lock or get_local_goal() == nil then return false end
+    if local_runtime.done_lock or local_death_lock or get_local_goal() == nil then return false end
     local_death_lock = true
     local_death_warp_pending = true
     gPlayerSyncTable[0].sh5_forfeit = (gPlayerSyncTable[0].sh5_forfeit or 0) + 1
