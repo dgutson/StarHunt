@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-012
+Next ID: R-013
 
 Two documents carry the detail this file deliberately omits. `REFACTOR_PLAN.md` holds the
 module boundaries, the extraction order, the per-symbol appendix and the working rules for
@@ -26,24 +26,13 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-001 — Finish `modules/round.lua`: move the host side of the round
+### R-002 — Finish the deferred halves of goals, team and chaos
 
 - **Category:** Refactor
-- **What:** Move the host half of the round loop out of `StarHunt/main.lua` into the existing `StarHunt/modules/round.lua`. Roughly 26 declarations and 600 lines: `host_start_round`, `host_end_round`, `host_update_round`, `host_update_boss_round`, `host_prepare_player`, `host_assign_goal`, `host_pick_goal`, `host_add_late_joiner`, `remember_player_index`, `remember_disconnected_player`, `mark_connected_player_unenrolled`, `player_record_key`, `connected_player_count`, `goal_is_active_for_anyone`, `update_winner_candidate`, `winner_text_and_score`, `host_reset_scores_after_result`, `time_range_for_players`, `configured_time_range`, `RESULT_DISPLAY_FRAMES`, and the six host state variables at the top of the file. Re-derive every line range with grep immediately before running `python3 tools/module_deps.py`, and do not trust the per-symbol appendix in `REFACTOR_PLAN.md`.
-- **Why:** The client half is out (see the record in `HISTORY.md`), and the host half is what four other modules are still waiting on. It could not go in the same pass for two measured reasons, of which **one is now resolved**. The four Boss helpers it called — `boss_time_range_for_players`, `boss_has_modifier`, `boss_is_desperate` and `host_read_boss_health_report` — have moved into `boss.lua`, so they are imports now rather than blockers. What remains is the rebinding: `host_start_round` **rebinds** `host_used_goals`, `host_seen_done`, `host_seen_forfeit` and `host_player_records`, and `host_end_round` rebinds `host_previous_player_interactions` and `host_previous_pvp_type` — Lua copies a value on `local x = other.x`, so none of those six can be separated from the two functions that rebind them, and the host half has to move as one piece. Re-run `tools/module_deps.py` over the whole set before starting: nothing else is expected to block it, but the scan is what decides.
-- **Outcome:** The whole round loop lives in `modules/round.lua`; `main.lua` is roughly 600 lines shorter; the moved lines are proven byte-identical in both directions, and every mutation tried against them is caught by a test.
+- **What:** Move the parts left behind when four modules were extracted in two passes. `goals.lua` needs the interaction handlers (`on_allow_interact`, `on_interact`), star visibility, the power flags (`apply_goal_power`, `restore_starhunt_power`, `power_flags`) and `run_static_modifier_checks`. `team.lua` needs `participant_stats`, `pick_late`, `update_scores` and `update_manual_reroll_menu`, plus `TEAM_SCORE_PRIORITY_GAP`, which belongs with `pick_late`, its only caller — all four are unblocked now that the host records live on the shared `Team` table and `player_record_key` is exported from `round.lua`. `boss.lua` needs the attack queue and the hazards, but **not** the round loop: that turned out to be impossible and has already moved into `round.lua` (see below). The hazards are blocked by a second cycle of the same kind: `apply_boss_hazards` needs `is_local_player_on_floor` from `modifiers`, and `modifiers` already requires `boss`. Settle that first — either move the helper into `core.lua`, or move `BOSS_PLAYER_MODIFIERS` out of `boss.lua` so the `modifiers → boss` edge goes away. `chaos.lua` was to receive `Team.host_update_chaos_round`; **it cannot**, and where that function goes instead is the decision this item has to make.
+- **Why:** Each of these was left in `main.lua` because it calls into the round loop. R-001 measured what that actually costs, and found the answer is not symmetric: `round.lua` requires `boss.lua` for the time range, the modifier slots and the health report, and requires `chaos.lua` for `CHAOS_REROLL_FRAMES`. So neither `boss.lua` nor `chaos.lua` may require `round.lua`, and any function of theirs that calls the round loop can never live in its own module. `host_update_boss_round` was the first such case and now lives in `round.lua`; `Team.host_update_chaos_round` is the second and is still in `main.lua`. The options are the same two as for the hazards: move what the caller needs into `core.lua`, or accept that these round loops belong to `round.lua` and say so in the plan.
+- **Outcome:** No module owns code that still lives in `main.lua`; every function that cannot live in its named module has a recorded reason; `main.lua` holds only the Co-op DX metadata header, the `require` wiring, the flat hook-registration block and the `STARHUNT_TEST_API` table.
 - **Blocked-by:** —
-- **Enables:** R-002
-
-## Next
-
-### R-002 — Finish the deferred halves of goals, team, boss and chaos
-
-- **Category:** Refactor
-- **What:** Move the parts left behind when four modules were extracted in two passes. `goals.lua` needs the interaction handlers (`on_allow_interact`, `on_interact`), star visibility, the power flags (`apply_goal_power`, `restore_starhunt_power`, `power_flags`) and `run_static_modifier_checks`. `team.lua` needs `participant_stats`, `pick_late`, `update_scores` and `update_manual_reroll_menu`, plus `TEAM_SCORE_PRIORITY_GAP`, which belongs with `pick_late`, its only caller. `boss.lua` needs the round loop, the attack queue and the hazards; its readers moved in a second pass and are done. Note that the hazards are blocked by something other than round: `apply_boss_hazards` needs `is_local_player_on_floor` from `modifiers`, and `modifiers` already requires `boss`, so importing it back would be a require cycle. Settle that first — either move the helper into `core.lua`, or move `BOSS_PLAYER_MODIFIERS` out of `boss.lua` so the `modifiers → boss` edge goes away. `chaos.lua` needs `Team.host_update_chaos_round`, measured as depending on exactly `host_end_round`, `remember_player_index` and `host_add_late_joiner`.
-- **Why:** Each of these was left in `main.lua` because it calls into the round loop, and passing those functions in as parameters would hide a real dependency in order to preserve an arbitrary extraction order. Until they move, four modules are misleadingly incomplete — a reader looking for Chaos's round handling finds it in `main.lua`, not in `chaos.lua`. `boss.lua`'s readers were done first for exactly this reason: they were what R-001 was waiting on.
-- **Outcome:** No module owns code that still lives in `main.lua`; `main.lua` holds only the Co-op DX metadata header, the `require` wiring, the flat hook-registration block and the `STARHUNT_TEST_API` table.
-- **Blocked-by:** R-001
 - **Enables:** R-010
 
 ### R-003 — Extract `modules/hud.lua`
@@ -64,12 +53,23 @@ session fills the context window and invites mistakes.
 - **Blocked-by:** R-003
 - **Enables:** R-010
 
+## Next
+
+### R-012 — Split `modules/round.lua`, now the largest file in the mod
+
+- **Category:** Refactor
+- **What:** `round.lua` is 949 lines — larger than `modifiers.lua` (708) and `goals.lua` (645), and larger than `main.lua` will be once `hud` and `menu` leave. Split it. The free cut is the one the file already documents in its own header: the host half (lines 69 to about 757) and the client half (about 759 to 927) **never call each other** — they meet only through the synchronized tables — so they can become `round_host.lua` and `round_client.lua` with no shared state to arrange. Measure that claim again before acting on it rather than trusting this line. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
+- **Why:** The file got large for a reason that no longer applies. Its two halves were extracted in separate passes months apart, and the second one landed in the file the first had created because that was where the name `round` already lived — not because the two belong in one file. They are the two sides of the mod's host-authority rule and share nothing, which is the clearest possible sign they are two units. Being the largest file in the mod also makes it the most expensive one to read at the start of a session, which is the cost the whole split exists to reduce.
+- **Outcome:** No module is larger than roughly 700 lines; the host and client sides of the round are separate files; every move is proven byte-identical in both directions and the 320 tests still pass.
+- **Blocked-by:** R-002
+- **Enables:** —
+
 ### R-005 — Move the suite onto a Lua test framework
 
 - **Category:** Testing
 - **What:** Replace the hand-rolled `test/runner.lua` (102 lines: suite registration, six assertions, one `pcall` per test) with an established framework — busted is the obvious candidate, with luassert for assertions. This requires first pointing `luarocks` at Lua 5.4: it is installed at `/usr/bin/luarocks` but bound to **Lua 5.1** with zero rocks installed, while the mod needs 5.4 for its bitwise operators. Keep `test/harness.lua` and `test/engine_stub.lua` as they are — the engine doubling is the part no framework replaces.
 - **Why:** The current runner works but gives nothing beyond pass/fail: no setup/teardown, no tags or filtering beyond a substring match on the suite name, no randomized order, and no route to coverage tooling. A framework is also what makes R-008 cheap rather than bespoke.
-- **Outcome:** The suite runs under a standard framework, all 154 tests still pass, and the project no longer maintains its own test runner.
+- **Outcome:** The suite runs under a standard framework, all 320 tests still pass, and the project no longer maintains its own test runner.
 - **Blocked-by:** —
 - **Enables:** R-008
 
@@ -77,7 +77,7 @@ session fills the context window and invites mistakes.
 
 - **Category:** Testing
 - **What:** Add luacov and produce a coverage report for `StarHunt/`. This does not require R-005: luacov runs against the existing runner via `lua5.4 -lluacov test/run.lua`.
-- **Why:** Coverage is currently established by hand, one module at a time, by mutating the moved code and checking whether the suite notices. That has found a real gap in eight of the ten modules extracted so far — most severely in chaos, where all 17 mutations survived a green 138-test run and `Team.update_chaos_warp` was published in `STARHUNT_TEST_API` and called by no test at all. Manual mutation testing works but costs a large part of every extraction session and only ever covers the lines that just moved.
+- **Why:** Coverage is currently established by hand, one module at a time, by mutating the moved code and checking whether the suite notices. That has found a real gap in nine of the twelve extraction passes so far — most severely in round's host half, where 139 of 156 mutations survived a green 212-test run, and in chaos, where all 17 survived and `Team.update_chaos_warp` was published in `STARHUNT_TEST_API` and called by no test at all. Manual mutation testing works but costs a large part of every extraction session and only ever covers the lines that just moved.
 - **Outcome:** A coverage report exists for the whole mod, naming the untested areas that nobody has thought to mutate yet.
 - **Blocked-by:** —
 - **Enables:** —

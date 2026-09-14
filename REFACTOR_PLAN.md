@@ -8,10 +8,10 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the host half of
-`round` and the parts four modules left behind because they call into the round loop. Boss's
-readers -- its time range, its modifier slots, the desperate test and the health report --
-joined `boss.lua` in a second pass, which is what unblocked round's host half.
+Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the parts three modules
+left behind because they call into the round loop. `round.lua` is finished: its client half
+came out first, and its host half -- the clock, the goal pool, the winner tally, the player
+records and the per-frame loop -- followed once Boss's readers had moved.
 
 ## The rule that makes the split safe
 
@@ -33,9 +33,11 @@ A rejected alternative, recorded so it is not re-proposed: a `modules/state.lua`
 mutable local. It duplicates what `local_runtime` already does, and forces the state clusters
 that are entirely self-contained into a shared module they do not need.
 
-**`team.lua` is the live example of why this rule decides the order.** Its three missing
-functions read `host_player_records`, which round **rebinds** (`host_player_records = {}`), so
-they cannot be shared by re-localizing and must wait for round to be extracted.
+**`team.lua` was the worked example of this rule, and of its escape hatch.** Its three missing
+functions read `host_player_records`, which `host_start_round` **rebinds**
+(`host_player_records = {}`). Waiting for round to be extracted would not have helped: a
+rebound local cannot be shared with `team.lua` from `round.lua` either. The table was migrated
+onto `Team` instead, which is what unblocked all three.
 
 The same rule split `round` itself in two. `host_start_round` rebinds `host_used_goals`,
 `host_seen_done`, `host_seen_forfeit` and `host_player_records`; `host_end_round` rebinds
@@ -126,7 +128,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   satisfied, usually the static data, and leave the runtime for when its own dependencies
   land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `round` split along a line the
   code names itself: the `local_*` half that only reacts to synchronized state came out first,
-  and the `host_*` half that writes it is waiting on Boss.
+  and the `host_*` half that writes it followed once Boss's readers had moved. Both halves are
+  now in `round.lua`, and the file says in its header that the split between them is the mod's
+  host-authority rule made visible.
 - **Shared helpers move into `core.lua` when the first module actually needs one**, never
   speculatively. That is how `is_round_active`, `modifier()`, `clamp()`, `local_runtime`, the
   four mode predicates and `NEXT_GOAL_DELAY` got there. `NEXT_GOAL_DELAY` is the case worth
@@ -168,13 +172,25 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   chosen yet.
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
+- **A mutation sweep must restore the file after every single run.** A sweep that only
+  restores at the end left `RESULT_DISPLAY_FRAMES = 2` applied to `round.lua` when the process
+  was killed for memory. Restore immediately after each run and from a signal handler, and
+  keep a pristine copy beside the sweep so `diff` can answer "is the file clean" in one
+  command. Never read the target file while a sweep is running: it will show you a mutant and
+  you will believe it.
+
 - **A generated engine stub can silently disable a guard.** `test/engine_stub.lua` returns
   `nil` from most engine functions, which is right for a function whose return value nothing
   reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
   "hold this warp back while the level loads" guard could be deleted with no test noticing;
-  it is now driven by `ctl.transition`. That is the second stub to need a real implementation
-  after `ctl.palettes`. **When a mutation survives, check whether the stub made the branch
-  unreachable before concluding the test is wrong.**
+  it is now driven by `ctl.transition`. The same thing was true of
+  `obj_get_first_with_behavior_id`, which returned `nil` and so made **the entire Boss attack
+  queue unreachable**: with no Bowser object the host loop always decided he was not ready and
+  returned before choosing an attack. Tests now supply the object through `ctl.objects`.
+  `djui_popup_create_global` was discarding its second argument for the same reason. That is
+  four stubs now needing real implementations, after `ctl.palettes`. **When a mutation
+  survives, check whether the stub made the branch unreachable before concluding the test is
+  wrong.**
 - **`STARHUNT_TEST_API` must keep its existing keys** or the suite stops compiling, and
   duplicate keys are reported by lua-language-server as `duplicate-index`. It already contains
   a `set_language` that clamps to the valid range; do not add a second one. Being in that
@@ -188,31 +204,29 @@ graph (660 symbol-to-symbol edges among top-level declarations), cross-checked a
 community detection in the code graph. The communities the graph found on its own matched the
 planned layout closely.
 
-The three modules left, as measured on the released file:
+The two modules left, as measured on the released file:
 
 | module | decls | ~lines |
 |---|---|---|
-| round | 45 | 796 |
 | hud | 31 | 601 |
 | menu | 18 | 250 |
 
 Their heaviest references to modules that are already out:
 
 ```
-hud   -> i18n       51      round -> goals      23
-round -> team       29      menu  -> i18n       23
-round -> boss       28      menu  -> modifiers  23
-hud   -> team       26      hud   -> modifiers  22
+hud   -> i18n       51      menu  -> i18n       23
+hud   -> team       26      menu  -> modifiers  23
+hud   -> modifiers  22
 ```
 
-## Appendix: per-symbol assignment for the three remaining modules
+## Appendix: per-symbol assignment for the two remaining modules
 
 **Machine-derived, not hand-verified**: seeded label propagation over the reference graph,
 constrained so each state cluster stays whole. Line numbers refer to the **released** v1.1
 file and are stale — re-derive every range with grep. Treat this as a starting point, never as
 settled; `tools/module_deps.py` is what actually decides.
 
-The appendix sections for the ten extracted modules were deleted once those modules existed.
+The appendix sections for the eleven extracted modules were deleted once those modules existed.
 They are in git history if ever needed.
 
 Two things to know when reading it:
@@ -226,30 +240,6 @@ Two things to know when reading it:
   `draw_config_menu` landed in `hud` with the other `draw_*` functions; it may sit better in
   `menu` next to the rest of the config code. `Team.freeze_menu_mario` does most of its work
   against local modifier state and is worth reconsidering against `modifiers`.
-
-### `modules/round.lua` — the host half, ~26 declarations, ~600 lines
-
-The client half is already in `modules/round.lua`: `local_seen_return_seq`,
-`local_return_warp_pending`, `local_return_warp_retry_at`, `force_return_to_lobby`, `on_nametags_render`, `update_private_player_visibility`,
-`on_pause_exit`, `on_death`, `STARHUNT_DEATH_ACTIONS`, `on_before_death_action` and `on_dialog`.
-
-What is left in `main.lua`, listed by name rather than by line number because every range in
-this appendix is stale — re-derive them with grep:
-
-```
-state       RESULT_DISPLAY_FRAMES, host_used_goals, host_seen_done, host_seen_forfeit,
-            host_player_records, host_previous_player_interactions, host_previous_pvp_type
-time        time_range_for_players, configured_time_range
-goals       connected_player_count, goal_is_active_for_anyone, host_pick_goal, host_assign_goal
-records     player_record_key, remember_player_index, remember_disconnected_player,
-            mark_connected_player_unenrolled, host_add_late_joiner
-loop        host_prepare_player, host_start_round, host_end_round, host_update_round,
-            host_update_boss_round, host_reset_scores_after_result,
-            update_winner_candidate, winner_text_and_score
-```
-
-`starhunt_hidden_players`, which this appendix listed under round, no longer exists: it became
-`local_runtime.hidden_players` during the migration.
 
 ### `modules/hud.lua` — 31 declarations, ~601 lines
 

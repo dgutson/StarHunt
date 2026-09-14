@@ -13,24 +13,66 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
-*(None yet. Items retire here from `ROADMAP.md` as they are finished, newest first, recording
-the outcome actually achieved rather than the one predicted.)*
+### 2026-09-14 — R-001: the host half of the round moved into `modules/round.lua`
+
+681 lines across nine blocks, proven byte-identical in both directions: the host half appears
+verbatim in `round.lua`, the client half was untouched, and `main.lua` rebuilt from the
+previous commit minus the deleted ranges plus the eleven import lines compared character for
+character with the working file. `main.lua` fell from 2,780 to 2,101 lines; `round.lua` grew
+from 207 to 949. The whole round loop now lives in one file.
+
+**One preparatory change was needed first, in its own commit.** `host_start_round` replaces
+`host_player_records` wholesale at the start of every round, and `Team.participant_stats` --
+which belongs in `team.lua`, not in round -- reads it. A rebound local cannot be shared across
+modules at all, so the table was migrated onto the shared `Team` table in `core.lua`, following
+the pattern already used for the 23 locals moved onto `local_runtime` before the split began.
+That also unblocks `team.lua`'s three deferred functions.
+
+**The require graph settled two questions R-002 had open.** `round.lua` must require `boss.lua`
+(the time range, the modifier slots, the health report) and `chaos.lua` (`CHAOS_REROLL_FRAMES`),
+so an edge back the other way is a cycle. `host_update_boss_round` therefore **cannot** live in
+`boss.lua` and moved into `round.lua` with the rest of the host half, and
+`Team.host_update_chaos_round` **cannot** live in `chaos.lua` either -- R-002 has to decide
+where it goes instead.
+
+**The coverage this found was the worst of the refactor so far: 139 of 156 mutations survived
+a green 212-test run.** Nothing in the suite drove the round loop past starting it. The new
+`test/suite/round_host.lua` is 108 tests covering the clock, the goal pool, the winner tally,
+the reconnect records, the per-frame loop and Bowser's attack scheduling; the suite went from
+212 to 320 tests.
+
+Two engine stubs were silently hiding whole branches from every test and were fixed in
+`test/harness.lua`:
+
+- `obj_get_first_with_behavior_id` returned `nil`, so **the entire Boss attack queue was
+  unreachable** -- with no Bowser object the host loop always decided he was not ready and
+  returned before choosing an attack. Tests now supply the object through `ctl.objects`.
+- `djui_popup_create_global` discarded its second argument, so the round banner's height could
+  be wrong with nothing noticing.
+
+Two surviving mutations are equivalent and are documented in the suite rather than faked into
+a test: `goal_is_active_for_anyone` starting its scan at player 1 (it duplicates a guarantee
+`host_used_goals` already gives), and `winner_text_and_score` seeding its best score at -2
+instead of -1 (scores are never negative). A third, the fallback in `host_assign_goal` when the
+modifier filter empties, is unreachable because every goal in the catalogue has at least ten
+allowed modifiers; what the suite guards instead is the filter itself, over 80 draws.
 
 ---
 
 ## The modularization of `main.lua`
 
 Branch `refactor/modularize`, begun after v1.1 was declared final. `REFACTOR_PLAN.md` holds
-the method; this is the record of what it produced. Remaining work is R-001 to R-004 in
+the method; this is the record of what it produced. Remaining work is R-002 to R-004 in
 `ROADMAP.md`.
 
 ### Where it started and where it stands
 
 The released v1.1 `main.lua` was 5,171 lines and 271 top-level declarations, with 72 tests.
-After eleven of the thirteen modules, `main.lua` is 2,780 lines and the suite is 212 tests.
+After eleven of the thirteen modules, `main.lua` is 2,101 lines and the suite is 320 tests.
 Modules extracted, in order: `core`, `i18n`, `save`, `goals` (catalog only), `audit`,
 `difficulty`, `team` (rosters, palettes, PvP), `boss` (data and health), `modifiers`, `chaos`
-(all but the round loop), `round` (client side only), `boss` again (its readers).
+(all but the round loop), `round` (client side only), `boss` again (its readers), `round`
+again (the whole host half).
 
 luacheck fell from 26 warnings to 2 as modules left, because the 24 `shadowing upvalue goal`
 warnings went with the `goal()` constructor. The type checker has stayed at 10 problems in 2

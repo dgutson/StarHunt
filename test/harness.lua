@@ -94,6 +94,7 @@ local function install_engine()
         chat = {},
         save = { removed = {}, saves = 0, star_flags = {} },
         spawned = {},
+        objects = {},            -- behavior id -> obj_get_first_with_behavior_id result
         warps = {},
         screen = { w = 1920, h = 1009 },
         player_count = 2,
@@ -192,8 +193,12 @@ local function install_engine()
     function djui_hud_render_rect() ctl.hud.rects = ctl.hud.rects + 1 end
     function djui_hud_render_texture() ctl.hud.textures = ctl.hud.textures + 1 end
 
-    function djui_popup_create(msg) table.insert(ctl.popups, msg) end
-    function djui_popup_create_global(msg) table.insert(ctl.popups, msg) end
+    -- The popup's second argument is its height in lines.  Recording it keeps
+    -- a wrong value from being invisible to the suite.
+    function djui_popup_create(msg, lines)
+        table.insert(ctl.popups, { text = msg, lines = lines })
+    end
+    djui_popup_create_global = djui_popup_create
     function djui_chat_message_create(msg) table.insert(ctl.chat, msg) end
 
     function save_file_get_star_flags(file, course)
@@ -224,6 +229,11 @@ local function install_engine()
     function hud_get_value() return 0 end
 
     function get_behavior_from_id(id) return { id = id } end
+    -- The generated stub returns nil here, which silently made the whole Boss
+    -- attack queue unreachable: with no Bowser object the host loop decides he
+    -- is not ready and returns before ever choosing an attack.  Tests put the
+    -- object they want in ctl.objects, keyed by behavior id.
+    function obj_get_first_with_behavior_id(id) return ctl.objects[id] end
     function count_objects_with_behavior() return ctl.bomb_count end
     function obj_has_behavior_id() return false end
     function dist_between_objects() return 0 end
