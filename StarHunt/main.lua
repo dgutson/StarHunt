@@ -142,7 +142,6 @@ end
 local host_used_goals = {}
 local host_seen_done = {}
 local host_seen_forfeit = {}
-local host_player_records = {}
 local local_seen_round = nil
 local local_seen_result = nil
 local local_start_banner_until = -1
@@ -344,7 +343,7 @@ Team.participant_stats = function()
             if key ~= nil then connected_keys[key] = true end
         end
     end
-    for key, record in pairs(host_player_records) do
+    for key, record in pairs(Team.host_player_records) do
         local team = record.team or Team.NONE
         if not connected_keys[key] and record.enrolled == 1 and stats[team] ~= nil then
             -- Preserve disconnected players' earned points, but do not count
@@ -411,7 +410,7 @@ local function winner_text_and_score()
     end
     -- A brief disconnect at the final second must not erase a participant
     -- from the results. The host keeps the latest authoritative snapshot.
-    for key, record in pairs(host_player_records) do
+    for key, record in pairs(Team.host_player_records) do
         if not connected_keys[key] and record.enrolled == 1 then
             best_score, winners = update_winner_candidate(
                 record.name, record.score, best_score, winners)
@@ -519,7 +518,7 @@ local function host_prepare_player(player_index)
     local sync = gPlayerSyncTable[player_index]
     local name = gNetworkPlayers[player_index].name or ""
     local key = player_record_key(player_index)
-    local record = key ~= nil and host_player_records[key] or nil
+    local record = key ~= nil and Team.host_player_records[key] or nil
     -- Co-op DX reuses global player indices after a disconnect. A direct key
     -- match is a reconnect only when the identity also matches; otherwise a
     -- new player could inherit somebody else's score and challenge.
@@ -536,7 +535,7 @@ local function host_prepare_player(player_index)
             end
         end
         local candidate = nil
-        for record_key, saved in pairs(host_player_records) do
+        for record_key, saved in pairs(Team.host_player_records) do
             if saved.name == name and not connected_record_keys[record_key] then
                 if candidate ~= nil then
                     candidate = false
@@ -568,7 +567,7 @@ local function host_prepare_player(player_index)
         sync.sh5_lifetime_stars = math.max(sync.sh5_lifetime_stars or 0, record.lifetime_stars or 0)
         host_seen_done[player_index] = record.done
         host_seen_forfeit[player_index] = record.forfeit
-        host_player_records[record.key] = nil
+        Team.host_player_records[record.key] = nil
         if is_boss_mode() or Team.is_chaos_mode() or record.goal ~= 0 then return true end
         return host_assign_goal(player_index)
     end
@@ -641,7 +640,7 @@ local function host_start_round(minutes)
     host_used_goals = {}
     host_seen_done = {}
     host_seen_forfeit = {}
-    host_player_records = {}
+    Team.host_player_records = {}
     math.randomseed(get_global_timer())
     if Team.is_mode() then Team.build_balanced() else Team.initial = {} end
     gGlobalSyncTable.sh5_chaos_roster_locked = 0
@@ -763,7 +762,7 @@ local function remember_player_index(index)
     local name = network_player.name or ""
     local key = player_record_key(index)
     if name == "" or key == nil then return end
-    host_player_records[key] = {
+    Team.host_player_records[key] = {
         key = key,
         name = name,
         enrolled = 1,

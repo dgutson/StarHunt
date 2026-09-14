@@ -27,6 +27,17 @@ local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
     manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
+-- The host's record of every player it has seen this round, keyed by a stable
+-- player key so a reconnecting player finds their own entry again.
+--
+-- It sits on `Team` rather than in a top-level local because `host_start_round`
+-- REPLACES the whole table at the start of every round. Lua copies a value on
+-- `local x = other.x`, so a module that re-localized it would go on reading the
+-- previous round's table forever. As a field on the shared `Team` table the
+-- replacement is visible to everyone. Round mode writes it; Team mode reads it
+-- to total the scores of players who have disconnected.
+Team.host_player_records = {}
+
 -- Everything the local player's own frame-by-frame code needs to remember
 -- between frames. It is per-player and never synchronized: the host's copy says
 -- nothing about anyone else.
