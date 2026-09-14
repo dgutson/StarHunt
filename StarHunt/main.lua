@@ -12,7 +12,7 @@
 local core = require("modules/core")
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local START_BANNER_FRAMES = 105
-local NEXT_GOAL_DELAY = 90
+local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 -- Announce the winner first, then reset scores on the following frame.
 -- This makes the handoff immediate without clearing the result beforehand.
 local RESULT_DISPLAY_FRAMES = 1

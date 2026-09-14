@@ -14,6 +14,12 @@
 
 local FRAMES_PER_SECOND = 30
 
+-- Frames a player waits, after the round tells them where to go, before the
+-- warp actually fires. The same delay covers all three destinations -- the next
+-- star in a race, the Chaos map, the Boss arena -- so it sits here rather than
+-- in any one of chaos.lua, round.lua or boss.lua.
+local NEXT_GOAL_DELAY = 90
+
 local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
     EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3,
     NONE = 0, RED = 1, BLUE = 2, initial = {},
@@ -139,6 +145,7 @@ return {
     local_runtime = local_runtime,
     clamp = clamp,
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
+    NEXT_GOAL_DELAY = NEXT_GOAL_DELAY,
     modifier = modifier,
     is_round_active = is_round_active,
     selected_mode = selected_mode,
