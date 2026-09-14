@@ -15,6 +15,7 @@
 -- goal, and the world name a goal was built with travels on the goal itself.
 
 local modifier = require("core").modifier
+local translated = require("i18n").translated
 
 local WORLD_NAMES = {
     [LEVEL_BOB] = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
@@ -484,6 +485,45 @@ local GOALS = {
     }, "vanish"),
 }
 
+-- Reading a goal. Everything below answers a question ABOUT a goal rather than
+-- describing one, which is why it sits here with the catalog: the answer always
+-- comes out of the goal's own fields.
+local function get_goal(id)
+    return GOALS[id]
+end
+
+local function get_local_goal()
+    return get_goal(gPlayerSyncTable[0].sh5_goal or 0)
+end
+
+local function goal_world_text(goal_data)
+    return translated(goal_data.world, goal_data.world_es)
+end
+
+local function goal_title_text(goal_data)
+    return translated(goal_data.title, goal_data.title_es)
+end
+
+local function goal_matches_player_area(goal_data, player_index)
+    local player = gNetworkPlayers[player_index]
+    return player ~= nil and player.currLevelNum == goal_data.level
+        and player.currActNum == goal_data.act
+end
+
+local function goal_matches_star_object(goal_data, object)
+    if object == nil then return false end
+    -- SM64 stores the zero-based star ID in the top byte of the star object.
+    -- An act value is one-based, so Act 1 must match object ID 0, and so on.
+    local star_id = (object.oBehParams >> 24) & 0x1F
+    return star_id == goal_data.act - 1
+end
+
 return {
     GOALS = GOALS,
+    get_goal = get_goal,
+    get_local_goal = get_local_goal,
+    goal_world_text = goal_world_text,
+    goal_title_text = goal_title_text,
+    goal_matches_player_area = goal_matches_player_area,
+    goal_matches_star_object = goal_matches_star_object,
 }

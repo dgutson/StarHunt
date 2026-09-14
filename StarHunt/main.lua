@@ -40,7 +40,14 @@ local flush_starhunt_save_removals = save.flush_starhunt_save_removals
 local flush_starhunt_save_on_warp = save.flush_starhunt_save_on_warp
 local flush_starhunt_save_on_exit = save.flush_starhunt_save_on_exit
 local goal_already_collected = save.goal_already_collected
-local GOALS = require("modules/goals").GOALS
+local goals = require("modules/goals")
+local GOALS = goals.GOALS
+local get_goal = goals.get_goal
+local get_local_goal = goals.get_local_goal
+local goal_world_text = goals.goal_world_text
+local goal_title_text = goals.goal_title_text
+local goal_matches_player_area = goals.goal_matches_player_area
+local goal_matches_star_object = goals.goal_matches_star_object
 local audit = require("modules/audit")
 local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
 local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
@@ -215,14 +222,6 @@ Team.boss_max_health = function()
     return math.max(1, gGlobalSyncTable.sh5_boss_max_health or Team.boss_health_for_difficulty())
 end
 
-local function get_goal(id)
-    return GOALS[id]
-end
-
-local function get_local_goal()
-    return get_goal(gPlayerSyncTable[0].sh5_goal or 0)
-end
-
 Team.modifier_override = nil
 
 Team.get_local_modifier_base = function(slot)
@@ -298,14 +297,6 @@ Team.darkness_active = function(modifier_data)
     local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
     local phase = elapsed % (10 * FRAMES_PER_SECOND)
     return phase >= 10 * FRAMES_PER_SECOND - modifier_data.value
-end
-
-local function goal_world_text(goal)
-    return translated(goal.world, goal.world_es)
-end
-
-local function goal_title_text(goal)
-    return translated(goal.title, goal.title_es)
 end
 
 local function modifier_text(modifier_data)
@@ -411,19 +402,6 @@ local function goal_is_active_for_anyone(goal_id)
         end
     end
     return false
-end
-
-local function goal_matches_player_area(goal, player_index)
-    local player = gNetworkPlayers[player_index]
-    return player ~= nil and player.currLevelNum == goal.level and player.currActNum == goal.act
-end
-
-local function goal_matches_star_object(goal, object)
-    if object == nil then return false end
-    -- SM64 stores the zero-based star ID in the top byte of the star object.
-    -- An act value is one-based, so Act 1 must match object ID 0, and so on.
-    local star_id = (object.oBehParams >> 24) & 0x1F
-    return star_id == goal.act - 1
 end
 
 local function is_local_player_on_floor(m)
@@ -3766,6 +3744,12 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         is_boss_mode = is_boss_mode,
         is_team_mode = Team.is_mode,
         is_chaos_mode = Team.is_chaos_mode,
+        get_goal = get_goal,
+        get_local_goal = get_local_goal,
+        goal_world_text = goal_world_text,
+        goal_title_text = goal_title_text,
+        goal_matches_player_area = goal_matches_player_area,
+        goal_matches_star_object = goal_matches_star_object,
         build_balanced = Team.build_balanced,
         -- Team.initial is replaced wholesale by build_balanced, so the suite
         -- needs an accessor rather than a captured reference.
