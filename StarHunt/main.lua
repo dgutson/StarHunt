@@ -42,6 +42,10 @@ local goal_title_text = goals.goal_title_text
 local goal_matches_player_area = goals.goal_matches_player_area
 local goal_matches_star_object = goals.goal_matches_star_object
 local apply_goal_power = goals.apply_goal_power
+local on_allow_interact = goals.on_allow_interact
+local on_interact = goals.on_interact
+local reset_hidden_object_tracking = goals.reset_hidden_object_tracking
+local update_star_visibility = goals.update_star_visibility
 local players_have_private_variant = goals.players_have_private_variant
 local players_can_share_world = goals.players_can_share_world
 local audit = require("modules/audit")
@@ -676,149 +680,6 @@ local function remove_existing_castle_lakitu()
     local_lakitu_scan_at = get_global_timer() + 15
     local object = obj_get_first_with_behavior_id(id_bhvCameraLakitu)
     if object ~= nil then obj_mark_for_deletion(object) end
-end
-
-local function is_hmc_metal_portal(object)
-    if object == nil or obj_has_behavior_id(object, id_bhvWarp) == 0 then return false end
-    -- Vanilla HMC contains the Metal Cap portal at this location. Matching
-    -- the actual warp object avoids disabling unrelated/custom HMC warps.
-    local dx = (object.oPosX or 0) - 3351
-    local dy = (object.oPosY or 0) + 4690
-    local dz = (object.oPosZ or 0) - 4773
-    return dx * dx + dy * dy + dz * dz < 900 * 900
-end
-
-local function in_castle_lock_level(player_index)
-    local level = gNetworkPlayers[player_index].currLevelNum
-    return level == LEVEL_CASTLE_GROUNDS or level == LEVEL_CASTLE or level == LEVEL_VCUTM
-end
-
-local function has_interaction(interaction, interaction_flag)
-    return interaction_flag ~= nil and (interaction & interaction_flag) ~= 0
-end
-
--- A spawned star can receive later object-sync updates. Once the player has
--- attempted an object that did not belong to the current goal, paying COIN
--- TOLL must not turn that same rejected object into a valid target.
-
-local function on_allow_interact(m, object, interaction)
-    -- Do not delete doors, grates, or the cannon: their collision remains so
-    -- players bump into them normally. Only their use/warp interaction stops.
-    if in_castle_lock_level(m.playerIndex) then
-        if has_interaction(interaction, INTERACT_CANNON_BASE)
-            or has_interaction(interaction, INTERACT_DOOR)
-            or has_interaction(interaction, INTERACT_WARP_DOOR)
-            or has_interaction(interaction, INTERACT_WARP) then
-            return false
-        end
-    end
-
-    if gNetworkPlayers[m.playerIndex].currLevelNum == LEVEL_HMC
-        and has_interaction(interaction, INTERACT_WARP)
-        and is_hmc_metal_portal(object) then
-        return false
-    end
-
-    if not is_round_active() then return true end
-    if is_boss_mode() then return true end
-    if Team.is_chaos_mode() then
-        return not has_interaction(interaction, INTERACT_STAR_OR_KEY)
-    end
-    if not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return true end
-
-    -- A player can only claim the assigned star in its assigned act; another
-    -- visible star in that same level can no longer complete the challenge.
-    local goal_id = gPlayerSyncTable[m.playerIndex].sh5_goal or 0
-    local round_id = gGlobalSyncTable.sh5_round or 0
-    local goal = get_goal(goal_id)
-    if goal == nil or object == nil then return false end
-    local rejected_by_player = local_runtime.rejected_stars[object]
-    local rejection = rejected_by_player ~= nil and rejected_by_player[m.playerIndex] or nil
-    if rejection ~= nil and rejection.goal == goal_id and rejection.round == round_id then
-        return false
-    end
-    if not goal_matches_star_object(goal, object) then
-        if rejected_by_player == nil then
-            rejected_by_player = {}
-            local_runtime.rejected_stars[object] = rejected_by_player
-        end
-        rejected_by_player[m.playerIndex] = {
-            goal = goal_id,
-            round = round_id,
-        }
-        return false
-    end
-    if not goal_matches_player_area(goal, m.playerIndex) then return false end
-    if m.playerIndex == 0 then return Team.all_coin_tolls_paid(m) end
-    local first = Team.effective_modifier_for_goal(goal,
-        goal.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier or 0])
-    local second = Team.effective_modifier_for_goal(goal,
-        goal.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier_2 or 0])
-    return Team.coin_toll_paid(m, first) and Team.coin_toll_paid(m, second)
-end
-
-local function on_interact(m, object, interaction, did_interact)
-    if m.playerIndex ~= 0 or not is_round_active() then return end
-    if is_boss_mode() then
-        if did_interact and boss_has_modifier(1)
-            and (has_interaction(interaction, INTERACT_DAMAGE)
-                or has_interaction(interaction, INTERACT_FLAME)) then
-            m.health = 0
-        end
-        return
-    end
-    if Team.is_chaos_mode() then return end
-    if local_runtime.done_lock then return end
-    if not did_interact or not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return end
-
-    local goal = get_local_goal()
-    if goal ~= nil and goal_matches_player_area(goal, 0) and goal_matches_star_object(goal, object) then
-        if not Team.all_coin_tolls_paid(m) then return end
-        remove_starhunt_save_flag(goal)
-        local_runtime.done_lock = true
-        Team.lifetime = Team.lifetime + 1
-        mod_storage_save("starhunt_lifetime_stars", tostring(Team.lifetime))
-        Team.update_lifetime_sync()
-        gPlayerSyncTable[0].sh5_done = (gPlayerSyncTable[0].sh5_done or 0) + 1
-        djui_popup_create(translated("STAR GET! NEXT GOAL INCOMING...", "ESTRELLA CONSEGUIDA! NUEVO RETO..."), 1)
-    end
-end
-
--- A wrong star should not be a visual distraction or a tempting fake goal.
--- Track only flags that StarHunt itself added, so normal SM64 visibility is
--- restored exactly when a round ends or the next goal loads.
-local function reset_hidden_object_tracking()
-    local_runtime.hidden_stars = {}
-    local_runtime.rejected_stars = {}
-    local_runtime.hidden_players = {}
-    local_runtime.star_visibility_next = 0
-end
-
-local function update_star_visibility()
-    if get_global_timer() < local_runtime.star_visibility_next then return end
-    local_runtime.star_visibility_next = get_global_timer() + 1
-    local goal = is_round_active() and not is_boss_mode() and get_local_goal() or nil
-    local object = obj_get_first(OBJ_LIST_LEVEL)
-    while object ~= nil do
-        if has_interaction(object.oInteractType, INTERACT_STAR_OR_KEY) then
-            local correct = goal ~= nil and goal_matches_player_area(goal, 0)
-                and goal_matches_star_object(goal, object)
-                and Team.all_coin_tolls_paid(gMarioStates[0])
-            if goal ~= nil and not correct then
-                if local_runtime.hidden_stars[object] == nil then
-                    local_runtime.hidden_stars[object] =
-                        (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0
-                end
-                object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
-            elseif local_runtime.hidden_stars[object] ~= nil then
-                if not local_runtime.hidden_stars[object] then
-                    object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
-                end
-                local_runtime.hidden_stars[object] = nil
-            end
-        end
-        object = obj_get_next(object)
-    end
 end
 
 local function on_find_water_level(_, _, water_level)
@@ -1779,6 +1640,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         private_player_visibility = update_private_player_visibility,
         allow_interact = on_allow_interact,
         interact = on_interact,
+        star_visibility = update_star_visibility,
+        reset_hidden_objects = reset_hidden_object_tracking,
         players_have_private_variant = players_have_private_variant,
         players_can_share_world = players_can_share_world,
         allow_pvp_attack = on_allow_pvp_attack,

@@ -96,6 +96,8 @@ local function install_engine()
         save = { removed = {}, saves = 0, star_flags = {} },
         spawned = {},
         objects = {},            -- behavior id -> obj_get_first_with_behavior_id result
+        level_objects = {},      -- what obj_get_first/obj_get_next walk
+        deleted = {},            -- every obj_mark_for_deletion call
         warps = {},
         screen = { w = 1920, h = 1009 },
         player_count = 2,
@@ -241,7 +243,42 @@ local function install_engine()
     -- object they want in ctl.objects, keyed by behavior id.
     function obj_get_first_with_behavior_id(id) return ctl.objects[id] end
     function count_objects_with_behavior() return ctl.bomb_count end
-    function obj_has_behavior_id() return false end
+    -- The generated stub returns nil here and the first hand-written
+    -- replacement returned `false`, so `obj_has_behavior_id(o, id) == 0` was
+    -- never true and the HMC Metal Cap portal guard in goals.lua could not be
+    -- tested at all.  Objects carry their behavior in `behavior_id`.
+    function obj_has_behavior_id(object, id)
+        if object ~= nil and object.behavior_id == id then return 1 end
+        return 0
+    end
+    function obj_mark_for_deletion(object) table.insert(ctl.deleted, object) end
+    -- obj_get_first returns nil from the generated stub, which makes the whole
+    -- body of update_star_visibility unreachable: the walk over the level's
+    -- object list never runs one iteration.  Tests put the objects they want
+    -- the level to contain in ctl.level_objects, in order.
+    --
+    -- The two annotations below, and the suppressions under them, are not
+    -- decoration.  lua-language-server merges a global defined here with the
+    -- engine definition of the same name, so a stub it reads as returning
+    -- `unknown|nil` turns the `object = obj_get_next(object)` walk in goals.lua
+    -- into a type error.  sm64coopdx declares `@return Object` for both of these
+    -- and returns NULL at the end of the list anyway; the stub matches the
+    -- declaration and suppresses the same inaccuracy, exactly as is already
+    -- recorded for `save_file_do_save(file, true)`.
+    --- @return Object
+    function obj_get_first(list)
+        --- @diagnostic disable-next-line: return-type-mismatch
+        if list ~= OBJ_LIST_LEVEL then return nil end
+        return ctl.level_objects[1]
+    end
+    --- @return Object
+    function obj_get_next(object)
+        for i, o in ipairs(ctl.level_objects) do
+            if o == object then return ctl.level_objects[i + 1] end
+        end
+        --- @diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
     function dist_between_objects() return 0 end
 
     --- Put the mod into an active round of `mode` at `difficulty`.

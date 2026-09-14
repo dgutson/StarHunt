@@ -21,6 +21,8 @@ local Team = core.Team
 local is_round_active = core.is_round_active
 local is_boss_mode = core.is_boss_mode
 local local_runtime = core.local_runtime
+local remove_starhunt_save_flag = require("save").remove_starhunt_save_flag
+local boss_has_modifier = require("boss").boss_has_modifier
 
 local WORLD_NAMES = {
     [LEVEL_BOB] = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
@@ -707,6 +709,156 @@ local function apply_goal_power(m)
     m.capTimer = 0x7FFF
 end
 
+-- Claiming a star, and hiding the ones that are not it.  Every question these
+-- answer comes out of a goal: is this object the assigned star, is the player
+-- in its level and area, and have the coin tolls for its modifiers been paid.
+--
+-- The castle-lock and the HMC Metal Cap portal are the exception.  They run
+-- outside a round too and belong to the lobby, not to any goal; they live here
+-- because on_allow_interact is one function and answers both questions.
+local function is_hmc_metal_portal(object)
+    if object == nil or obj_has_behavior_id(object, id_bhvWarp) == 0 then return false end
+    -- Vanilla HMC contains the Metal Cap portal at this location. Matching
+    -- the actual warp object avoids disabling unrelated/custom HMC warps.
+    local dx = (object.oPosX or 0) - 3351
+    local dy = (object.oPosY or 0) + 4690
+    local dz = (object.oPosZ or 0) - 4773
+    return dx * dx + dy * dy + dz * dz < 900 * 900
+end
+
+local function in_castle_lock_level(player_index)
+    local level = gNetworkPlayers[player_index].currLevelNum
+    return level == LEVEL_CASTLE_GROUNDS or level == LEVEL_CASTLE or level == LEVEL_VCUTM
+end
+
+local function has_interaction(interaction, interaction_flag)
+    return interaction_flag ~= nil and (interaction & interaction_flag) ~= 0
+end
+
+-- A spawned star can receive later object-sync updates. Once the player has
+-- attempted an object that did not belong to the current goal, paying COIN
+-- TOLL must not turn that same rejected object into a valid target.
+
+local function on_allow_interact(m, object, interaction)
+    -- Do not delete doors, grates, or the cannon: their collision remains so
+    -- players bump into them normally. Only their use/warp interaction stops.
+    if in_castle_lock_level(m.playerIndex) then
+        if has_interaction(interaction, INTERACT_CANNON_BASE)
+            or has_interaction(interaction, INTERACT_DOOR)
+            or has_interaction(interaction, INTERACT_WARP_DOOR)
+            or has_interaction(interaction, INTERACT_WARP) then
+            return false
+        end
+    end
+
+    if gNetworkPlayers[m.playerIndex].currLevelNum == LEVEL_HMC
+        and has_interaction(interaction, INTERACT_WARP)
+        and is_hmc_metal_portal(object) then
+        return false
+    end
+
+    if not is_round_active() then return true end
+    if is_boss_mode() then return true end
+    if Team.is_chaos_mode() then
+        return not has_interaction(interaction, INTERACT_STAR_OR_KEY)
+    end
+    if not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return true end
+
+    -- A player can only claim the assigned star in its assigned act; another
+    -- visible star in that same level can no longer complete the challenge.
+    local goal_id = gPlayerSyncTable[m.playerIndex].sh5_goal or 0
+    local round_id = gGlobalSyncTable.sh5_round or 0
+    local goal_data = get_goal(goal_id)
+    if goal_data == nil or object == nil then return false end
+    local rejected_by_player = local_runtime.rejected_stars[object]
+    local rejection = rejected_by_player ~= nil and rejected_by_player[m.playerIndex] or nil
+    if rejection ~= nil and rejection.goal == goal_id and rejection.round == round_id then
+        return false
+    end
+    if not goal_matches_star_object(goal_data, object) then
+        if rejected_by_player == nil then
+            rejected_by_player = {}
+            local_runtime.rejected_stars[object] = rejected_by_player
+        end
+        rejected_by_player[m.playerIndex] = {
+            goal = goal_id,
+            round = round_id,
+        }
+        return false
+    end
+    if not goal_matches_player_area(goal_data, m.playerIndex) then return false end
+    if m.playerIndex == 0 then return Team.all_coin_tolls_paid(m) end
+    local first = Team.effective_modifier_for_goal(goal_data,
+        goal_data.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier or 0])
+    local second = Team.effective_modifier_for_goal(goal_data,
+        goal_data.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier_2 or 0])
+    return Team.coin_toll_paid(m, first) and Team.coin_toll_paid(m, second)
+end
+
+local function on_interact(m, object, interaction, did_interact)
+    if m.playerIndex ~= 0 or not is_round_active() then return end
+    if is_boss_mode() then
+        if did_interact and boss_has_modifier(1)
+            and (has_interaction(interaction, INTERACT_DAMAGE)
+                or has_interaction(interaction, INTERACT_FLAME)) then
+            m.health = 0
+        end
+        return
+    end
+    if Team.is_chaos_mode() then return end
+    if local_runtime.done_lock then return end
+    if not did_interact or not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return end
+
+    local goal_data = get_local_goal()
+    if goal_data ~= nil and goal_matches_player_area(goal_data, 0) and goal_matches_star_object(goal_data, object) then
+        if not Team.all_coin_tolls_paid(m) then return end
+        remove_starhunt_save_flag(goal_data)
+        local_runtime.done_lock = true
+        Team.lifetime = Team.lifetime + 1
+        mod_storage_save("starhunt_lifetime_stars", tostring(Team.lifetime))
+        Team.update_lifetime_sync()
+        gPlayerSyncTable[0].sh5_done = (gPlayerSyncTable[0].sh5_done or 0) + 1
+        djui_popup_create(translated("STAR GET! NEXT GOAL INCOMING...", "ESTRELLA CONSEGUIDA! NUEVO RETO..."), 1)
+    end
+end
+
+-- A wrong star should not be a visual distraction or a tempting fake goal.
+-- Track only flags that StarHunt itself added, so normal SM64 visibility is
+-- restored exactly when a round ends or the next goal loads.
+local function reset_hidden_object_tracking()
+    local_runtime.hidden_stars = {}
+    local_runtime.rejected_stars = {}
+    local_runtime.hidden_players = {}
+    local_runtime.star_visibility_next = 0
+end
+
+local function update_star_visibility()
+    if get_global_timer() < local_runtime.star_visibility_next then return end
+    local_runtime.star_visibility_next = get_global_timer() + 1
+    local goal_data = is_round_active() and not is_boss_mode() and get_local_goal() or nil
+    local object = obj_get_first(OBJ_LIST_LEVEL)
+    while object ~= nil do
+        if has_interaction(object.oInteractType, INTERACT_STAR_OR_KEY) then
+            local correct = goal_data ~= nil and goal_matches_player_area(goal_data, 0)
+                and goal_matches_star_object(goal_data, object)
+                and Team.all_coin_tolls_paid(gMarioStates[0])
+            if goal_data ~= nil and not correct then
+                if local_runtime.hidden_stars[object] == nil then
+                    local_runtime.hidden_stars[object] =
+                        (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0
+                end
+                object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
+            elseif local_runtime.hidden_stars[object] ~= nil then
+                if not local_runtime.hidden_stars[object] then
+                    object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
+                end
+                local_runtime.hidden_stars[object] = nil
+            end
+        end
+        object = obj_get_next(object)
+    end
+end
+
 return {
     GOALS = GOALS,
     players_have_private_variant = players_have_private_variant,
@@ -718,4 +870,8 @@ return {
     goal_matches_player_area = goal_matches_player_area,
     goal_matches_star_object = goal_matches_star_object,
     apply_goal_power = apply_goal_power,
+    on_allow_interact = on_allow_interact,
+    on_interact = on_interact,
+    reset_hidden_object_tracking = reset_hidden_object_tracking,
+    update_star_visibility = update_star_visibility,
 }
