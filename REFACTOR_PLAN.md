@@ -8,10 +8,12 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the parts three modules
+Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the parts two modules
 left behind because they call into the round loop. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
-records and the per-frame loop -- followed once Boss's readers had moved.
+records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
+finished too: its roster totals, late assignment, score publishing and reroll-button label
+came out once `player_record_key` had moved into `core.lua`.
 
 ## The rule that makes the split safe
 
@@ -37,7 +39,15 @@ that are entirely self-contained into a shared module they do not need.
 functions read `host_player_records`, which `host_start_round` **rebinds**
 (`host_player_records = {}`). Waiting for round to be extracted would not have helped: a
 rebound local cannot be shared with `team.lua` from `round.lua` either. The table was migrated
-onto `Team` instead, which is what unblocked all three.
+onto `Team` instead.
+
+That was necessary and not sufficient, which is the second half of the lesson. The same three
+functions also call `player_record_key`, a plain helper that `round.lua` owned and exported --
+and `team.lua` can never import `round.lua`, because the graph already runs
+`round -> modifiers -> team` (see the next section). So the helper moved into `core.lua` as
+well, in its own verified commit. **Check for a cycle before believing an export unblocks
+anything.** `ROADMAP.md` recorded these functions as unblocked on the strength of that export
+for a whole session, and they were not.
 
 The same rule split `round` itself in two. `host_start_round` rebinds `host_used_goals`,
 `host_seen_done`, `host_seen_forfeit` and `host_player_records`; `host_end_round` rebinds
@@ -63,9 +73,23 @@ is gone.
 6. All files of one mod share one `_ENV` whose metatable points at `_G`. Globals are shared;
    **locals are not**, which is the whole reason `core.lua` exists.
 7. No require cycles so far. `test/harness.lua` reimplements the game's require and marks a
-   module "loading" before executing it, so a cycle fails loudly rather than silently. One
-   pair is already close: `modifiers.lua` requires `boss.lua` for `BOSS_PLAYER_MODIFIERS`, so
-   `boss.lua` can never require `modifiers.lua` — see the trap below.
+   module "loading" before executing it, so a cycle fails loudly rather than silently. Three
+   edges already exist that forbid the reverse import, and they are why three functions could
+   not go where the plan first put them:
+
+   ```
+   modifiers -> boss    (BOSS_PLAYER_MODIFIERS)   so boss may not require modifiers
+   modifiers -> team    (on_allow_pvp_attack)     so team may not require modifiers OR round
+   round     -> boss, chaos, modifiers            so none of those may require round
+   ```
+
+   The middle one reaches further than it looks: `team.lua` cannot import `round.lua` either,
+   because `round.lua` imports `modifiers.lua`, which imports `team.lua`. Print the whole
+   graph before every move -- `tools/module_deps.py` does not answer this question:
+
+   ```bash
+   for f in StarHunt/modules/*.lua; do echo "-- $(basename $f)"; grep -n '^local .*require(' $f; done
+   ```
 
 `main.lua` keeps, permanently: the three-line Co-op DX metadata header, the `require()` wiring,
 the flat hook-registration block (**order within a hook type matters**), and the
@@ -80,7 +104,8 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **ten of the twelve** passes so far. Write tests until every
+   coverage gap in **eleven of the thirteen** passes so far, most recently `team`, where 25
+   of 28 mutations survived a green 325-test run. Write tests until every
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
@@ -126,7 +151,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   than taking round's three functions as arguments.
 - **A module may come out in two or three passes.** Take the part whose dependencies are
   satisfied, usually the static data, and leave the runtime for when its own dependencies
-  land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `round` split along a line the
+  land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `team` took three passes and is now complete. `round` split along a line the
   code names itself: the `local_*` half that only reacts to synchronized state came out first,
   and the `host_*` half that writes it followed once Boss's readers had moved. Both halves are
   now in `round.lua`, and the file says in its header that the split between them is the mod's
@@ -187,10 +212,12 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `obj_get_first_with_behavior_id`, which returned `nil` and so made **the entire Boss attack
   queue unreachable**: with no Bowser object the host loop always decided he was not ready and
   returned before choosing an attack. Tests now supply the object through `ctl.objects`.
-  `djui_popup_create_global` was discarding its second argument for the same reason. That is
-  four stubs now needing real implementations, after `ctl.palettes`. **When a mutation
-  survives, check whether the stub made the branch unreachable before concluding the test is
-  wrong.**
+  `djui_popup_create_global` was discarding its second argument for the same reason, and
+  `update_mod_menu_element_name` only recorded a rename that landed on a button that exists,
+  so a call aimed at a nil index left no trace at all and the guard protecting engines with no
+  mod menu could be deleted with the suite still green. That is five stubs now needing real
+  implementations, after `ctl.palettes`. **When a mutation survives, check whether the stub
+  made the branch unreachable before concluding the test is wrong.**
 - **`STARHUNT_TEST_API` must keep its existing keys** or the suite stops compiling, and
   duplicate keys are reported by lua-language-server as `duplicate-index`. It already contains
   a `set_language` that clamps to the valid range; do not add a second one. Being in that

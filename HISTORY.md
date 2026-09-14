@@ -13,6 +13,47 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-14 — R-002, first part: `modules/team.lua` is complete
+
+The five declarations `team.lua` had been waiting for moved out of `main.lua`:
+`TEAM_SCORE_PRIORITY_GAP`, `Team.participant_stats`, `Team.pick_late`, `Team.update_scores`
+and `Team.update_manual_reroll_menu`. All 73 lines are byte-identical to the original and
+`main.lua` reconstructs exactly from the previous commit minus the three ranges. `main.lua`
+fell from 2,107 to 2,033 lines; `team.lua` grew from 189 to 271. No `require` line was needed:
+all five attach to the shared `Team` table, which every module already reaches by reference.
+
+**R-002 said these were unblocked because `player_record_key` is exported from `round.lua`.
+They were not, and the reason is a require edge nobody had looked for.** `modifiers.lua`
+requires `team.lua` for `on_allow_pvp_attack`, and `round.lua` requires `modifiers.lua` for
+`grant_infinite_lives`, so the graph already runs `round → modifiers → team`. An import of
+`round.lua` from `team.lua` would close that cycle, which makes round's export a route team
+could never take. `player_record_key` needs nothing from round -- it reads `gNetworkPlayers`
+and builds a string -- so it moved into `core.lua` beside `Team.host_player_records`, the table
+it names entries in, in its own verified commit before anything else moved. That is the same
+shape as R-001's migration of `host_player_records`, and the same rule the plan already states:
+a shared helper moves into `core.lua` when the first module actually needs one.
+
+**The whole area was untested: 25 of 28 mutations survived a green 325-test run.** Among the
+survivors were putting every late joiner on the same team, counting a disconnected player's
+score twice, publishing red's total as blue's, and renaming the mod menu button on every frame
+for the whole session. Sixteen new tests in `test/suite/team.lua` bring that to 27 of 28, and
+each mutation is caught by the test written for it rather than incidentally.
+
+**The one survivor is unreachable rather than untested**, and is documented in the suite
+header instead of being faked into a test: the `record.enrolled == 1` check in
+`participant_stats`. Host records are written in exactly one place, which always writes
+`enrolled = 1`; nothing ever lowers it, and a record is deleted rather than cleared.
+
+**A fifth engine stub was hiding a branch.** `update_mod_menu_element_name` in
+`test/harness.lua` only recorded a rename that landed on a button that exists, so a call aimed
+at a nil index left no trace at all — and the guard that protects Co-op DX versions without a
+mod menu could be deleted with the suite still green. It now records every call in
+`ctl.menu_renames`.
+
+What R-002 still has to settle: `goals.lua`'s interaction handlers, star visibility and power
+flags; Boss's attack queue and hazards, still blocked by the `modifiers → boss` cycle; and a
+home for `Team.host_update_chaos_round`.
+
 ### 2026-09-14 — R-001: the host half of the round moved into `modules/round.lua`
 
 681 lines across nine blocks, proven byte-identical in both directions: the host half appears
