@@ -142,7 +142,7 @@ Leaf-first, running `lua5.4 test/run.lua` after **each** module, one commit each
 1b. ~~`modules/core.lua`~~ — **done**. Not in the original layout, and a prerequisite
    for everything else: `Team` was a `local` in main.lua, so no required module could
    see it. core.lua declares `Team` and `FRAMES_PER_SECOND` and returns both.
-2. ~~i18n~~ — **done** → 3. save → 4. audit → 5. difficulty → 6. goals
+2. ~~i18n~~ — **done** → 3. ~~save~~ — **done** → 4. audit → 5. difficulty → 6. goals
 7. team → 8. modifiers → 9. chaos → 10. boss → 11. round → 12. hud → 13. menu
 
 The test harness reimplements the engine's folder-relative `require()`, so a wrong require path
@@ -162,7 +162,12 @@ fails in tests exactly as it would in the game. Require paths are folder-relativ
   module loads, not that the moved code is right. Two habits close that: verify each
   extraction is a pure relocation by diffing the moved lines against the removed ones, and
   add a suite for any area the mutation check shows is uncovered. i18n now has 9 tests that
-  catch all 8 mutations tried against it.
+  catch all 8 mutations tried against it; save had 6 tests that caught only 3 of 9 mutations
+  (the course-index conversion was well covered, the flush and retry logic not at all) and
+  now has 10 that catch all 9.
+- Shared helpers move into `core.lua` when the first module needs them, rather than being
+  moved there speculatively. `is_round_active` went in for save, which calls it three times;
+  it is also the highest fan-in function in the mod, so most later modules will want it.
 - `different-requires` is disabled in `.luarc.json`. sm64coopdx resolves a require path
   relative to the folder of the requiring file, so main.lua's `require("modules/core")` and
   a sibling module's `require("core")` are the same file spelled correctly in both places.

@@ -68,11 +68,70 @@ return function(t, harness)
         end
     end)
 
-    s.test("exiting flushes pending removals", function()
+    s.test("exiting flushes pending removals and writes the save", function()
         local api, ctl = fresh()
         api.remove_save_flag(api.goals[1])
         local before = ctl.save.saves
+        ctl.save.removed = {}
         api.flush_save_on_exit()
-        t.ok(ctl.save.saves >= before, "exit path lost the pending removal")
+        t.ok(#ctl.save.removed > 0, "exit path lost the pending removal")
+        t.ok(ctl.save.saves > before, "exit path never wrote the save file")
+    end)
+
+    -- The retry behaviour below is the reason this module keeps state at all.
+    -- Vanilla can write its star flag after the interaction callback has run, so
+    -- one removal is not enough: the pending set is replayed until the round
+    -- ends. Exiting must then clear it, and warping must not.
+
+    s.test("a forced exit flush clears the pending set", function()
+        local api, ctl = fresh()
+        api.remove_save_flag(api.goals[1])
+        api.flush_save_on_exit()
+        ctl.save.removed = {}
+        api.flush_save_removals(true, false)
+        t.eq(#ctl.save.removed, 0, "the pending set survived an exit flush")
+    end)
+
+    s.test("a warp flush keeps the pending set for the rest of the round", function()
+        -- keep_pending only matters while a round is running; once it ends the
+        -- set is cleared either way.
+        local api, ctl = fresh()
+        gGlobalSyncTable.sh5_active = 1
+        api.remove_save_flag(api.goals[1])
+        api.flush_save_on_warp()
+        ctl.save.removed = {}
+        api.flush_save_removals(true, true)
+        t.ok(#ctl.save.removed > 0, "a warp flush dropped the pending removal")
+    end)
+
+    s.test("during a round removals are retried on an interval", function()
+        -- Without the interval this would rewrite the save file every frame.
+        local api, ctl = fresh()
+        gGlobalSyncTable.sh5_active = 1
+        ctl.timer = 1000
+        api.remove_save_flag(api.goals[1])
+
+        ctl.save.removed = {}
+        api.flush_save_removals(false, false)
+        t.ok(#ctl.save.removed > 0, "the first in-round flush did nothing")
+
+        ctl.save.removed = {}
+        api.flush_save_removals(false, false)
+        t.eq(#ctl.save.removed, 0, "a second flush on the same frame was not held off")
+
+        ctl.timer = ctl.timer + 15
+        ctl.save.removed = {}
+        api.flush_save_removals(false, false)
+        t.ok(#ctl.save.removed > 0, "the retry never came back after the interval")
+    end)
+
+    s.test("a collected star is reported as already collected", function()
+        local api, ctl = fresh()
+        local goal = api.goals[1]
+        t.ok(not api.goal_already_collected(goal), "a fresh file reports a star as collected")
+        -- star_flags is keyed by save file first, then by zero-based course
+        local course = ctl.course_of[goal.level] - 1
+        ctl.save.star_flags[0] = { [course] = 1 << (goal.act - 1) }
+        t.ok(api.goal_already_collected(goal), "a set star flag was not seen")
     end)
 end
