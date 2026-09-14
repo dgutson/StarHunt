@@ -9,7 +9,8 @@
 -- Chaos: last-player-standing PvP on one random main-course map. Every player
 -- gets an independent modifier rerolled every 15 seconds; Nightmare gives two.
 
-local FRAMES_PER_SECOND = 30
+local core = require("modules/core")
+local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local START_BANNER_FRAMES = 105
 local NEXT_GOAL_DELAY = 90
 -- Announce the winner first, then reset scores on the following frame.
@@ -25,12 +26,7 @@ gServerSettings.skipIntro = 1
 -- visible and usable instead of deleting it below the map.
 local CASTLE_LOWERED_MOAT = -450
 
-local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
-    EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3,
-    NONE = 0, RED = 1, BLUE = 2, initial = {},
-    palettes = {}, paletteActive = false, paletteRefreshAt = 0,
-    manualRerollCooldown = 120 * FRAMES_PER_SECOND,
-    rerollMenuIndex = nil, rerollMenuLabel = nil }
+local Team = core.Team
 local TEAM_SCORE_PRIORITY_GAP = 2
 local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
