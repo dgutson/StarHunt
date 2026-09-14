@@ -133,6 +133,25 @@ local function install_engine()
             marioBodyState = {}, statusForCamera = {},
         }
     end
+    -- Team mode overwrites every player's palette and has to put the original
+    -- back when the round ends, so the stub keeps a real per-player store
+    -- instead of discarding the writes. Each player starts with a palette of
+    -- their own, so a restore that returns the WRONG original is still wrong.
+    ctl.palettes = {}
+    for i = 0, 15 do
+        ctl.palettes[i] = {}
+        for part = PANTS, EMBLEM do
+            ctl.palettes[i][part] = { r = 10 + i, g = 20 + part, b = 30 + i }
+        end
+    end
+    function network_player_get_override_palette_color(player, part)
+        local c = ctl.palettes[player.globalIndex][part]
+        return { r = c.r, g = c.g, b = c.b }
+    end
+    function network_player_set_override_palette_color(player, part, color)
+        ctl.palettes[player.globalIndex][part] = { r = color.r, g = color.g, b = color.b }
+    end
+
     gServerSettings.skipIntro = 0
     gServerSettings.playerInteractions = 1
 

@@ -47,6 +47,8 @@ local MODIFIER_AUDIT = audit.MODIFIER_AUDIT
 local MODIFIER_AUDIT_COUNTS = audit.MODIFIER_AUDIT_COUNTS
 -- Attaches the difficulty scaling to Team; nothing to bind here.
 require("modules/difficulty")
+-- Team-mode rosters and palettes; also attaches to Team, nothing to bind.
+require("modules/team")
 local TEAM_SCORE_PRIORITY_GAP = 2
 local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
@@ -569,57 +571,6 @@ local function player_record_key(player_index)
     if player == nil then return nil end
     if player.globalIndex ~= nil then return "g:" .. tostring(player.globalIndex) end
     return "slot:" .. tostring(player_index)
-end
-
-Team.build_balanced = function()
-    Team.initial = {}
-    local players = {}
-    for i = 0, MAX_PLAYERS - 1 do
-        if gNetworkPlayers[i].connected then
-            table.insert(players, {
-                index = i,
-                skill = math.max(0, math.floor(gPlayerSyncTable[i].sh5_lifetime_stars or 0)),
-                tie = math.random(),
-            })
-        end
-    end
-    table.sort(players, function(a, b)
-        if a.skill ~= b.skill then return a.skill > b.skill end
-        return a.tie < b.tie
-    end)
-
-    local red_cap = math.floor(#players / 2)
-    local blue_cap = math.floor(#players / 2)
-    if #players % 2 == 1 then
-        if math.random(2) == 1 then red_cap = red_cap + 1 else blue_cap = blue_cap + 1 end
-    end
-    local red_count, blue_count, red_skill, blue_skill = 0, 0, 0, 0
-    for _, player in ipairs(players) do
-        local team
-        if red_count >= red_cap then
-            team = Team.BLUE
-        elseif blue_count >= blue_cap then
-            team = Team.RED
-        elseif red_skill < blue_skill then
-            team = Team.RED
-        elseif blue_skill < red_skill then
-            team = Team.BLUE
-        elseif red_count < blue_count then
-            team = Team.RED
-        elseif blue_count < red_count then
-            team = Team.BLUE
-        else
-            team = math.random(2) == 1 and Team.RED or Team.BLUE
-        end
-        Team.initial[player.index] = team
-        if team == Team.RED then
-            red_count = red_count + 1
-            red_skill = red_skill + player.skill
-        else
-            blue_count = blue_count + 1
-            blue_skill = blue_skill + player.skill
-        end
-    end
 end
 
 Team.participant_stats = function()
@@ -2672,91 +2623,6 @@ local function update_private_player_visibility()
     end
 end
 
-Team.colors = {
-    [Team.RED] = { r = 225, g = 42, b = 48 },
-    [Team.BLUE] = { r = 45, g = 104, b = 235 },
-}
-
-Team.palette_key = function(player, index)
-    if player ~= nil and player.globalIndex ~= nil then
-        return "g:" .. tostring(player.globalIndex)
-    end
-    return "slot:" .. tostring(index)
-end
-
-Team.palette_identity = function(player)
-    return tostring(player.modelIndex or -1) .. "|"
-        .. tostring(player.overrideModelIndex or -1) .. "|"
-        .. tostring(player.overrideLocation or "")
-end
-
-Team.capture_palette = function(player, index, team_color)
-    local key = Team.palette_key(player, index)
-    local identity = Team.palette_identity(player)
-    local snapshot = Team.palettes[key]
-    if snapshot == nil or snapshot.identity ~= identity then
-        snapshot = { identity = identity }
-        for part = PANTS, EMBLEM do
-            local color = network_player_get_override_palette_color(player, part)
-            snapshot[part] = { r = color.r, g = color.g, b = color.b }
-        end
-        Team.palettes[key] = snapshot
-    elseif team_color ~= nil then
-        -- Character/palette mods can update colors without changing the model
-        -- identity. Preserve only the parts they actually changed while TEAM
-        -- was active; untouched team-colored parts keep their original value.
-        for part = PANTS, EMBLEM do
-            local color = network_player_get_override_palette_color(player, part)
-            if color.r ~= team_color.r or color.g ~= team_color.g or color.b ~= team_color.b then
-                snapshot[part] = { r = color.r, g = color.g, b = color.b }
-            end
-        end
-    end
-    return key
-end
-
-Team.restore_palettes = function()
-    if not Team.paletteActive and next(Team.palettes) == nil then return end
-    for i = 0, MAX_PLAYERS - 1 do
-        local player = gNetworkPlayers[i]
-        if player ~= nil then
-            local snapshot = Team.palettes[Team.palette_key(player, i)]
-            -- If Character Select changed the model after StarHunt's last
-            -- refresh, its current palette already belongs to the new model.
-            -- Never overwrite it with a snapshot captured from the old one.
-            if snapshot ~= nil and snapshot.identity == Team.palette_identity(player) then
-                for part = PANTS, EMBLEM do
-                    network_player_set_override_palette_color(player, part, snapshot[part])
-                end
-            end
-        end
-    end
-    Team.palettes = {}
-    Team.paletteActive = false
-    Team.paletteRefreshAt = 0
-end
-
-Team.update_palettes = function()
-    if not is_round_active() or not Team.is_mode() then
-        Team.restore_palettes()
-        return
-    end
-    Team.paletteActive = true
-    if get_global_timer() < Team.paletteRefreshAt then return end
-    Team.paletteRefreshAt = get_global_timer() + 15
-    for i = 0, MAX_PLAYERS - 1 do
-        local player = gNetworkPlayers[i]
-        local team = gPlayerSyncTable[i].sh5_team or Team.NONE
-        local color = Team.colors[team]
-        if player ~= nil and player.connected and color ~= nil then
-            Team.capture_palette(player, i, color)
-            for part = PANTS, EMBLEM do
-                network_player_set_override_palette_color(player, part, color)
-            end
-        end
-    end
-end
-
 local function keep_moat_lowered()
     if get_global_timer() < local_moat_refresh_at then return end
     if gNetworkPlayers[0].currLevelNum ~= LEVEL_CASTLE_GROUNDS then return end
@@ -3900,6 +3766,14 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         is_boss_mode = is_boss_mode,
         is_team_mode = Team.is_mode,
         is_chaos_mode = Team.is_chaos_mode,
+        build_balanced = Team.build_balanced,
+        -- Team.initial is replaced wholesale by build_balanced, so the suite
+        -- needs an accessor rather than a captured reference.
+        team_rosters = function() return Team.initial end,
+        team_colors = Team.colors,
+        palette_key = Team.palette_key,
+        update_palettes = Team.update_palettes,
+        restore_palettes = Team.restore_palettes,
         selected_difficulty = Team.selected_difficulty,
         effective_modifier = Team.effective_modifier,
         effective_modifier_for_goal = Team.effective_modifier_for_goal,

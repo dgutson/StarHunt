@@ -32,7 +32,7 @@ end
 -- way on every machine.
 local suites = {
     "core", "catalog", "audit", "difficulty", "pairing", "i18n",
-    "save", "hud", "mechanics", "boss", "round",
+    "save", "team", "hud", "mechanics", "boss", "round",
 }
 
 local loaded = 0
