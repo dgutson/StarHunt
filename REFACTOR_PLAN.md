@@ -9,7 +9,9 @@ not track progress.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
 Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the host half of
-`round` and the parts four modules left behind because they call into the round loop.
+`round` and the parts four modules left behind because they call into the round loop. Boss's
+readers -- its time range, its modifier slots, the desperate test and the health report --
+joined `boss.lua` in a second pass, which is what unblocked round's host half.
 
 ## The rule that makes the split safe
 
@@ -38,10 +40,11 @@ they cannot be shared by re-localizing and must wait for round to be extracted.
 The same rule split `round` itself in two. `host_start_round` rebinds `host_used_goals`,
 `host_seen_done`, `host_seen_forfeit` and `host_player_records`; `host_end_round` rebinds
 `host_previous_player_interactions` and `host_previous_pvp_type`. None of those six can leave
-without the functions that rebind them, so the host half of the round has to move as one piece
-— and it is blocked besides, on four Boss helpers still in `main.lua`
-(`boss_time_range_for_players`, `boss_has_modifier`, `boss_is_desperate`,
-`host_read_boss_health_report`). The client half depends on none of that and went first.
+without the functions that rebind them, so the host half of the round has to move as one piece.
+The client half depends on none of that and went first. The four Boss helpers that also blocked
+it — `boss_time_range_for_players`, `boss_has_modifier`, `boss_is_desperate` and
+`host_read_boss_health_report` — have since moved into `boss.lua`, so that half of the blockage
+is gone.
 
 ## Engine facts, verified against sm64coopdx source and in practice
 
@@ -58,7 +61,9 @@ without the functions that rebind them, so the host half of the round has to mov
 6. All files of one mod share one `_ENV` whose metatable points at `_G`. Globals are shared;
    **locals are not**, which is the whole reason `core.lua` exists.
 7. No require cycles so far. `test/harness.lua` reimplements the game's require and marks a
-   module "loading" before executing it, so a cycle fails loudly rather than silently.
+   module "loading" before executing it, so a cycle fails loudly rather than silently. One
+   pair is already close: `modifiers.lua` requires `boss.lua` for `BOSS_PLAYER_MODIFIERS`, so
+   `boss.lua` can never require `modifiers.lua` — see the trap below.
 
 `main.lua` keeps, permanently: the three-line Co-op DX metadata header, the `require()` wiring,
 the flat hook-registration block (**order within a hook type matters**), and the
@@ -73,7 +78,7 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **nine of the eleven** modules extracted so far. Write tests until every
+   coverage gap in **ten of the twelve** passes so far. Write tests until every
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
@@ -152,6 +157,15 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   This is the one place a move was deliberately not byte-identical.
 - **`awk` word boundaries (`\<`, `\>`) silently match nothing here.** Use
   `grep -n "\bname\b" | awk -F: '$1<A || $1>B'`.
+- **Check the require graph before assuming a dependency is satisfied.**
+  `tools/module_deps.py` answers "what top-level names does this code still need", which is
+  necessary but not sufficient: a name can be satisfied by a module that already requires the
+  one you are moving into, and importing it back is a cycle. That is what keeps Boss's hazards
+  and attacks in `main.lua` even though every name they need is extracted —
+  `apply_boss_hazards` needs `is_local_player_on_floor` from `modifiers`, and `modifiers`
+  requires `boss`. Two ways out when it is reached: move the shared helper into `core.lua`,
+  or move `BOSS_PLAYER_MODIFIERS` so the `modifiers → boss` edge disappears. Neither was
+  chosen yet.
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
 - **A generated engine stub can silently disable a guard.** `test/engine_stub.lua` returns

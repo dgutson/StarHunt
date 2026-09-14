@@ -27,10 +27,10 @@ the method; this is the record of what it produced. Remaining work is R-001 to R
 ### Where it started and where it stands
 
 The released v1.1 `main.lua` was 5,171 lines and 271 top-level declarations, with 72 tests.
-After eleven of the thirteen modules, `main.lua` is 2,822 lines and the suite is 188 tests.
+After eleven of the thirteen modules, `main.lua` is 2,780 lines and the suite is 212 tests.
 Modules extracted, in order: `core`, `i18n`, `save`, `goals` (catalog only), `audit`,
 `difficulty`, `team` (rosters, palettes, PvP), `boss` (data and health), `modifiers`, `chaos`
-(all but the round loop), `round` (client side only).
+(all but the round loop), `round` (client side only), `boss` again (its readers).
 
 luacheck fell from 26 warnings to 2 as modules left, because the 24 `shadowing upvalue goal`
 warnings went with the `goal()` constructor. The type checker has stayed at 10 problems in 2
@@ -60,7 +60,7 @@ locals rebound from two or more scopes 33 → 14, state clusters 12 → 11, and 
 ### What the mutation checks found
 
 Every extraction was verified twice — byte-identity of the moved lines, then mutation of the
-moved code. The second check found a real coverage gap in **eight of the ten** modules, which
+moved code. The second check found a real coverage gap in **ten of the twelve** passes, which
 is the reason the habit continues.
 
 | module | what was uncovered | what closed it |
@@ -74,6 +74,7 @@ is the reason the habit continues.
 | modifiers | the effects players actually feel | the `modifiers` suite |
 | chaos | the entire mode — **all 17 mutations survived a green 138-test run** | 16 tests |
 | round (client side) | the client's whole reaction to a round — **all 26 mutations survived a green 154-test run** | 34 tests |
+| boss (readers) | how long a Boss round lasts, which of Bowser's modifiers are drawn, when his desperate phase begins, and which health figure the host believes — **all 28 mutations survived a green 188-test run** | 24 tests |
 
 Areas that had *zero* coverage before the refactor began: Team mode, world-sharing, the PvP
 rule, the goal readers, `local_runtime`'s initial values, the Boss data invariants, the

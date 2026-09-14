@@ -1,9 +1,16 @@
 -- StarHunt v1.1 - what the Boss round is made of.
 --
--- First pass: the static data, plus the two functions that read Bowser's
--- health pool out of it. The round loop, the attack queue and the hazards
--- themselves are still in main.lua and join this module once their own
--- dependencies are extracted.
+-- Two passes so far: the static data and the functions that read Bowser's
+-- health pool out of it, plus the readers the rest of the mod uses to ask
+-- about a Boss round -- its time range, which Boss modifiers are active,
+-- whether Bowser is down to his last two wedges, and the lowest health any
+-- client has reported this round.
+--
+-- The round loop, the attack queue and the hazards are still in main.lua, for
+-- two separate reasons. The loop calls host_end_round, host_prepare_player and
+-- remember_player_index, which are round's host half. The hazards need
+-- is_local_player_on_floor from modifiers, and modifiers already requires this
+-- module, so requiring modifiers back from here would be a cycle.
 --
 -- Two details in here are deliberate and easy to undo by accident. Boss player
 -- modifiers never include one that removes B, because every player has to stay
@@ -16,6 +23,7 @@
 local core = require("core")
 local Team = core.Team
 local modifier = core.modifier
+local clamp = core.clamp
 
 local BOSS_HEALTH = 5
 
@@ -82,6 +90,57 @@ Team.boss_max_health = function()
     return math.max(1, gGlobalSyncTable.sh5_boss_max_health or Team.boss_health_for_difficulty())
 end
 
+local function boss_time_range_for_players(count)
+    if count <= 1 then return 5, 10 end
+    if count <= 3 then return 4, 9 end
+    if count <= 8 then return 4, 8 end
+    return 3, 7
+end
+
+local function boss_modifier_at(slot)
+    local field = BOSS_MODIFIER_FIELDS[slot]
+    return field ~= nil and BOSS_MODIFIERS[gGlobalSyncTable[field] or 0] or nil
+end
+
+local function boss_has_modifier(index)
+    for slot = 1, #BOSS_MODIFIER_FIELDS do
+        if gGlobalSyncTable[BOSS_MODIFIER_FIELDS[slot]] == index then return true end
+    end
+    return false
+end
+
+local function boss_is_desperate()
+    return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or Team.boss_max_health()) <= 2
+end
+
+local function boss_modifier_text(slot)
+    local data = boss_modifier_at(slot)
+    if data == nil then return "" end
+    if Team.language == 1 then return data.label_es end
+    if Team.language >= 2 then
+        local code = Team.language_codes[Team.language + 1]
+        local dictionary = Team.boss_modifier_translations[code]
+        if dictionary ~= nil and dictionary[data.kind] ~= nil then return dictionary[data.kind] end
+    end
+    return data.label
+end
+
+local function host_read_boss_health_report()
+    local round = gGlobalSyncTable.sh5_round or 0
+    local lowest_health = nil
+    for i = 0, MAX_PLAYERS - 1 do
+        local sync = gPlayerSyncTable[i]
+        if (sync.sh5_boss_health_ready_round or 0) == round then
+            local health = clamp(sync.sh5_boss_health_value or Team.boss_max_health(), 0, Team.boss_max_health())
+            -- Bowser's health can only decrease inside one round. Keeping the
+            -- lowest valid report prevents a newer, stale owner packet from
+            -- healing him during lag or an ownership transfer.
+            if lowest_health == nil or health < lowest_health then lowest_health = health end
+        end
+    end
+    return lowest_health
+end
+
 return {
     BOSS_HEALTH = BOSS_HEALTH,
     BOSS_LEVELS = BOSS_LEVELS,
@@ -91,4 +150,9 @@ return {
     BOSS_ATTACK_QUEUE_SIZE = BOSS_ATTACK_QUEUE_SIZE,
     BOSS_ACTIVE_ATTACK_MODIFIERS = BOSS_ACTIVE_ATTACK_MODIFIERS,
     BOSS_ACTIVE_ATTACK_LOOKUP = BOSS_ACTIVE_ATTACK_LOOKUP,
+    boss_time_range_for_players = boss_time_range_for_players,
+    boss_has_modifier = boss_has_modifier,
+    boss_is_desperate = boss_is_desperate,
+    boss_modifier_text = boss_modifier_text,
+    host_read_boss_health_report = host_read_boss_health_report,
 }

@@ -61,6 +61,11 @@ local BOSS_MODIFIER_FIELDS = boss.BOSS_MODIFIER_FIELDS
 local BOSS_ATTACK_QUEUE_SIZE = boss.BOSS_ATTACK_QUEUE_SIZE
 local BOSS_ACTIVE_ATTACK_MODIFIERS = boss.BOSS_ACTIVE_ATTACK_MODIFIERS
 local BOSS_ACTIVE_ATTACK_LOOKUP = boss.BOSS_ACTIVE_ATTACK_LOOKUP
+local boss_time_range_for_players = boss.boss_time_range_for_players
+local boss_has_modifier = boss.boss_has_modifier
+local boss_is_desperate = boss.boss_is_desperate
+local boss_modifier_text = boss.boss_modifier_text
+local host_read_boss_health_report = boss.host_read_boss_health_report
 local local_modifiers = require("modules/modifiers")
 local is_local_player_on_floor = local_modifiers.is_local_player_on_floor
 local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
@@ -127,13 +132,6 @@ local function time_range_for_players(count)
     if count <= 12 then return 5, 7 end
     if count <= 14 then return 5, 6 end
     return 4, 5
-end
-
-local function boss_time_range_for_players(count)
-    if count <= 1 then return 5, 10 end
-    if count <= 3 then return 4, 9 end
-    if count <= 8 then return 4, 8 end
-    return 3, 7
 end
 
 local function configured_time_range(count)
@@ -237,34 +235,6 @@ local function modifier_text(modifier_data)
     if modifier_data.kind == "gravity_wave" then return "GRAVEDAD ONDULANTE" end
     if modifier_data.kind == "overheat" then return "SOBRECALENTAMIENTO: FRENA" end
     return modifier_data.label
-end
-
-local function boss_modifier_at(slot)
-    local field = BOSS_MODIFIER_FIELDS[slot]
-    return field ~= nil and BOSS_MODIFIERS[gGlobalSyncTable[field] or 0] or nil
-end
-
-local function boss_has_modifier(index)
-    for slot = 1, #BOSS_MODIFIER_FIELDS do
-        if gGlobalSyncTable[BOSS_MODIFIER_FIELDS[slot]] == index then return true end
-    end
-    return false
-end
-
-local function boss_is_desperate()
-    return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or Team.boss_max_health()) <= 2
-end
-
-local function boss_modifier_text(slot)
-    local data = boss_modifier_at(slot)
-    if data == nil then return "" end
-    if Team.language == 1 then return data.label_es end
-    if Team.language >= 2 then
-        local code = Team.language_codes[Team.language + 1]
-        local dictionary = Team.boss_modifier_translations[code]
-        if dictionary ~= nil and dictionary[data.kind] ~= nil then return dictionary[data.kind] end
-    end
-    return data.label
 end
 
 local function connected_player_count()
@@ -838,22 +808,6 @@ local function host_add_late_joiner(player_index)
     sync.sh5_enrolled = -1
     djui_chat_message_create("No unclaimed goal is left for " .. gNetworkPlayers[player_index].name .. ".")
     return false
-end
-
-local function host_read_boss_health_report()
-    local round = gGlobalSyncTable.sh5_round or 0
-    local lowest_health = nil
-    for i = 0, MAX_PLAYERS - 1 do
-        local sync = gPlayerSyncTable[i]
-        if (sync.sh5_boss_health_ready_round or 0) == round then
-            local health = clamp(sync.sh5_boss_health_value or Team.boss_max_health(), 0, Team.boss_max_health())
-            -- Bowser's health can only decrease inside one round. Keeping the
-            -- lowest valid report prevents a newer, stale owner packet from
-            -- healing him during lag or an ownership transfer.
-            if lowest_health == nil or health < lowest_health then lowest_health = health end
-        end
-    end
-    return lowest_health
 end
 
 Team.boss_reserve_bomb_count = function()
@@ -2603,6 +2557,10 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         boss_active_attack_lookup = BOSS_ACTIVE_ATTACK_LOOKUP,
         boss_max_health = Team.boss_max_health,
         boss_health_for_difficulty = Team.boss_health_for_difficulty,
+        boss_has_modifier = boss_has_modifier,
+        boss_is_desperate = boss_is_desperate,
+        boss_modifier_text = boss_modifier_text,
+        boss_health_report = host_read_boss_health_report,
         menu_input = update_config_input,
         freeze_menu_mario = Team.freeze_menu_mario,
         goal_warp = local_goal_warp_update,
