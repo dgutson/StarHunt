@@ -1,0 +1,152 @@
+-- Who shares a world with whom.
+--
+-- Two players in one level on different acts can be standing in geometry that
+-- does not agree, and the mod hides them from each other and blocks PvP where
+-- it does. Both answers feed visibility, nametags and whether damage lands, and
+-- extracting them into modules/goals.lua found the whole area untested -- the
+-- functions were published to STARHUNT_TEST_API and then never used.
+
+return function(t, harness)
+    local s = t.suite("world")
+
+    local function fresh()
+        local api, ctl = harness.load()
+        ctl.player_count = 2
+        for i = 0, 15 do gNetworkPlayers[i].connected = i < 2 end
+        return api, ctl
+    end
+
+    --- Put players 0 and 1 in `level`, on the given acts, in the same area.
+    local function place(api, ctl, level, act_a, act_b, mode)
+        local ids = {}
+        for id, goal in ipairs(api.goals) do
+            if goal.level == level then ids[goal.act] = id end
+        end
+        gPlayerSyncTable[0].sh5_goal = ids[act_a]
+        gPlayerSyncTable[1].sh5_goal = ids[act_b]
+        for i = 0, 1 do
+            gNetworkPlayers[i].currLevelNum = level
+            gNetworkPlayers[i].currAreaIndex = 1
+            gNetworkPlayers[i].currActNum = i == 0 and act_a or act_b
+            gMarioStates[i].pos = { x = 0, y = 0, z = 0 }
+        end
+        ctl.begin_round(api, mode or api.normal_mode, api.medium)
+    end
+
+    s.test("nobody shares a world outside a round", function()
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        t.ok(api.players_can_share_world(0, 1), "same act in a round should share")
+        gGlobalSyncTable.sh5_active = 0
+        t.ok(not api.players_can_share_world(0, 1), "shared a world with no round running")
+    end)
+
+    s.test("a player never shares a world with themselves", function()
+        -- Self-comparison reaching the geometry rules would let a player block
+        -- their own visibility, and makes every caller loop over itself.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        t.ok(not api.players_can_share_world(0, 0), "player 0 shared a world with player 0")
+    end)
+
+    s.test("the same star in the same place is shared", function()
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        t.ok(api.players_can_share_world(0, 1), "two players on one star did not share")
+        t.ok(not api.players_have_private_variant(0, 1), "one star reported a private variant")
+    end)
+
+    s.test("a different level or a different area is never shared", function()
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        gNetworkPlayers[1].currLevelNum = LEVEL_CCM
+        t.ok(not api.players_can_share_world(0, 1), "shared across two levels")
+
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        gNetworkPlayers[1].currAreaIndex = 2
+        t.ok(not api.players_can_share_world(0, 1), "shared across two areas")
+    end)
+
+    s.test("two players each in their own course do not share a world", function()
+        -- The ordinary Normal-mode case: every player is sent to a different
+        -- star, so each is standing in the level their own goal names. Nothing
+        -- downstream re-checks that the two levels match, so dropping that
+        -- comparison lets players in different courses damage each other.
+        local api, ctl = fresh()
+        local bob, ccm
+        for id, goal in ipairs(api.goals) do
+            if goal.level == LEVEL_BOB and goal.act == 1 then bob = id end
+            if goal.level == LEVEL_CCM and goal.act == 1 then ccm = id end
+        end
+        gPlayerSyncTable[0].sh5_goal = bob
+        gPlayerSyncTable[1].sh5_goal = ccm
+        gNetworkPlayers[0].currLevelNum = LEVEL_BOB
+        gNetworkPlayers[1].currLevelNum = LEVEL_CCM
+        for i = 0, 1 do
+            gNetworkPlayers[i].currAreaIndex = 1
+            gMarioStates[i].pos = { x = 0, y = 0, z = 0 }
+        end
+        ctl.begin_round(api, api.normal_mode, api.medium)
+
+        t.ok(not api.players_can_share_world(0, 1),
+            "a player in Bob-omb Battlefield shared a world with one in Cool, Cool Mountain")
+    end)
+
+    s.test("Tick Tock Clock isolates act 6 from the acts that keep running", function()
+        -- Act 6 stops the clock; the others run it. Those object states cannot
+        -- share one simulation anywhere in the course.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_TTC, 6, 1)
+        t.ok(api.players_have_private_variant(0, 1), "act 6 shared a world with act 1")
+        t.ok(not api.players_can_share_world(0, 1), "act 6 was visible to act 1")
+
+        place(api, ctl, LEVEL_TTC, 1, 2)
+        t.ok(not api.players_have_private_variant(0, 1),
+            "two running-clock acts were isolated from each other")
+    end)
+
+    s.test("Wet-Dry World isolates every act from every other", function()
+        -- The water level is global to the course, so there is no shared
+        -- region at all between two different acts.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_WDW, 1, 4)
+        t.ok(api.players_have_private_variant(0, 1), "two WDW acts shared a world")
+        place(api, ctl, LEVEL_WDW, 3, 3)
+        t.ok(not api.players_have_private_variant(0, 1), "one WDW act isolated from itself")
+    end)
+
+    s.test("Jolly Roger Bay is private only around the ship", function()
+        -- The two ship layouts conflict, but the rest of the bay does not, so
+        -- players stay visible until one of them reaches the ship.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_JRB, 1, 4)
+        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 0, z = 5000 } end
+        t.ok(not api.players_have_private_variant(0, 1),
+            "two JRB acts were isolated away from the ship")
+
+        gMarioStates[1].pos = { x = 0, y = 0, z = -2000 }   -- inside the ship region
+        t.ok(api.players_have_private_variant(0, 1),
+            "a player reached the conflicting ship layout and stayed visible")
+    end)
+
+    s.test("Team and Chaos share a world wherever the players actually meet", function()
+        -- Both are PvP races rather than parallel runs: if two players are
+        -- standing in the same place they fight, whatever acts they were sent
+        -- for. The per-act geometry rules are skipped entirely.
+        local api, ctl = fresh()
+        for _, mode in ipairs({ api.team_mode, api.chaos_mode }) do
+            place(api, ctl, LEVEL_TTC, 6, 1, mode)
+            t.ok(api.players_can_share_world(0, 1),
+                "mode " .. mode .. " isolated two players in the same place")
+            -- Asked directly, too: visibility and nametags call this one rather
+            -- than going through players_can_share_world, so the Team/Chaos
+            -- exemption has to live in both or players vanish mid-fight.
+            t.ok(not api.players_have_private_variant(0, 1),
+                "mode " .. mode .. " reported a private variant for two players "
+                .. "standing together")
+            gNetworkPlayers[1].currAreaIndex = 2
+            t.ok(not api.players_can_share_world(0, 1),
+                "mode " .. mode .. " shared a world across two areas")
+        end
+    end)
+end

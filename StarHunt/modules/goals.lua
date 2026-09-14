@@ -16,6 +16,9 @@
 
 local modifier = require("core").modifier
 local translated = require("i18n").translated
+local core = require("core")
+local Team = core.Team
+local is_round_active = core.is_round_active
 
 local WORLD_NAMES = {
     [LEVEL_BOB] = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
@@ -518,8 +521,121 @@ local function goal_matches_star_object(goal_data, object)
     return star_id == goal_data.act - 1
 end
 
+-- Whether two players are looking at the same world.
+--
+-- Two players in the same level on different acts may be standing in geometry
+-- that does not agree -- JRB's two ship layouts, DDD's submarine, WDW's water
+-- level, BBH's interior rooms, Whomp's tower, TTC's stopped clock. Where the
+-- conflict is local to one region, only that region is private and the rest of
+-- the course stays shared; where the whole course differs between acts, the
+-- whole course is private. Team and Chaos are PvP races rather than parallel
+-- runs, so they share a world whenever the players are genuinely in the same
+-- place and skip the per-act geometry rules entirely.
+--
+-- Both answers feed visibility, nametags and whether PvP damage lands.
+-- JRB has two incompatible ship layouts. When a player reaches the ship
+-- region while another player has a different JRB act, that remote player is
+-- locally hidden and PvP is disabled until they leave the conflicting area.
+local function is_jrb_ship_zone(m)
+    if m == nil then return false end
+    return m.pos.x > -2600 and m.pos.x < 2600
+        and m.pos.y > -2600 and m.pos.y < 1000
+        and m.pos.z > -4200 and m.pos.z < -350
+end
+
+local function is_ddd_sub_zone(m)
+    if m == nil or m.marioObj == nil then return false end
+    local submarine = obj_get_first_with_behavior_id(id_bhvBowsersSub)
+    if submarine ~= nil then
+        local distance = dist_between_objects(submarine, m.marioObj)
+        return distance ~= nil and distance < 4600
+    end
+    -- The vanilla submarine geometry is centered at the DDD origin. This
+    -- fallback covers clients whose selected act has already removed it.
+    return math.abs(m.pos.x) < 4200 and math.abs(m.pos.z) < 4200 and m.pos.y > -2600
+end
+
+local function is_wf_tower_zone(m)
+    if m == nil then return false end
+    return m.pos.y > 1050 and math.abs(m.pos.x) < 2600 and math.abs(m.pos.z) < 2600
+end
+
+local function players_have_private_variant(a, b)
+    local first = get_goal(gPlayerSyncTable[a].sh5_goal or 0)
+    local second = get_goal(gPlayerSyncTable[b].sh5_goal or 0)
+    if first == nil or second == nil then
+        return false
+    end
+    local first_network = gNetworkPlayers[a]
+    local second_network = gNetworkPlayers[b]
+    if first_network ~= nil and second_network ~= nil
+        and (first_network.currAreaIndex or 1) ~= (second_network.currAreaIndex or 1) then
+        return true
+    end
+    -- TEAM is a PvP race: if two players deliberately meet in the same
+    -- loaded level and area, keep both models and nametags visible even when
+    -- their assigned star acts differ. Normal mode keeps the conservative
+    -- geometry isolation below.
+    if Team.is_mode() or Team.is_chaos_mode() then return false end
+    -- TTC Act 6 deliberately stops the clock while the other acts run slowly.
+    -- Those object states cannot share one visible/PvP simulation.
+    if first.level == LEVEL_TTC and second.level == LEVEL_TTC
+        and (first.act == 6) ~= (second.act == 6) then
+        return true
+    end
+    -- DDD's submarine is private only near the conflicting geometry. Players
+    -- remain visible and can fight throughout the rest of the course.
+    if first.level == LEVEL_DDD and second.level == LEVEL_DDD and first.act ~= second.act then
+        return is_ddd_sub_zone(gMarioStates[a]) or is_ddd_sub_zone(gMarioStates[b])
+    end
+    -- Wet-Dry World may load a different global water/geometry state for each
+    -- act, so different acts are private throughout that course.
+    if first.level == LEVEL_WDW and second.level == LEVEL_WDW and first.act ~= second.act then
+        return true
+    end
+    -- BBH changes several rooms and objects between acts. Keep PvP outside
+    -- the mansion, but isolate players once either one enters an interior
+    -- room whose geometry may not match the other's act.
+    if first.level == LEVEL_BBH and second.level == LEVEL_BBH and first.act ~= second.act then
+        local first_room = gMarioStates[a] ~= nil and (gMarioStates[a].currentRoom or 13) or 13
+        local second_room = gMarioStates[b] ~= nil and (gMarioStates[b].currentRoom or 13) or 13
+        if first_room ~= 13 or second_room ~= 13 then return true end
+    end
+    -- Whomp's tower changes between Act 1 and later acts. Only hide players
+    -- around the conflicting upper structure; the rest of the level stays PvP.
+    if first.level == LEVEL_WF and second.level == LEVEL_WF and first.act ~= second.act then
+        return is_wf_tower_zone(gMarioStates[a]) or is_wf_tower_zone(gMarioStates[b])
+    end
+    if first.level ~= LEVEL_JRB or second.level ~= LEVEL_JRB then return false end
+    if first.act == second.act then return false end
+    return is_jrb_ship_zone(gMarioStates[a]) or is_jrb_ship_zone(gMarioStates[b])
+end
+
+local function players_can_share_world(a, b)
+    if not is_round_active() or a == b then return false end
+    if Team.is_mode() or Team.is_chaos_mode() then
+        local first_network = gNetworkPlayers[a]
+        local second_network = gNetworkPlayers[b]
+        return first_network ~= nil and second_network ~= nil
+            and first_network.connected and second_network.connected
+            and first_network.currLevelNum == second_network.currLevelNum
+            and (first_network.currAreaIndex or 1) == (second_network.currAreaIndex or 1)
+    end
+    local first = get_goal(gPlayerSyncTable[a].sh5_goal or 0)
+    local second = get_goal(gPlayerSyncTable[b].sh5_goal or 0)
+    if first == nil or second == nil or first.level ~= second.level then return false end
+    if gNetworkPlayers[a].currLevelNum ~= first.level or gNetworkPlayers[b].currLevelNum ~= second.level then
+        return false
+    end
+    if (gNetworkPlayers[a].currAreaIndex or 1) ~= (gNetworkPlayers[b].currAreaIndex or 1) then
+        return false
+    end
+    return not players_have_private_variant(a, b)
+end
 return {
     GOALS = GOALS,
+    players_have_private_variant = players_have_private_variant,
+    players_can_share_world = players_can_share_world,
     get_goal = get_goal,
     get_local_goal = get_local_goal,
     goal_world_text = goal_world_text,
