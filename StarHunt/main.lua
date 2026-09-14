@@ -873,13 +873,6 @@ local host_seen_forfeit = {}
 local host_player_records = {}
 local local_goal_id = 0
 local local_goal_warp_at = -1
-local local_boss_round_seen = 0
-local local_boss_warp_at = -1
-local local_boss_hazard_seq = 0
-local local_boss_stun_frames = 0
-local local_boss_damage_lock = 0
-local local_pending_double_waves = {}
-local local_pending_meteors = {}
 local local_death_lock = false
 local local_death_warp_pending = false
 local local_seen_round = nil
@@ -951,6 +944,13 @@ local local_runtime = {
     idle_frames = 0,
     jump_cooldown_frames = 0,
     done_lock = false,
+    boss_round_seen = 0,
+    boss_warp_at = -1,
+    boss_hazard_seq = 0,
+    boss_stun_frames = 0,
+    boss_damage_lock = 0,
+    pending_double_waves = {},
+    pending_meteors = {},
 }
 
 local function clamp(value, low, high)
@@ -1569,10 +1569,10 @@ local function reset_local_modifier_state()
     local_runtime.slip_speed = 0
     local_runtime.modifier_tick = -1
     local_runtime.modifier_start_frame = get_global_timer()
-    local_boss_stun_frames = 0
-    local_boss_damage_lock = 0
-    local_pending_double_waves = {}
-    local_pending_meteors = {}
+    local_runtime.boss_stun_frames = 0
+    local_runtime.boss_damage_lock = 0
+    local_runtime.pending_double_waves = {}
+    local_runtime.pending_meteors = {}
     local_runtime.idle_frames = 0
     local_runtime.last_move_x = nil
     local_runtime.last_move_z = nil
@@ -3194,17 +3194,17 @@ end
 local function local_boss_warp_update(m)
     if m.playerIndex ~= 0 then return end
     if not is_round_active() or not is_boss_mode() then
-        local_boss_warp_at = -1
+        local_runtime.boss_warp_at = -1
         return
     end
 
     local round = gGlobalSyncTable.sh5_round or 0
-    if round ~= local_boss_round_seen then
-        local_boss_round_seen = round
-        local_boss_warp_at = get_global_timer() + NEXT_GOAL_DELAY
+    if round ~= local_runtime.boss_round_seen then
+        local_runtime.boss_round_seen = round
+        local_runtime.boss_warp_at = get_global_timer() + NEXT_GOAL_DELAY
         -- A late joiner starts from the current attack sequence. Old attacks
         -- must not all replay while that player is entering the arena.
-        local_boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
+        local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
         local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     end
@@ -3221,20 +3221,20 @@ local function local_boss_warp_update(m)
             m.invincTimer = 90
             set_mario_action(m, ACT_FREEFALL, 0)
             if m.area ~= nil and m.area.camera ~= nil then soft_reset_camera(m.area.camera) end
-            local_boss_warp_at = -1
+            local_runtime.boss_warp_at = -1
             local_death_lock = false
             local_death_warp_pending = false
             reset_local_modifier_state()
             return
         end
-        local_boss_warp_at = get_global_timer()
+        local_runtime.boss_warp_at = get_global_timer()
     end
 
     local level = BOSS_LEVELS[gGlobalSyncTable.sh5_boss_level_index or 0]
-    if level ~= nil and local_boss_warp_at >= 0 and get_global_timer() >= local_boss_warp_at
+    if level ~= nil and local_runtime.boss_warp_at >= 0 and get_global_timer() >= local_runtime.boss_warp_at
         and not is_transition_playing() then
         warp_to_level(level, 1, 1)
-        local_boss_warp_at = -1
+        local_runtime.boss_warp_at = -1
         local_death_lock = false
         local_death_warp_pending = false
     end
@@ -3284,7 +3284,7 @@ local function trigger_boss_wave(m, bowser, stun_frames)
         bowser.oPosX, bowser.oFloorHeight, bowser.oPosZ, nil)
     local distance = m.marioObj ~= nil and dist_between_objects(bowser, m.marioObj) or nil
     if distance ~= nil and distance < 4800 and is_local_player_on_floor(m) then
-        local_boss_stun_frames = math.max(local_boss_stun_frames, stun_frames)
+        local_runtime.boss_stun_frames = math.max(local_runtime.boss_stun_frames, stun_frames)
     end
 end
 
@@ -3305,7 +3305,7 @@ local function execute_boss_attack(m, bowser, attack, attack_seq)
     elseif attack == 3 then
         spawn_violet_split_fire(bowser)
     elseif attack == 5 then
-        table.insert(local_pending_meteors, {
+        table.insert(local_runtime.pending_meteors, {
             at = get_global_timer() + 45,
             x = bowser.oPosX,
             y = bowser.oFloorHeight,
@@ -3326,14 +3326,14 @@ local function execute_boss_attack(m, bowser, attack, attack_seq)
         local angle = attack_seq * 1.37
         m.vel.x = m.vel.x + math.sin(angle) * 55
         m.vel.z = m.vel.z + math.cos(angle) * 55
-        local_boss_stun_frames = math.max(local_boss_stun_frames, 12)
+        local_runtime.boss_stun_frames = math.max(local_runtime.boss_stun_frames, 12)
     elseif attack == 9 then
         -- A distortion wave replaces the old physical teleport. Moving a
         -- held or network-owned Bowser could make his tail impossible to grab.
         trigger_boss_wave(m, bowser, 16)
     elseif attack == 10 then
         trigger_boss_wave(m, bowser, 24)
-        table.insert(local_pending_double_waves, get_global_timer() + 24)
+        table.insert(local_runtime.pending_double_waves, get_global_timer() + 24)
     elseif attack == 11 and m.marioObj ~= nil then
         local yaw = atan2s(m.pos.x - bowser.oPosX, m.pos.z - bowser.oPosZ)
         spawn_boss_flame(bowser, E_MODEL_RED_FLAME, yaw, 1.25, 50)
@@ -3348,16 +3348,16 @@ local function apply_boss_hazards(m)
     if level == nil or gNetworkPlayers[0].currLevelNum ~= level then return end
 
     if boss_has_modifier(1) then
-        if m.hurtCounter > 0 and local_boss_damage_lock == 0 then
-            local_boss_damage_lock = 1
+        if m.hurtCounter > 0 and local_runtime.boss_damage_lock == 0 then
+            local_runtime.boss_damage_lock = 1
             m.health = 0
         elseif m.hurtCounter == 0 then
-            local_boss_damage_lock = 0
+            local_runtime.boss_damage_lock = 0
         end
     end
 
-    if local_boss_stun_frames > 0 then
-        local_boss_stun_frames = local_boss_stun_frames - 1
+    if local_runtime.boss_stun_frames > 0 then
+        local_runtime.boss_stun_frames = local_runtime.boss_stun_frames - 1
         if not config_open then
             m.controller.buttonDown = 0
             m.controller.buttonPressed = 0
@@ -3378,30 +3378,30 @@ local function apply_boss_hazards(m)
     -- During Bowser's intro, consume the current sequence without executing
     -- it. This also protects players who joined after an attack was sent.
     if bowser.oAction == 5 or bowser.oAction == 6 or bowser.oAction == 20 then
-        local_boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-        local_pending_double_waves = {}
-        local_pending_meteors = {}
+        local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
+        local_runtime.pending_double_waves = {}
+        local_runtime.pending_meteors = {}
         return
     end
-    for index = #local_pending_double_waves, 1, -1 do
-        if get_global_timer() >= local_pending_double_waves[index] then
-            table.remove(local_pending_double_waves, index)
+    for index = #local_runtime.pending_double_waves, 1, -1 do
+        if get_global_timer() >= local_runtime.pending_double_waves[index] then
+            table.remove(local_runtime.pending_double_waves, index)
             trigger_boss_wave(m, bowser, 24)
         end
     end
-    for index = #local_pending_meteors, 1, -1 do
-        local meteor = local_pending_meteors[index]
+    for index = #local_runtime.pending_meteors, 1, -1 do
+        local meteor = local_runtime.pending_meteors[index]
         if get_global_timer() >= meteor.at then
-            table.remove(local_pending_meteors, index)
+            table.remove(local_runtime.pending_meteors, index)
             resolve_meteor_rain(m, meteor)
         end
     end
 
     local attack_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-    if attack_seq == local_boss_hazard_seq then return end
+    if attack_seq == local_runtime.boss_hazard_seq then return end
     -- Global sync updates can coalesce during lag. Replay every attack still
     -- present in the ring instead of applying only the newest sequence.
-    local first_seq = math.max(local_boss_hazard_seq + 1, attack_seq - BOSS_ATTACK_QUEUE_SIZE + 1)
+    local first_seq = math.max(local_runtime.boss_hazard_seq + 1, attack_seq - BOSS_ATTACK_QUEUE_SIZE + 1)
     for sequence = first_seq, attack_seq do
         local queue_slot = ((sequence - 1) % BOSS_ATTACK_QUEUE_SIZE) + 1
         local attack = gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(queue_slot)] or 0
@@ -3410,7 +3410,7 @@ local function apply_boss_hazards(m)
         end
         execute_boss_attack(m, bowser, attack, sequence)
     end
-    local_boss_hazard_seq = attack_seq
+    local_runtime.boss_hazard_seq = attack_seq
 end
 
 -- The host writes a per-player sequence number when the round ends.  It stays
@@ -4222,7 +4222,7 @@ local function on_death(m)
         if not local_death_lock then
             local_death_lock = true
             local_death_warp_pending = true
-            local_boss_warp_at = get_global_timer()
+            local_runtime.boss_warp_at = get_global_timer()
             djui_popup_create(translated("BACK TO THE BATTLE!", "DE VUELTA A LA BATALLA!"), 1)
         end
         return false
