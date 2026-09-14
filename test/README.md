@@ -42,13 +42,14 @@ something the mod uses, this is what picks it up. Run
 |---|---|
 | `catalog` | 93 goals, 32 modifiers, no 100-coin star, unique level/act, valid powers |
 | `audit` | the 2,976-pair matrix and its 2,222/754 split, stage-1 and stage-2 rules, hand-tuned values surviving the rebuild |
+| `selfcheck` | what `run_static_modifier_checks` refuses to let ship, checked one refusal at a time: a required power outside the four, a 100-coin star in any of the fifteen main courses, a goal with no modifiers, a kind outside the accepted 32, a cursed floor shorter than 4 or longer than 9 seconds, a hole anywhere in the 93 x 32 audit matrix, and a tally that does not add up. Every case also asserts the success banner is gone, which is what catches a branch that complains but forgets to fail |
 | `difficulty` | Normal preserving v0.9 values, Easy pulses, monotonicity, and that no difficulty pushes a modifier past a stage-4 safety limit on any goal |
 | `pairing` | all 496 pairs validated in both orders, the documented forbidden combinations, Nightmare finding a legal pair for every goal |
 | `save` | the one-based to zero-based course conversion, per-act star bits, flushing |
 | `caps` | the Wing/Metal/Vanish cap a goal requires: the right flags per power, none outside the goal's own level, act, round and mode, none for remote players, and the handing-back that DEVELOPMENT_CHECKLIST forbids undoing — a cap another mod granted, a cap it refreshed underneath StarHunt, the player's own cap timer and cap-on-head flag |
 | `interact` | claiming a star and hiding the ones that are not it: the castle lock on doors, warp doors, the cannon and warps, the HMC Metal Cap portal and the three things that distinguish it from any other HMC warp, the star gate in each of the four modes, the coin toll in both a local and a remote player's slots, the rejection memory keyed on player, goal and round, Boss's one-hit-death modifier, and restoring only the invisibility flags StarHunt itself set |
 | `hud` | no colon ever reaching `FONT_HUD`, which renders it as an X |
-| `mechanics` | the load-time self-checks, darkness timing, Easy pulse width |
+| `mechanics` | the load-time banner reporting success at all, darkness timing, Easy pulse width |
 | `boss` | the reserve bomb wave: 0/0/2/4 by difficulty, distinct original positions, not armed before the native five are seen, one wave per round, host only |
 | `boss_readers` | what the rest of the mod asks about a Boss round: the fight's own time range and its four player-count boundaries, which of Bowser's three modifier slots hold a given draw, the two conditions Desperate needs, the modifier name in each language, and the host reading back the lowest health any client reported |
 | `round` | all sixteen mode/difficulty combinations, Bowser's 3/5/7/9 health, round length by lobby size, the waiting-room menu lock |
@@ -64,3 +65,8 @@ multiplayer session in sm64coopdx, and that is still true.
 The suite was mutation-checked: breaking the save conversion, the Easy pulse
 width, the symmetric pair check, the Hard bomb count, and the HUD colon rule
 each made it fail, with the failure naming the right thing.
+
+Three lines of `run_static_modifier_checks` are the known exception, recorded in
+`HISTORY.md`: its water-cap, A/B-swap and control-drift checks call helpers that
+are file-local to `modules/modifiers.lua`, so no test can replace them with a
+broken one. Only the shipped helpers are ever exercised there.

@@ -69,6 +69,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Privacidad/PvP | Oculta jugadores con geometría o área incompatible | `modules/goals.lua` (`players_have_private_variant`, `players_can_share_world`) |
 | Lobby | Agua, puertas, Lakitu y retorno al castillo | `modules/goals.lua` (`on_allow_interact`); `modules/modifiers.lua` (`keep_moat_lowered`); `main.lua` (`remove_castle_lakitu`) |
 | HUD y menú | Marcadores, timer, salud, menú `/starhunt` | `main.lua` (`draw_hud`, `draw_player_health_bar`, `draw_config_menu`) |
+| Autocomprobación | Revisa el catálogo y la matriz al cargar el mod | `modules/modifiers.lua` (`MODIFIER_KINDS`, `run_static_modifier_checks`) |
 | Compartido | `Team`, `local_runtime` y los ayudantes transversales | `modules/core.lua` |
 
 ## Errores ya encontrados y solución que no se debe deshacer
@@ -83,7 +84,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Ataques de Bowser se perdían con lag | Solo existía el último ataque sincronizado | Cola circular de 8 ataques | Prueba de dos ataques juntos |
 | Ráfagas/congelación se omitían | Dependían de un frame exacto | Usar número de ciclo, no igualdad exacta | Pruebas de salto de temporizador |
 | Jugadores se veían entre subzonas | Solo se comparaba el nivel | Comparar también `currAreaIndex` | Prueba de áreas distintas |
-| Retos imposibles | B o Z necesarios, rutas precisas o espera | Auditoría de cuatro etapas y ajustes por estrella | Matriz de 2.232 pares |
+| Retos imposibles | B o Z necesarios, rutas precisas o espera | Auditoría de cuatro etapas y ajustes por estrella | Matriz de 2.976 pares (2.222 aprobados, 754 rechazados); `test/suite/selfcheck.lua` comprueba que no falte ninguna. **2.232 era el tamaño de la matriz en v0.8, con 24 modificadores; esta fila lo citaba todavía** |
 | Piso Maldito injusto en ascensores | Temporizador demasiado corto en plataformas lentas | 9 segundos en rutas de plataforma | Prueba de HMC/LLL/WDW |
 
 ## Regla del dos-puntos en el HUD

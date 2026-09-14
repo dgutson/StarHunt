@@ -13,6 +13,63 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-14 — R-002, fourth part: the load-time self-check moves to `modules/modifiers.lua`
+
+`MODIFIER_KINDS` and `run_static_modifier_checks` left `main.lua` for `modifiers.lua`, which is
+where the require graph put them: the check reads `GOALS` from `goals.lua`,
+`NORMAL_MODIFIER_CATALOG`, `MODIFIER_AUDIT` and `MODIFIER_AUDIT_COUNTS` from `audit.lua`, and
+`capped_horizontal_velocity`, `swap_button_bits` and `rotate_stick` from `modifiers.lua` itself.
+`goals.lua` could not have it, because `audit.lua` already requires `goals.lua`. **The move
+needed no new require edge at all** -- the first pass in this refactor that added none.
+`main.lua` fell from 1,835 to 1,729 lines and `modifiers.lua` grew from 708 to 828.
+
+Byte-identical in both directions, with no exception this time: `modifiers.lua` has no `goal()`
+constructor, so the `for index, goal in ipairs(GOALS)` loop kept its name and the two blocks
+diff clean against `HEAD:StarHunt/main.lua` in both directions. `main.lua` also lost four import
+lines that only the check used, and gained one for the check itself.
+
+**The area was almost entirely untested.** One test existed -- `mechanics` asserts the load
+banner says "checks passed" and that no line says "failed" -- and it covers the happy path only.
+Every refusal the check makes could be deleted with a green 382-test run: the required-power
+list, the 100-coin exclusion for all fifteen main courses, the empty-modifier-list guard, the
+accepted-kind gate, the cursed-floor 4-to-9-second range, and every hole the 93 x 32 audit
+matrix could have. `test/suite/selfcheck.lua` adds 25 tests and the suite is now 407.
+
+The useful shape the suite settled on: **every failure test asserts twice** -- that the right
+complaint was printed, and that the success banner is gone. The second assertion is what catches
+a branch that complains and then forgets `valid = false`, which is six separate mutations.
+`harness.capture_print(fn)` is new and returns the captured lines plus the pcall result;
+`harness.load` now uses it for the banner it was already capturing by hand.
+
+**60 of 66 mutations caught.** The six survivors are equivalent mutants rather than gaps, and
+they divide into two kinds:
+
+- `or modifier_data.kind == "auto_crouch"` can be deleted with no effect. `MODIFIER_KINDS` has
+  no `auto_crouch` key, so `not MODIFIER_KINDS["auto_crouch"]` is already true and the clause
+  can never change the outcome. `auto_crouch` appears nowhere else in the mod. It was left
+  exactly as it is: a move may not change the code it moves.
+- The water-cap, A/B-swap and control-drift checks call helpers that are file-local to
+  `modifiers.lua`, so no test can hand them a broken one. Their failure branches are unreachable
+  from the suite (three `valid = false` mutations survive), and one condition -- `math.abs(x1 -
+  x2) > 0.001 or ... z ...` -- can become `and` unnoticed because neither side is ever true.
+  `swap_button_bits(A_BUTTON, A_BUTTON, B_BUTTON)` can also have its last two arguments swapped
+  and still return `B_BUTTON`, because the call is symmetric. Only the shipped helpers are ever
+  exercised there, and `test/README.md` now says so.
+
+**Two things the check turns out not to do**, both found by the mutation sweep rather than by
+reading it. It pins the catalog at 93 goals but never pins the modifier catalog at 32 entries --
+the "32 modifiers" in its banner is a literal string, and `test/suite/catalog.lua` is what
+actually holds that number. And the banner's audited-pair count could have been hard-coded
+without any test noticing, because the only legal way to move that number is to change the size
+of the catalog. `selfcheck` now does exactly that, with a thirty-third template repeating a kind
+the matrix already holds.
+
+**A live row in `DEVELOPMENT_CHECKLIST.md` was citing a v0.8 number.** Its do-not-undo table gave
+"Matriz de 2.232 pares" as the check guarding impossible modifier pairs. 2,232 is 93 x 24, the
+matrix as it stood when the catalog had 24 modifiers; the shipped matrix is 93 x 32 = 2,976.
+`BALANCE_AUDIT.md` still carries 2,232 correctly, inside its "v0.8 additions" section. The row
+now names the real matrix and the suite that checks it.
+
 ### 2026-09-14 — R-002, third part: `modules/goals.lua` is finished
 
 The interaction handlers and star visibility left `main.lua` for `goals.lua`: `is_hmc_metal_portal`,

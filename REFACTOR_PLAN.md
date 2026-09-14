@@ -15,7 +15,8 @@ records and the per-frame loop -- followed once Boss's readers had moved. `team.
 finished too: its roster totals, late assignment, score publishing and reroll-button label
 came out once `player_record_key` had moved into `core.lua`. `goals.lua` is now finished as
 well, in three passes: the catalog and its readers, then the required-cap code, then the
-interaction handlers and star visibility.
+interaction handlers and star visibility. `modifiers.lua` has taken the load-time self-check
+and its list of accepted modifier kinds, which is the last piece of R-002 that was unblocked.
 
 ## The rule that makes the split safe
 
@@ -95,12 +96,14 @@ is gone.
    goals     -> core, i18n, save, boss
    ```
 
-   That is why `run_static_modifier_checks` cannot live in `goals.lua` even though it walks
+   That is why `run_static_modifier_checks` could not live in `goals.lua` even though it walks
    `GOALS`: it also reads `NORMAL_MODIFIER_CATALOG`, `MODIFIER_AUDIT` and
    `MODIFIER_AUDIT_COUNTS` from `audit.lua` and `capped_horizontal_velocity`,
    `swap_button_bits` and `rotate_stick` from `modifiers.lua`, and goals may import neither.
-   `modifiers.lua` already imports both and is where it goes, along with `MODIFIER_KINDS` --
-   a top-level local of `main.lua` that nothing else reads. Print the whole
+   `modifiers.lua` already imported both, so that is where it went, along with
+   `MODIFIER_KINDS`. The move needed no new edge at all: the two names it added,
+   `goals.GOALS` and the two audit tables, come from modules `modifiers.lua` already
+   required. Print the whole
    graph before every move -- `tools/module_deps.py` does not answer this question:
 
    ```bash
@@ -219,6 +222,16 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   requires `boss`. Two ways out when it is reached: move the shared helper into `core.lua`,
   or move `BOSS_PLAYER_MODIFIERS` so the `modifiers → boss` edge disappears. Neither was
   chosen yet.
+- **Not every surviving mutation is a coverage gap; some are equivalent mutants.** Six of the
+  66 mutations of the load-time self-check survived and none of them was a missing test. One
+  clause of the check is redundant: `or modifier_data.kind == "auto_crouch"` cannot change the
+  outcome, because `MODIFIER_KINDS` has no such key. The other five sit in three checks that
+  call helpers file-local to the module they moved into, so a test cannot hand them a broken
+  one and their failure branches are unreachable from the suite. Before writing a test to catch
+  a survivor, work out whether the mutation changes behaviour at all — and record the ones that
+  cannot, so the next sweep does not re-investigate them. Leave the code exactly as it is: a
+  redundant clause discovered during a move is still not a move's business to delete.
+
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
 - **A mutation sweep must restore the file after every single run.** A sweep that only
