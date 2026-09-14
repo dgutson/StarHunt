@@ -49,6 +49,7 @@ something the mod uses, this is what picks it up. Run
 | `mechanics` | the load-time self-checks, darkness timing, Easy pulse width |
 | `boss` | the reserve bomb wave: 0/0/2/4 by difficulty, distinct original positions, not armed before the native five are seen, one wave per round, host only |
 | `round` | all sixteen mode/difficulty combinations, Bowser's 3/5/7/9 health, round length by lobby size, the waiting-room menu lock |
+| `round_client` | what a round does on each player's own machine: the warp home when it ends and the retry behind it, hiding players hunting a private variant of the same star, the pause menu refusing to quit mid-round, death costing exactly one forfeit in Normal and none in Boss or Chaos, and Bowser's intro textbox being cancelled |
 
 ## What is not covered
 

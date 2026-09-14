@@ -70,6 +70,14 @@ local rotate_stick = local_modifiers.rotate_stick
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
 local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
+local local_round = require("modules/round")
+local force_return_to_lobby = local_round.force_return_to_lobby
+local on_nametags_render = local_round.on_nametags_render
+local update_private_player_visibility = local_round.update_private_player_visibility
+local on_pause_exit = local_round.on_pause_exit
+local on_death = local_round.on_death
+local on_before_death_action = local_round.on_before_death_action
+local on_dialog = local_round.on_dialog
 local TEAM_SCORE_PRIORITY_GAP = 2
 local MODIFIER_KINDS = {
     no_b = true,
@@ -139,9 +147,6 @@ local host_seen_forfeit = {}
 local host_player_records = {}
 local local_seen_round = nil
 local local_seen_result = nil
-local local_seen_return_seq = 0
-local local_return_warp_pending = false
-local local_return_warp_retry_at = 0
 local local_start_banner_until = -1
 local local_hud_flags_before_round = nil
 local local_counter_round_active = false
@@ -1499,42 +1504,6 @@ local function apply_boss_hazards(m)
     local_runtime.boss_hazard_seq = attack_seq
 end
 
--- The host writes a per-player sequence number when the round ends.  It stays
--- in that player's sync table until the next ending, which makes this robust
--- against a delayed result packet or a warp that was busy on the first frame.
-local function force_return_to_lobby(m)
-    if m.playerIndex ~= 0 then return end
-
-    local return_seq = math.max(gPlayerSyncTable[0].sh5_return_seq or 0,
-        gGlobalSyncTable.sh5_return_seq or 0)
-    -- A return order from an older round may still be present when a delayed
-    -- player joins the next one. Consume it while play is active.
-    if is_round_active() then
-        local_seen_return_seq = return_seq
-        local_return_warp_pending = false
-        return
-    end
-    if return_seq ~= local_seen_return_seq then
-        local_seen_return_seq = return_seq
-        local_return_warp_pending = return_seq ~= 0
-        local_return_warp_retry_at = 0
-        -- Every client owns its own save file. Clear its pending StarHunt
-        -- stars as soon as the end-of-round packet arrives, before a warp or
-        -- an immediate F12 exit can let vanilla save them again.
-        flush_starhunt_save_removals(true, false)
-    end
-
-    if not local_return_warp_pending then return end
-    if gNetworkPlayers[0].currLevelNum == LEVEL_CASTLE_GROUNDS then
-        local_return_warp_pending = false
-        return
-    end
-    if get_global_timer() >= local_return_warp_retry_at and not is_transition_playing() then
-        warp_to_level(LEVEL_CASTLE_GROUNDS, 1, 0)
-        local_return_warp_retry_at = get_global_timer() + FRAMES_PER_SECOND
-    end
-end
-
 -- Remove the camera Lakitu itself on the castle grounds.  This prevents the
 -- scene instead of merely skipping it after the camera has already appeared.
 local function remove_castle_lakitu(obj)
@@ -1702,57 +1671,11 @@ local function update_star_visibility()
     end
 end
 
-local function on_nametags_render(player_index, pos)
-    local index = tonumber(player_index)
-    if index ~= nil and index ~= 0 and is_round_active() and players_have_private_variant(0, index) then
-        return { name = "", pos = pos }
-    end
-end
-
-local function update_private_player_visibility()
-    for i = 1, MAX_PLAYERS - 1 do
-        local mario = gMarioStates[i]
-        local object = mario ~= nil and mario.marioObj or nil
-        local hide = gNetworkPlayers[i].connected and is_round_active()
-            and players_have_private_variant(0, i)
-        local tracked = local_runtime.hidden_players[i]
-        if tracked ~= nil and tracked.object ~= object then
-            local_runtime.hidden_players[i] = nil
-            tracked = nil
-        end
-        if object ~= nil and hide then
-            if tracked == nil then
-                tracked = {
-                    object = object,
-                    was_invisible = (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0,
-                }
-                local_runtime.hidden_players[i] = tracked
-            end
-            object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
-        elseif object ~= nil and tracked ~= nil then
-            if not tracked.was_invisible then
-                object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
-            end
-            local_runtime.hidden_players[i] = nil
-        elseif not gNetworkPlayers[i].connected then
-            local_runtime.hidden_players[i] = nil
-        end
-    end
-end
-
 local function on_find_water_level(_, _, water_level)
     -- set_water_level() already updates the two real moat/lake regions.
     -- Returning a fixed height here would create water under every coordinate
     -- on the castle grounds, including places outside those water boxes.
     return water_level
-end
-
-local function on_pause_exit(_)
-    if is_round_active() then
-        djui_popup_create(translated("FINISH THE ROUND OR ASK THE HOST TO STOP IT.", "TERMINA LA RONDA O PIDE AL HOST QUE LA DETENGA."), 1)
-        return false
-    end
-    return true
 end
 
 Team.update_manual_reroll_menu = function()
@@ -1987,81 +1910,6 @@ local function update_config_input(m)
     m.vel.z = 0
     if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
     if local_runtime.config_open then Team.freeze_menu_mario(m) end
-end
-
-local function on_death(m)
-    grant_infinite_lives(m)
-    if m.playerIndex ~= 0 or not is_round_active() then return true end
-    -- Restore health immediately so the cancelled death cannot trigger again
-    -- while the replacement goal is arriving from the host.
-    m.health = 0x880
-    m.hurtCounter = 0
-    m.healCounter = 0
-    m.invincTimer = 90
-    -- Returning false cancels SM64's flying/death animation entirely.
-    if is_boss_mode() then
-        if not local_runtime.death_lock then
-            local_runtime.death_lock = true
-            local_runtime.death_warp_pending = true
-            local_runtime.boss_warp_at = get_global_timer()
-            djui_popup_create(translated("BACK TO THE BATTLE!", "DE VUELTA A LA BATALLA!"), 1)
-        end
-        return false
-    end
-    if Team.is_chaos_mode() then
-        if (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 0 then
-            gPlayerSyncTable[0].sh5_chaos_eliminated = 1
-            local_runtime.chaos_spectator_warped = false
-            djui_popup_create(translated("ELIMINATED! SPECTATING...",
-                "ELIMINADO! OBSERVANDO..."), 2)
-        end
-        return false
-    end
-    if local_runtime.done_lock or local_runtime.death_lock or get_local_goal() == nil then return false end
-    local_runtime.death_lock = true
-    local_runtime.death_warp_pending = true
-    gPlayerSyncTable[0].sh5_forfeit = (gPlayerSyncTable[0].sh5_forfeit or 0) + 1
-    djui_popup_create(translated("NEW GOAL INCOMING...", "NUEVO RETO..."), 1)
-    return false
-end
-
--- Cancel death actions before vanilla can show even one frame of the flying,
--- drowning or collapse animation. HOOK_ON_DEATH remains as a fallback for
--- void/death-plane deaths that do not pass through one of these actions.
-local STARHUNT_DEATH_ACTIONS = {
-    [ACT_DROWNING] = true,
-    [ACT_WATER_DEATH] = true,
-    [ACT_STANDING_DEATH] = true,
-    [ACT_QUICKSAND_DEATH] = true,
-    [ACT_ELECTROCUTION] = true,
-    [ACT_SUFFOCATION] = true,
-    [ACT_DEATH_ON_STOMACH] = true,
-    [ACT_DEATH_ON_BACK] = true,
-    [ACT_EATEN_BY_BUBBA] = true,
-}
-
-local function on_before_death_action(m, incoming_action, _)
-    if m.playerIndex ~= 0 or not is_round_active()
-        or not STARHUNT_DEATH_ACTIONS[incoming_action] then
-        return
-    end
-    on_death(m)
-    return 1
-end
-
--- The vanilla Bowser 3 textbox blocks Mario while StarHunt's shared timer is
--- already running. Cancelling this dialog also lets the native camera leave
--- its looping dialog state immediately.
-local function on_dialog(dialog_id)
-    if not is_round_active() or not is_boss_mode() then return true end
-    if gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then return true end
-    local intro_dialog = DIALOG_093
-    if gBehaviorValues ~= nil and gBehaviorValues.dialogs ~= nil
-        and gBehaviorValues.dialogs.Bowser3Dialog ~= nil then
-        intro_dialog = gBehaviorValues.dialogs.Bowser3Dialog
-    end
-    if dialog_id == intro_dialog then return false end
-    return true
 end
 
 local function format_remaining_time(frames)
@@ -2777,6 +2625,9 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         dialog = on_dialog,
         death = on_death,
         before_death_action = on_before_death_action,
+        pause_exit = on_pause_exit,
+        nametags_render = on_nametags_render,
+        private_player_visibility = update_private_player_visibility,
         allow_interact = on_allow_interact,
         interact = on_interact,
         players_have_private_variant = players_have_private_variant,

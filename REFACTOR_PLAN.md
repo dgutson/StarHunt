@@ -8,8 +8,8 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Ten of the thirteen modules are out. `round`, `hud` and `menu` remain, plus the parts four
-modules left behind because they call into the round loop.
+Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the host half of
+`round` and the parts four modules left behind because they call into the round loop.
 
 ## The rule that makes the split safe
 
@@ -34,6 +34,14 @@ that are entirely self-contained into a shared module they do not need.
 **`team.lua` is the live example of why this rule decides the order.** Its three missing
 functions read `host_player_records`, which round **rebinds** (`host_player_records = {}`), so
 they cannot be shared by re-localizing and must wait for round to be extracted.
+
+The same rule split `round` itself in two. `host_start_round` rebinds `host_used_goals`,
+`host_seen_done`, `host_seen_forfeit` and `host_player_records`; `host_end_round` rebinds
+`host_previous_player_interactions` and `host_previous_pvp_type`. None of those six can leave
+without the functions that rebind them, so the host half of the round has to move as one piece
+— and it is blocked besides, on four Boss helpers still in `main.lua`
+(`boss_time_range_for_players`, `boss_has_modifier`, `boss_is_desperate`,
+`host_read_boss_health_report`). The client half depends on none of that and went first.
 
 ## Engine facts, verified against sm64coopdx source and in practice
 
@@ -65,7 +73,7 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **eight of the ten** modules extracted so far. Write tests until every
+   coverage gap in **nine of the eleven** modules extracted so far. Write tests until every
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
@@ -111,7 +119,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   than taking round's three functions as arguments.
 - **A module may come out in two or three passes.** Take the part whose dependencies are
   satisfied, usually the static data, and leave the runtime for when its own dependencies
-  land. Done for `goals`, `team`, `boss` and `chaos`.
+  land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `round` split along a line the
+  code names itself: the `local_*` half that only reacts to synchronized state came out first,
+  and the `host_*` half that writes it is waiting on Boss.
 - **Shared helpers move into `core.lua` when the first module actually needs one**, never
   speculatively. That is how `is_round_active`, `modifier()`, `clamp()`, `local_runtime`, the
   four mode predicates and `NEXT_GOAL_DELAY` got there. `NEXT_GOAL_DELAY` is the case worth
@@ -133,8 +143,10 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
 - **Deleting a block plus its trailing blank line ate a non-blank neighbour.** Absorbing the
   following line is only safe after checking it is actually blank (`sed -n 'N,Np' … | cat -A`).
 - **An import can shadow an existing local.** `local modifiers = require("modules/modifiers")`
-  shadowed a local named `modifiers` inside `draw_hud`; renamed to `local_modifiers`. Run
-  luacheck after adding imports.
+  shadowed a local named `modifiers` inside `draw_hud`; renamed to `local_modifiers`. It has
+  happened twice: a handle named `round` would have been shadowed by the five functions that
+  declare `local round = gGlobalSyncTable.sh5_round or 0`, so that one is `local_round` too.
+  Grep for the intended handle name before adding the import, and run luacheck after.
 - **Naming a module parameter `goal` reintroduces the shadowing warnings** once the function
   sits in the same file as the `goal()` constructor. Use `goal_data`, as `audit.lua` does.
   This is the one place a move was deliberately not byte-identical.
@@ -201,55 +213,29 @@ Two things to know when reading it:
   `menu` next to the rest of the config code. `Team.freeze_menu_mario` does most of its work
   against local modifier state and is worth reconsidering against `modifiers`.
 
-### `modules/round.lua` — 45 declarations, ~796 lines
+### `modules/round.lua` — the host half, ~26 declarations, ~600 lines
+
+The client half is already in `modules/round.lua`: `local_seen_return_seq`,
+`local_return_warp_pending`, `local_return_warp_retry_at`, `force_return_to_lobby`, `on_nametags_render`, `update_private_player_visibility`,
+`on_pause_exit`, `on_death`, `STARHUNT_DEATH_ACTIONS`, `on_before_death_action` and `on_dialog`.
+
+What is left in `main.lua`, listed by name rather than by line number because every range in
+this appendix is stale — re-derive them with grep:
 
 ```
-   17-17    local_var       RESULT_DISPLAY_FRAMES
-   36-36    local_var       CHAOS_REROLL_FRAMES
-   46-46    local_var       BOSS_LEVELS
-   95-103   local_var       BOSS_PLAYER_MODIFIERS
-  120-124   local_var       BOSS_MODIFIER_FIELDS
-  125-125   local_var       BOSS_ATTACK_QUEUE_SIZE
-  130-130   local_var       BOSS_ACTIVE_ATTACK_MODIFIERS
-  131-131   local_var       BOSS_ACTIVE_ATTACK_LOOKUP
-  845-856   local_function  time_range_for_players
-  865-868   local_function  configured_time_range
-  870-870   local_var       host_used_goals
-  871-871   local_var       host_seen_done
-  872-872   local_var       host_seen_forfeit
-  873-873   local_var       host_player_records
-  895-895   local_var       local_seen_return_seq
-  896-896   local_var       local_return_warp_pending
-  897-897   local_var       local_return_warp_retry_at
-  926-926   local_var       host_previous_player_interactions
-  927-927   local_var       host_previous_pvp_type
-  962-964   local_function  is_round_active
- 1532-1538  local_function  connected_player_count
- 1540-1547  local_function  goal_is_active_for_anyone
- 1591-1602  local_function  host_pick_goal
- 1669-1705  local_function  host_assign_goal
- 1707-1712  local_function  player_record_key
- 1828-1834  local_function  update_winner_candidate
- 1836-1860  local_function  winner_text_and_score
- 1862-1935  local_function  host_end_round
- 1937-1953  local_function  host_reset_scores_after_result
- 1955-2049  local_function  host_prepare_player
- 2051-2193  local_function  host_start_round
- 2195-2222  local_function  remember_player_index
- 2224-2226  local_function  remember_disconnected_player
- 2228-2234  local_function  mark_connected_player_unenrolled
- 2236-2248  local_function  host_add_late_joiner
- 2341-2421  local_function  host_update_boss_round
- 2546-2624  local_function  host_update_round
- 3419-3450  local_function  force_return_to_lobby
- 3587-3587  local_var       starhunt_hidden_players
- 3780-3785  local_function  on_nametags_render
- 3787-3816  local_function  update_private_player_visibility
- 3920-3926  local_function  on_pause_exit
- 4250-4260  local_var       STARHUNT_DEATH_ACTIONS
- 4262-4269  local_function  on_before_death_action
- 4274-4284  local_function  on_dialog
+state       RESULT_DISPLAY_FRAMES, host_used_goals, host_seen_done, host_seen_forfeit,
+            host_player_records, host_previous_player_interactions, host_previous_pvp_type
+time        time_range_for_players, configured_time_range
+goals       connected_player_count, goal_is_active_for_anyone, host_pick_goal, host_assign_goal
+records     player_record_key, remember_player_index, remember_disconnected_player,
+            mark_connected_player_unenrolled, host_add_late_joiner
+loop        host_prepare_player, host_start_round, host_end_round, host_update_round,
+            host_update_boss_round, host_reset_scores_after_result,
+            update_winner_candidate, winner_text_and_score
 ```
+
+`starhunt_hidden_players`, which this appendix listed under round, no longer exists: it became
+`local_runtime.hidden_players` during the migration.
 
 ### `modules/hud.lua` — 31 declarations, ~601 lines
 

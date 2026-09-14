@@ -27,10 +27,10 @@ the method; this is the record of what it produced. Remaining work is R-001 to R
 ### Where it started and where it stands
 
 The released v1.1 `main.lua` was 5,171 lines and 271 top-level declarations, with 72 tests.
-After ten of the thirteen modules, `main.lua` is 2,972 lines and the suite is 154 tests.
+After eleven of the thirteen modules, `main.lua` is 2,822 lines and the suite is 188 tests.
 Modules extracted, in order: `core`, `i18n`, `save`, `goals` (catalog only), `audit`,
 `difficulty`, `team` (rosters, palettes, PvP), `boss` (data and health), `modifiers`, `chaos`
-(all but the round loop).
+(all but the round loop), `round` (client side only).
 
 luacheck fell from 26 warnings to 2 as modules left, because the 24 `shadowing upvalue goal`
 warnings went with the `goal()` constructor. The type checker has stayed at 10 problems in 2
@@ -73,21 +73,32 @@ is the reason the habit continues.
 | team | Team mode entirely — rosters, palettes, the PvP rule | the `team` and `world` suites |
 | modifiers | the effects players actually feel | the `modifiers` suite |
 | chaos | the entire mode — **all 17 mutations survived a green 138-test run** | 16 tests |
+| round (client side) | the client's whole reaction to a round — **all 26 mutations survived a green 154-test run** | 34 tests |
 
 Areas that had *zero* coverage before the refactor began: Team mode, world-sharing, the PvP
 rule, the goal readers, `local_runtime`'s initial values, the Boss data invariants, the
 modifier entry points, and all of Chaos. Several of those were already published to
 `STARHUNT_TEST_API` and simply never called by any suite.
 
-Chaos was the worst: it could have lost a level from its map pool, handed every player the same
-modifier forever, ignored its 15-second reroll interval, kept rerolling eliminated spectators,
-or warped a knocked-out player straight back into the arena, with nothing reporting a problem.
+Chaos was the worst until round's client side matched it. Chaos could have lost a level from
+its map pool, handed every player the same modifier forever, ignored its 15-second reroll
+interval, kept rerolling eliminated spectators, or warped a knocked-out player straight back
+into the arena, with nothing reporting a problem. The client side of the round could have
+failed to warp anyone home when a round ended, retried that warp every frame instead of once a
+second, let a player quit mid-round from the pause menu, shown every nametag it was meant to
+hide, permanently revealed a player another mod had made invisible, charged one death as two
+forfeits or as none, or left Bowser's intro textbox blocking the Boss round.
 
 ### Two conclusions worth keeping
 
-- **One surviving mutation is an equivalent mutant, not a gap.** Removing the area comparison
-  from `players_can_share_world` changes no answer — `players_have_private_variant` re-decides
-  the same way one line later. Left in place.
+- **One surviving mutation is an equivalent mutant, not a gap.** This has now happened twice,
+  both times around the same function. Removing the area comparison from
+  `players_can_share_world` changes no answer, because `players_have_private_variant` re-decides
+  the same way one line later. Removing the `index ~= 0` check from `on_nametags_render` changes
+  no answer either: `players_have_private_variant` compares its two players symmetrically, so
+  asked about player 0 twice it returns false down every branch. Both checks were left in place,
+  and the test for the second says plainly that it pins the contract rather than guarding the
+  code that meets it.
 - **The catalog digest** in `test/suite/catalog.lua` (`e5cd39707be1e49f`) is an FNV-1a hash over
   every goal's level, act, world names, titles, power and hand-tuned values. It was computed
   from the release commit `2111c0b` and the catalog was confirmed byte-identical to the released
