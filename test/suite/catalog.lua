@@ -122,6 +122,80 @@ return function(t, harness)
         end
     end)
 
+    s.test("the eighteen world names are the ones the mod ships", function()
+        -- Catches the two columns being swapped, which nothing else does: every
+        -- goal carries both an English and a Spanish world name, and both are
+        -- non-empty either way round.
+        local expected = {
+            LEVEL_BOB = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
+            LEVEL_WF = { "WHOMP'S FORTRESS", "FORTALEZA DE WHOMP" },
+            LEVEL_JRB = { "JOLLY ROGER BAY", "BAHIA DEL PIRATA" },
+            LEVEL_CCM = { "COOL, COOL MOUNTAIN", "MONTANA ESCALOFRIANTE" },
+            LEVEL_BBH = { "BIG BOO'S HAUNT", "MANSION DE BIG BOO" },
+            LEVEL_HMC = { "HAZY MAZE CAVE", "CUEVA DEL LABERINTO" },
+            LEVEL_LLL = { "LETHAL LAVA LAND", "FOSO DE LAVA LETAL" },
+            LEVEL_SSL = { "SHIFTING SAND LAND", "ARENAS MOVEDIZAS" },
+            LEVEL_DDD = { "DIRE, DIRE DOCKS", "MUELLE DIRE, DIRE" },
+            LEVEL_SL = { "SNOWMAN'S LAND", "TIERRA DEL HOMBRE DE NIEVE" },
+            LEVEL_WDW = { "WET-DRY WORLD", "MUNDO MOJADO-SECO" },
+            LEVEL_TTM = { "TALL, TALL MOUNTAIN", "MONTANA ALTA, ALTA" },
+            LEVEL_THI = { "TINY-HUGE ISLAND", "ISLA PEQUENA-GIGANTE" },
+            LEVEL_TTC = { "TICK TOCK CLOCK", "RELOJ TIC TAC" },
+            LEVEL_RR = { "RAINBOW RIDE", "PASEO POR EL ARCOIRIS" },
+            LEVEL_TOTWC = { "TOWER OF THE WING CAP", "TORRE DE LA GORRA ALADA" },
+            LEVEL_COTMC = { "CAVERN OF THE METAL CAP", "CUEVA DE LA GORRA METALICA" },
+            LEVEL_VCUTM = { "VANISH CAP UNDER THE MOAT", "GORRA INVISIBLE BAJO EL FOSO" },
+        }
+        local by_level = {}
+        for name, pair in pairs(expected) do by_level[_G[name]] = pair end
+
+        local seen = {}
+        for i, goal in ipairs(api.goals) do
+            local pair = by_level[goal.level]
+            t.ok(pair ~= nil, "goal " .. i .. " is in an unknown level")
+            t.eq(goal.world, pair[1], "goal " .. i .. " world name")
+            t.eq(goal.world_es, pair[2], "goal " .. i .. " Spanish world name")
+            seen[goal.level] = true
+        end
+        for name in pairs(expected) do
+            t.ok(seen[_G[name]], "no goal in " .. name)
+        end
+    end)
+
+    s.test("the catalog data is byte-for-byte what v1.1 shipped", function()
+        -- PROJECT_STATUS.md declares v1.1 closed to balance changes, so the star
+        -- list and its hand-tuned modifier values are fixed data. This digest is
+        -- the one check that notices a star being silently retitled, reordered or
+        -- retuned -- including an English and Spanish column swapped over.
+        --
+        -- If you changed the catalog ON PURPOSE, the run prints the new digest:
+        -- read the diff first, then paste the number in below.
+        local function fnv1a(text)
+            local h = 0xcbf29ce484222325
+            for i = 1, #text do
+                h = (h ~ text:byte(i)) * 0x100000001b3
+            end
+            return h
+        end
+
+        local parts = {}
+        for _, goal in ipairs(api.goals) do
+            parts[#parts + 1] = table.concat({
+                goal.level, goal.act, goal.world, goal.world_es,
+                goal.title, goal.title_es, goal.power or "-",
+            }, "|")
+            for _, m in ipairs(goal.mods) do
+                -- Only the hand-tuned entries are catalog data. The rest are
+                -- catalog defaults that modules/audit.lua fills in.
+                if m.hand_tuned then
+                    parts[#parts + 1] = "  " .. m.kind .. "=" .. tostring(m.value)
+                end
+            end
+        end
+        local actual = string.format("%016x", fnv1a(table.concat(parts, "\n")))
+        t.eq(actual, "e5cd39707be1e49f", "the goal catalog changed")
+    end)
+
     s.test("the mod registers one chat command and one pause-menu button", function()
         local _, ctl = harness.load()
         t.eq(#ctl.chat_commands, 1, "exactly one /help entry")
