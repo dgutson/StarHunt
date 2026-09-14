@@ -21,6 +21,75 @@ local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
     manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
+-- Everything the local player's own frame-by-frame code needs to remember
+-- between frames. It is per-player and never synchronized: the host's copy says
+-- nothing about anyone else.
+--
+-- It is a table for the reason the header above gives. Most of these started as
+-- separate top-level locals, and a local that gets REBOUND cannot be shared
+-- across modules at all -- every module would get its own copy and the writes
+-- would not meet. Collected here they are field assignments on one table that
+-- every module reaches by reference, which is what made the split possible.
+local local_runtime = {
+    last_move_x = nil,
+    last_move_z = nil,
+    wind_tick = -1,
+    freeze_tick = -1,
+    freeze_frames = 0,
+    freeze_yaw = nil,
+    last_coin_count = nil,
+    coin_leak_tick = -1,
+    momentum_tick = -1,
+    overheat_frames = 0,
+    menu_freeze_x = nil,
+    menu_freeze_y = nil,
+    menu_freeze_z = nil,
+    power_external_timer = 0,
+    power_original_head = false,
+    lives_before_round = nil,
+    native_hud_was_hidden = nil,
+    dnc_compat_registered = false,
+    widdlepets_compat_registered = false,
+    gun_mod_compat_original = nil,
+    gun_mod_compat_wrapper = nil,
+    darkness_draw_frame = -1,
+    chaos_round_seen = -1,
+    chaos_warp_at = -1,
+    chaos_spectator_warped = false,
+    floor_frames = 0,
+    slip_speed = 0,
+    modifier_tick = -1,
+    modifier_start_frame = 0,
+    modifier_ready_key = nil,
+    idle_frames = 0,
+    jump_cooldown_frames = 0,
+    done_lock = false,
+    boss_round_seen = 0,
+    boss_warp_at = -1,
+    boss_hazard_seq = 0,
+    boss_stun_frames = 0,
+    boss_damage_lock = 0,
+    pending_double_waves = {},
+    pending_meteors = {},
+    goal_id = 0,
+    goal_warp_at = -1,
+    death_lock = false,
+    death_warp_pending = false,
+    star_visibility_next = 0,
+    rejected_stars = {},
+    hidden_stars = {},
+    hidden_players = {},
+}
+
+-- Bounds a value, used wherever a synchronized field or a menu index has to be
+-- trusted from elsewhere. In core because it has no dependencies and callers
+-- end up in most modules.
+local function clamp(value, low, high)
+    if value < low then return low end
+    if value > high then return high end
+    return value
+end
+
 -- Every modifier in the mod is this shape: a kind that selects the effect, a
 -- value the effect reads, and the label shown on the HUD. The constructor is
 -- here rather than with the modifier code because the goal catalog, the audit
@@ -40,6 +109,8 @@ end
 
 return {
     Team = Team,
+    local_runtime = local_runtime,
+    clamp = clamp,
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
     modifier = modifier,
     is_round_active = is_round_active,

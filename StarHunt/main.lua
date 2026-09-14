@@ -27,6 +27,8 @@ gServerSettings.skipIntro = 1
 local CASTLE_LOWERED_MOAT = -450
 
 local Team = core.Team
+local local_runtime = core.local_runtime
+local clamp = core.clamp
 local translated = require("modules/i18n").translated
 local is_round_active = core.is_round_active
 local modifier = core.modifier
@@ -197,62 +199,6 @@ local local_starhunt_added_flags = 0
 local local_power_original_timer = 0
 local host_previous_player_interactions = nil
 local host_previous_pvp_type = nil
-local local_runtime = {
-    last_move_x = nil,
-    last_move_z = nil,
-    wind_tick = -1,
-    freeze_tick = -1,
-    freeze_frames = 0,
-    freeze_yaw = nil,
-    last_coin_count = nil,
-    coin_leak_tick = -1,
-    momentum_tick = -1,
-    overheat_frames = 0,
-    menu_freeze_x = nil,
-    menu_freeze_y = nil,
-    menu_freeze_z = nil,
-    power_external_timer = 0,
-    power_original_head = false,
-    lives_before_round = nil,
-    native_hud_was_hidden = nil,
-    dnc_compat_registered = false,
-    widdlepets_compat_registered = false,
-    gun_mod_compat_original = nil,
-    gun_mod_compat_wrapper = nil,
-    darkness_draw_frame = -1,
-    chaos_round_seen = -1,
-    chaos_warp_at = -1,
-    chaos_spectator_warped = false,
-    floor_frames = 0,
-    slip_speed = 0,
-    modifier_tick = -1,
-    modifier_start_frame = 0,
-    modifier_ready_key = nil,
-    idle_frames = 0,
-    jump_cooldown_frames = 0,
-    done_lock = false,
-    boss_round_seen = 0,
-    boss_warp_at = -1,
-    boss_hazard_seq = 0,
-    boss_stun_frames = 0,
-    boss_damage_lock = 0,
-    pending_double_waves = {},
-    pending_meteors = {},
-    goal_id = 0,
-    goal_warp_at = -1,
-    death_lock = false,
-    death_warp_pending = false,
-    star_visibility_next = 0,
-    rejected_stars = {},
-    hidden_stars = {},
-    hidden_players = {},
-}
-
-local function clamp(value, low, high)
-    if value < low then return low end
-    if value > high then return high end
-    return value
-end
 
 
 local function selected_mode()
@@ -3992,6 +3938,7 @@ end
 if rawget(_G, "STARHUNT_TEST_MODE") then
     STARHUNT_TEST_API = {
         goals = GOALS,
+        runtime = local_runtime,
         translated = translated,
         language_codes = Team.language_codes,
         language_names = Team.language_names,
