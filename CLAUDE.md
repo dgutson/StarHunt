@@ -24,18 +24,24 @@ changes. Treat a request for a new feature as a question worth raising before im
 `DEVELOPMENT_CHECKLIST.md` defines a process that is mandatory before editing `main.lua`, and
 past sessions have followed it. In short:
 
-1. Write the requested change under `Cambios pendientes` in `DEVELOPMENT_CHECKLIST.md`.
-2. Find the affected system in the `Mapa del código` table there.
+1. Write the requested change as a `ROADMAP.md` item, with What / Why / Outcome.
+2. Find the affected system in the `Mapa del código` table in `DEVELOPMENT_CHECKLIST.md`.
 3. Read `Errores ya encontrados y solución que no se debe deshacer` first — that table lists
    bugs already fixed and the fix that must not be undone. Several look like redundant code and
    are not.
-4. Add or change a case in the load test **before** installing.
+4. Add or change a case in `test/` **before** installing.
 5. Run the syntax check and the full test.
-6. Record the outcome in `CHANGELOG.md`, `PROJECT_STATUS.md` and the checklist's history tables.
+6. Record the outcome: delete the item from `ROADMAP.md`, add what actually happened to
+   `HISTORY.md`, and update `CHANGELOG.md` if the change is user-facing.
 
-`PROJECT_STATUS.md` and `DEVELOPMENT_CHECKLIST.md` both record the SHA-256 of `main.lua`
-(currently `EBC76DBE…A906B883`, and it matches). Any edit invalidates it; recompute with
-`sha256sum StarHunt/main.lua` and update both documents.
+A change that only **moves** code carries three extra obligations — byte-identity proven in
+both directions, a mutation check on the moved code, and a re-diff against the original
+immediately before committing. `DEVELOPMENT_CHECKLIST.md` states them; `REFACTOR_PLAN.md`
+explains how.
+
+`PROJECT_STATUS.md` records the SHA-256 of the released `main.lua`
+(`EBC76DBE…A906B883`). It describes what shipped as v1.1, so it is **not** updated per commit
+on the refactor branch; it is reconciled once, at merge (roadmap item R-011).
 
 ## Commands
 
@@ -225,5 +231,30 @@ modifier and Boss strings live in `Team.ui_translations`, `Team.modifier_transla
 - `CHANGELOG.md` — user-facing description of v1.1 and its maintenance updates (Spanish).
 - `PROJECT_STATUS.md` — closure statement, final hash, what validation does *not* cover.
 - `DEVELOPMENT_CHECKLIST.md` — the required process, the code map, and the do-not-undo table.
+  Live rules only; its version history was moved to `HISTORY.md`.
 - `BALANCE_AUDIT.md` — the audit's four stages, per-difficulty guarantees and numeric limits
   (English).
+- `REFACTOR_PLAN.md` — how to split `main.lua` into modules correctly: the shared-state rule,
+  the engine's `require` behaviour, the verification discipline and the known traps. Method
+  only; progress lives in `ROADMAP.md` and `HISTORY.md`.
+
+These documents are kept small on purpose. Finished work is moved into `HISTORY.md` rather
+than accumulating in the document that describes what is still to do — every line of a
+document read at the start of a session costs context on every future session.
+
+## Roadmap
+
+This repo is governed by ROADMAP.md (pending work) and HISTORY.md (completed work).
+
+- **Start here for context.** ROADMAP.md is the durable record of work that is established
+  but unfinished. Read it rather than reconstructing the state of play from git history,
+  old conversations, or a sweep of the code.
+- Items are grouped **Now / Next / Later**. To choose what to work on, take the first item
+  under the earliest horizon whose **Blocked-by** entries are no longer present in the file.
+- When you finish an item: delete it from ROADMAP.md, add a line under today's date at the
+  top of HISTORY.md recording the outcome **actually** achieved, and drop its ID from the
+  **Blocked-by** list of every item it was blocking.
+- When **Now** empties, promote the readiest items from **Next**, so the file keeps
+  answering "what should I be doing" rather than going quiet.
+- ROADMAP.md holds pending work only. Never mark an item done in place — removal is what
+  "done" means here.
