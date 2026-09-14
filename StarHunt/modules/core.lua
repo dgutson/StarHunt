@@ -21,4 +21,16 @@ local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
     manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
-return { Team = Team, FRAMES_PER_SECOND = FRAMES_PER_SECOND }
+-- Whether a StarHunt round is running. This is a read of synchronized state, so
+-- it gives the same answer on the host and on every client. It lives here
+-- because almost every module asks it: it is the most referenced function in
+-- the mod.
+local function is_round_active()
+    return gGlobalSyncTable.sh5_active == 1
+end
+
+return {
+    Team = Team,
+    FRAMES_PER_SECOND = FRAMES_PER_SECOND,
+    is_round_active = is_round_active,
+}

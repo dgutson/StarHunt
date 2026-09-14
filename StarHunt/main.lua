@@ -28,6 +28,7 @@ local CASTLE_LOWERED_MOAT = -450
 
 local Team = core.Team
 local translated = require("modules/i18n").translated
+local is_round_active = core.is_round_active
 local TEAM_SCORE_PRIORITY_GAP = 2
 local BOSS_HEALTH = 5
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
@@ -951,9 +952,6 @@ local function clamp(value, low, high)
     return value
 end
 
-local function is_round_active()
-    return gGlobalSyncTable.sh5_active == 1
-end
 
 local function selected_mode()
     local mode = gGlobalSyncTable.sh5_mode
