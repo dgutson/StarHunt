@@ -198,7 +198,6 @@ local local_moat_refresh_at = 0
 local local_lakitu_scan_at = 0
 Team.lifetime = math.max(0, math.floor(tonumber(
     mod_storage_load("starhunt_lifetime_stars")) or 0))
-local config_open = false
 local config_selection = 1
 local config_button_latch = 0
 local config_stick_latched = false
@@ -1454,7 +1453,7 @@ Team.apply_one_local_modifier = function(m)
     if Team.is_chaos_mode() and (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1 then return end
     -- The configuration menu owns the controller completely. No challenge
     -- may remap or consume A/B, the stick, or the close button before it.
-    if config_open then return end
+    if local_runtime.config_open then return end
     local modifier_data = Team.modifier_override or get_local_modifier()
     if modifier_data == nil then return end
     local ready_key
@@ -1784,7 +1783,7 @@ end
 -- only idempotent limits here: effects such as gravity, turbo, slippery
 -- movement and remapped controls must never be applied twice in one frame.
 Team.apply_post_moveset_limits = function(m)
-    if m.playerIndex ~= 0 or config_open or not is_round_active() then return end
+    if m.playerIndex ~= 0 or local_runtime.config_open or not is_round_active() then return end
     if is_boss_mode() then
         if gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then return end
     elseif Team.is_chaos_mode() then
@@ -2148,7 +2147,7 @@ local function apply_boss_hazards(m)
 
     if local_runtime.boss_stun_frames > 0 then
         local_runtime.boss_stun_frames = local_runtime.boss_stun_frames - 1
-        if not config_open then
+        if not local_runtime.config_open then
             m.controller.buttonDown = 0
             m.controller.buttonPressed = 0
             m.controller.stickX = 0
@@ -2605,9 +2604,9 @@ end
 
 Team.set_config_menu_open = function(opening)
     opening = opening and true or false
-    local changed = config_open ~= opening
+    local changed = local_runtime.config_open ~= opening
     if opening and changed then Team.close_widdlepets_menu() end
-    config_open = opening
+    local_runtime.config_open = opening
     if opening and changed then
         config_selection = clamp(config_selection, 1, config_option_count())
         config_button_latch = 0
@@ -2619,11 +2618,11 @@ Team.set_config_menu_open = function(opening)
 end
 
 local function open_config_menu()
-    if config_open and not is_round_active() then
+    if local_runtime.config_open and not is_round_active() then
         Team.close_widdlepets_menu()
         return
     end
-    Team.set_config_menu_open(not config_open)
+    Team.set_config_menu_open(not local_runtime.config_open)
 end
 
 Team.update_config_menu_lock = function()
@@ -2655,7 +2654,7 @@ end
 
 Team.freeze_menu_mario = function(m)
     if m.playerIndex ~= 0 then return end
-    if not config_open then
+    if not local_runtime.config_open then
         local_runtime.menu_freeze_x = nil
         local_runtime.menu_freeze_y = nil
         local_runtime.menu_freeze_z = nil
@@ -2689,7 +2688,7 @@ Team.freeze_menu_mario = function(m)
 end
 
 local function update_config_input(m)
-    if m.playerIndex ~= 0 or not config_open then return end
+    if m.playerIndex ~= 0 or not local_runtime.config_open then return end
     local held = m.controller.buttonDown
     local pressed = held & ~config_button_latch
     config_button_latch = held
@@ -2789,7 +2788,7 @@ local function update_config_input(m)
     m.vel.y = 0
     m.vel.z = 0
     if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
-    if config_open then Team.freeze_menu_mario(m) end
+    if local_runtime.config_open then Team.freeze_menu_mario(m) end
 end
 
 local function on_death(m)
@@ -3013,7 +3012,7 @@ local function draw_start_banner()
 end
 
 local function draw_config_menu()
-    if not config_open then return end
+    if not local_runtime.config_open then return end
     local width = djui_hud_get_screen_width()
     local height = djui_hud_get_screen_height()
     local box_w, box_h = 270, network_is_server() and 192 or 108
@@ -3449,7 +3448,7 @@ Team.register_mod_compatibility = function()
     if not local_runtime.widdlepets_compat_registered then
         local pets = rawget(_G, "wpets")
         if type(pets) == "table" and type(pets.hook_allow_menu) == "function" then
-            pets.hook_allow_menu(function() return not config_open end)
+            pets.hook_allow_menu(function() return not local_runtime.config_open end)
             local_runtime.widdlepets_compat_registered = true
         end
     end
@@ -3674,7 +3673,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         update_config_menu_lock = Team.update_config_menu_lock,
         manual_reroll_cooldown = Team.manualRerollCooldown,
         toggle_menu = open_config_menu,
-        is_menu_open = function() return config_open end,
+        is_menu_open = function() return local_runtime.config_open end,
         set_language = function(value)
             Team.language = clamp(math.floor(value or 0), 0, #Team.language_codes - 1)
         end,

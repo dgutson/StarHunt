@@ -41,6 +41,7 @@ local local_runtime = {
     coin_leak_tick = -1,
     momentum_tick = -1,
     overheat_frames = 0,
+    config_open = false,
     menu_freeze_x = nil,
     menu_freeze_y = nil,
     menu_freeze_z = nil,

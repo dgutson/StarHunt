@@ -109,7 +109,7 @@ return function(t, harness)
         -- first round: done_lock stops the goal being completed, death_lock
         -- stops the death warp.
         for _, field in ipairs({
-            "done_lock", "death_lock", "death_warp_pending",
+            "done_lock", "death_lock", "death_warp_pending", "config_open",
             "chaos_spectator_warped", "power_original_head",
             "dnc_compat_registered", "widdlepets_compat_registered",
         }) do
