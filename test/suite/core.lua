@@ -11,6 +11,36 @@ return function(t, harness)
     local api = harness.load()
     local rt = api.runtime
 
+    s.test("exactly one mode predicate answers true in each mode", function()
+        -- Four one-line predicates over selected_mode(). Nothing else in the
+        -- suite tells them apart, so is_mode() answering for Chaos -- or
+        -- is_chaos_mode() answering always -- went unnoticed: the gates that
+        -- read them (team scoring, palettes, PvP rules, the Chaos round loop)
+        -- are each exercised in only one mode.
+        local by_mode = {
+            [api.normal_mode] = "normal",
+            [api.boss_mode] = "boss",
+            [api.team_mode] = "team",
+            [api.chaos_mode] = "chaos",
+        }
+        for mode, name in pairs(by_mode) do
+            gGlobalSyncTable.sh5_mode = mode
+            t.eq(api.selected_mode(), mode, name .. " mode was not kept")
+            t.eq(api.is_boss_mode(), name == "boss", "is_boss_mode in " .. name)
+            t.eq(api.is_team_mode(), name == "team", "is_mode in " .. name)
+            t.eq(api.is_chaos_mode(), name == "chaos", "is_chaos_mode in " .. name)
+        end
+    end)
+
+    s.test("an unrecognised mode falls back to Normal", function()
+        for _, bogus in ipairs({ -1, 4, 99 }) do
+            gGlobalSyncTable.sh5_mode = bogus
+            t.eq(api.selected_mode(), api.normal_mode,
+                "mode " .. bogus .. " should have fallen back to Normal")
+        end
+        gGlobalSyncTable.sh5_mode = api.normal_mode
+    end)
+
     s.test("another module sees the same runtime table, not a copy of it", function()
         -- The whole split rests on this. `local x = other.x` copies the value,
         -- so a module that took a copy of a table would keep writing into its

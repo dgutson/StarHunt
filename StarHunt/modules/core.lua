@@ -99,6 +99,32 @@ local function modifier(kind, value, label)
     return { kind = kind, value = value, label = label }
 end
 
+-- Which of the four modes is selected, and the three predicates over it.
+--
+-- The plan's appendix scattered these across team, boss and chaos, one
+-- one-line predicate each. They sit here together instead: they are read from
+-- almost every module (29 and 31 uses for the Boss and Chaos ones alone),
+-- splitting four one-liners across three modules buys nothing, and
+-- selected_mode falls back to Normal for any unrecognised value, which is the
+-- behaviour all three inherit.
+local function selected_mode()
+    local mode = gGlobalSyncTable.sh5_mode
+    if mode == Team.BOSS or mode == Team.MODE or mode == Team.CHAOS then return mode end
+    return Team.NORMAL
+end
+
+local function is_boss_mode()
+    return selected_mode() == Team.BOSS
+end
+
+Team.is_mode = function()
+    return selected_mode() == Team.MODE
+end
+
+Team.is_chaos_mode = function()
+    return selected_mode() == Team.CHAOS
+end
+
 -- Whether a StarHunt round is running. This is a read of synchronized state, so
 -- it gives the same answer on the host and on every client. It lives here
 -- because almost every module asks it: it is the most referenced function in
@@ -114,4 +140,6 @@ return {
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
     modifier = modifier,
     is_round_active = is_round_active,
+    selected_mode = selected_mode,
+    is_boss_mode = is_boss_mode,
 }

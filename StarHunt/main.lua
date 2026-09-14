@@ -31,6 +31,8 @@ local local_runtime = core.local_runtime
 local clamp = core.clamp
 local translated = require("modules/i18n").translated
 local is_round_active = core.is_round_active
+local selected_mode = core.selected_mode
+local is_boss_mode = core.is_boss_mode
 local modifier = core.modifier
 local save = require("modules/save")
 local remove_starhunt_save_flag = save.remove_starhunt_save_flag
@@ -201,24 +203,6 @@ local local_power_original_timer = 0
 local host_previous_player_interactions = nil
 local host_previous_pvp_type = nil
 
-
-local function selected_mode()
-    local mode = gGlobalSyncTable.sh5_mode
-    if mode == Team.BOSS or mode == Team.MODE or mode == Team.CHAOS then return mode end
-    return Team.NORMAL
-end
-
-local function is_boss_mode()
-    return selected_mode() == Team.BOSS
-end
-
-Team.is_mode = function()
-    return selected_mode() == Team.MODE
-end
-
-Team.is_chaos_mode = function()
-    return selected_mode() == Team.CHAOS
-end
 
 Team.boss_health_for_difficulty = function()
     local values = { 3, BOSS_HEALTH, 7, 9 }
@@ -3913,10 +3897,14 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         flush_save_removals = flush_starhunt_save_removals,
         goal_already_collected = goal_already_collected,
         selected_mode = selected_mode,
+        is_boss_mode = is_boss_mode,
+        is_team_mode = Team.is_mode,
+        is_chaos_mode = Team.is_chaos_mode,
         selected_difficulty = Team.selected_difficulty,
         effective_modifier = Team.effective_modifier,
         effective_modifier_for_goal = Team.effective_modifier_for_goal,
         periodic_window = Team.periodic_window,
+        normal_mode = Team.NORMAL,
         boss_mode = Team.BOSS,
         team_mode = Team.MODE,
         chaos_mode = Team.CHAOS,
