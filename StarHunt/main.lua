@@ -41,6 +41,7 @@ local goal_world_text = goals.goal_world_text
 local goal_title_text = goals.goal_title_text
 local goal_matches_player_area = goals.goal_matches_player_area
 local goal_matches_star_object = goals.goal_matches_star_object
+local apply_goal_power = goals.apply_goal_power
 local players_have_private_variant = goals.players_have_private_variant
 local players_can_share_world = goals.players_can_share_world
 local audit = require("modules/audit")
@@ -139,10 +140,6 @@ local local_boss_health_object = nil
 local local_boss_health_initialized = false
 local local_boss_health_last_value = nil
 local local_boss_health_report_at = 0
-local STARHUNT_SPECIAL_CAP_MASK = MARIO_WING_CAP | MARIO_METAL_CAP | MARIO_VANISH_CAP
-local local_starhunt_power = nil
-local local_starhunt_added_flags = 0
-local local_power_original_timer = 0
 
 
 Team.update_lifetime_sync = function()
@@ -396,64 +393,6 @@ Team.host_update_chaos_round = function()
         gGlobalSyncTable.sh5_chaos_winner = alive_count == 1 and alive_name or "Nobody"
         host_end_round("chaos last standing")
     end
-end
-
-local function power_flags(power)
-    if power == "wing" then return MARIO_WING_CAP end
-    if power == "metal" then return MARIO_METAL_CAP end
-    if power == "vanish" then return MARIO_VANISH_CAP end
-    if power == "metal_vanish" then return MARIO_METAL_CAP | MARIO_VANISH_CAP end
-    return 0
-end
-
-local function restore_starhunt_power(m)
-    if local_starhunt_power == nil then return end
-    local external_special = m.flags & STARHUNT_SPECIAL_CAP_MASK & ~local_starhunt_added_flags
-    local flags_to_remove = local_starhunt_added_flags
-    -- If another mod refreshed the same cap with a finite timer while
-    -- StarHunt owned it, that cap is no longer ours to remove.
-    if local_runtime.power_external_timer > local_power_original_timer and external_special == 0 then
-        flags_to_remove = 0
-    end
-    m.flags = m.flags & ~flags_to_remove
-    if not local_runtime.power_original_head and (m.flags & STARHUNT_SPECIAL_CAP_MASK) == 0 then
-        m.flags = m.flags & ~MARIO_CAP_ON_HEAD
-    end
-    if m.capTimer == 0x7FFF then
-        m.capTimer = math.max(local_power_original_timer, local_runtime.power_external_timer)
-    end
-    local_starhunt_power = nil
-    local_starhunt_added_flags = 0
-    local_power_original_timer = 0
-    local_runtime.power_external_timer = 0
-    local_runtime.power_original_head = false
-end
-
-local function apply_goal_power(m)
-    if m.playerIndex ~= 0 then return end
-    local goal = is_round_active() and not is_boss_mode() and get_local_goal() or nil
-    if goal ~= nil and not goal_matches_player_area(goal, 0) then goal = nil end
-    local desired = goal ~= nil and goal.power or nil
-
-    if desired ~= local_starhunt_power then
-        restore_starhunt_power(m)
-        if desired ~= nil then
-            local_power_original_timer = m.capTimer
-            local_runtime.power_external_timer = m.capTimer
-            local_runtime.power_original_head = (m.flags & MARIO_CAP_ON_HEAD) ~= 0
-            local_starhunt_added_flags = power_flags(desired) & ~m.flags
-            local_starhunt_power = desired
-        end
-    end
-    if local_starhunt_power == nil then return end
-
-    if m.capTimer ~= 0x7FFF and m.capTimer > local_runtime.power_external_timer then
-        local_runtime.power_external_timer = m.capTimer
-    end
-    -- Add the required power without deleting special flags supplied by OMM,
-    -- Character Select, or another compatible moveset.
-    m.flags = m.flags | power_flags(local_starhunt_power) | MARIO_CAP_ON_HEAD
-    m.capTimer = 0x7FFF
 end
 
 local function local_goal_warp_update(m)

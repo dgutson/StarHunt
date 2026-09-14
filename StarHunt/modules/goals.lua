@@ -19,6 +19,8 @@ local translated = require("i18n").translated
 local core = require("core")
 local Team = core.Team
 local is_round_active = core.is_round_active
+local is_boss_mode = core.is_boss_mode
+local local_runtime = core.local_runtime
 
 local WORLD_NAMES = {
     [LEVEL_BOB] = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
@@ -632,6 +634,79 @@ local function players_can_share_world(a, b)
     end
     return not players_have_private_variant(a, b)
 end
+
+-- Required caps: the `power` a goal asks for (Wing, Metal, Vanish or both of
+-- the last two).  StarHunt grants it while the player is inside that goal's
+-- level and area and gives the cap state back exactly as it found it.
+--
+-- That handing-back is a fix listed in DEVELOPMENT_CHECKLIST.md as one that
+-- must not be undone: only the flags StarHunt itself added are ever removed,
+-- and if another mod refreshed the same cap while StarHunt held it, the cap is
+-- left alone.  Caps from OMM, Character Select or another moveset therefore
+-- survive a round instead of being cleared by a blanket reset.
+local STARHUNT_SPECIAL_CAP_MASK = MARIO_WING_CAP | MARIO_METAL_CAP | MARIO_VANISH_CAP
+local local_starhunt_power = nil
+local local_starhunt_added_flags = 0
+local local_power_original_timer = 0
+
+local function power_flags(power)
+    if power == "wing" then return MARIO_WING_CAP end
+    if power == "metal" then return MARIO_METAL_CAP end
+    if power == "vanish" then return MARIO_VANISH_CAP end
+    if power == "metal_vanish" then return MARIO_METAL_CAP | MARIO_VANISH_CAP end
+    return 0
+end
+
+local function restore_starhunt_power(m)
+    if local_starhunt_power == nil then return end
+    local external_special = m.flags & STARHUNT_SPECIAL_CAP_MASK & ~local_starhunt_added_flags
+    local flags_to_remove = local_starhunt_added_flags
+    -- If another mod refreshed the same cap with a finite timer while
+    -- StarHunt owned it, that cap is no longer ours to remove.
+    if local_runtime.power_external_timer > local_power_original_timer and external_special == 0 then
+        flags_to_remove = 0
+    end
+    m.flags = m.flags & ~flags_to_remove
+    if not local_runtime.power_original_head and (m.flags & STARHUNT_SPECIAL_CAP_MASK) == 0 then
+        m.flags = m.flags & ~MARIO_CAP_ON_HEAD
+    end
+    if m.capTimer == 0x7FFF then
+        m.capTimer = math.max(local_power_original_timer, local_runtime.power_external_timer)
+    end
+    local_starhunt_power = nil
+    local_starhunt_added_flags = 0
+    local_power_original_timer = 0
+    local_runtime.power_external_timer = 0
+    local_runtime.power_original_head = false
+end
+
+local function apply_goal_power(m)
+    if m.playerIndex ~= 0 then return end
+    local goal_data = is_round_active() and not is_boss_mode() and get_local_goal() or nil
+    if goal_data ~= nil and not goal_matches_player_area(goal_data, 0) then goal_data = nil end
+    local desired = goal_data ~= nil and goal_data.power or nil
+
+    if desired ~= local_starhunt_power then
+        restore_starhunt_power(m)
+        if desired ~= nil then
+            local_power_original_timer = m.capTimer
+            local_runtime.power_external_timer = m.capTimer
+            local_runtime.power_original_head = (m.flags & MARIO_CAP_ON_HEAD) ~= 0
+            local_starhunt_added_flags = power_flags(desired) & ~m.flags
+            local_starhunt_power = desired
+        end
+    end
+    if local_starhunt_power == nil then return end
+
+    if m.capTimer ~= 0x7FFF and m.capTimer > local_runtime.power_external_timer then
+        local_runtime.power_external_timer = m.capTimer
+    end
+    -- Add the required power without deleting special flags supplied by OMM,
+    -- Character Select, or another compatible moveset.
+    m.flags = m.flags | power_flags(local_starhunt_power) | MARIO_CAP_ON_HEAD
+    m.capTimer = 0x7FFF
+end
+
 return {
     GOALS = GOALS,
     players_have_private_variant = players_have_private_variant,
@@ -642,4 +717,5 @@ return {
     goal_title_text = goal_title_text,
     goal_matches_player_area = goal_matches_player_area,
     goal_matches_star_object = goal_matches_star_object,
+    apply_goal_power = apply_goal_power,
 }
