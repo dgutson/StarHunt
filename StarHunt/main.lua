@@ -903,7 +903,6 @@ local STARHUNT_SPECIAL_CAP_MASK = MARIO_WING_CAP | MARIO_METAL_CAP | MARIO_VANIS
 local local_starhunt_power = nil
 local local_starhunt_added_flags = 0
 local local_power_original_timer = 0
-local local_star_visibility_next = 0
 local host_previous_player_interactions = nil
 local host_previous_pvp_type = nil
 local local_runtime = {
@@ -951,6 +950,10 @@ local local_runtime = {
     goal_warp_at = -1,
     death_lock = false,
     death_warp_pending = false,
+    star_visibility_next = 0,
+    rejected_stars = {},
+    hidden_stars = {},
+    hidden_players = {},
 }
 
 local function clamp(value, low, high)
@@ -3133,7 +3136,7 @@ local function local_goal_warp_update(m)
     if is_round_active() and current_goal_id ~= local_runtime.goal_id then
         local_runtime.goal_id = current_goal_id
         local_runtime.goal_warp_at = get_global_timer() + (local_runtime.death_warp_pending and 0 or NEXT_GOAL_DELAY)
-        local_star_visibility_next = 0
+        local_runtime.star_visibility_next = 0
         local_runtime.modifier_ready_key = nil
         reset_local_modifier_state()
     elseif not is_round_active() then
@@ -3495,7 +3498,6 @@ end
 -- A spawned star can receive later object-sync updates. Once the player has
 -- attempted an object that did not belong to the current goal, paying COIN
 -- TOLL must not turn that same rejected object into a valid target.
-local starhunt_rejected_stars = {}
 
 local function on_allow_interact(m, object, interaction)
     -- Do not delete doors, grates, or the cannon: their collision remains so
@@ -3528,7 +3530,7 @@ local function on_allow_interact(m, object, interaction)
     local round_id = gGlobalSyncTable.sh5_round or 0
     local goal = get_goal(goal_id)
     if goal == nil or object == nil then return false end
-    local rejected_by_player = starhunt_rejected_stars[object]
+    local rejected_by_player = local_runtime.rejected_stars[object]
     local rejection = rejected_by_player ~= nil and rejected_by_player[m.playerIndex] or nil
     if rejection ~= nil and rejection.goal == goal_id and rejection.round == round_id then
         return false
@@ -3536,7 +3538,7 @@ local function on_allow_interact(m, object, interaction)
     if not goal_matches_star_object(goal, object) then
         if rejected_by_player == nil then
             rejected_by_player = {}
-            starhunt_rejected_stars[object] = rejected_by_player
+            local_runtime.rejected_stars[object] = rejected_by_player
         end
         rejected_by_player[m.playerIndex] = {
             goal = goal_id,
@@ -3583,18 +3585,16 @@ end
 -- A wrong star should not be a visual distraction or a tempting fake goal.
 -- Track only flags that StarHunt itself added, so normal SM64 visibility is
 -- restored exactly when a round ends or the next goal loads.
-local starhunt_hidden_stars = {}
-local starhunt_hidden_players = {}
 local function reset_hidden_object_tracking()
-    starhunt_hidden_stars = {}
-    starhunt_rejected_stars = {}
-    starhunt_hidden_players = {}
-    local_star_visibility_next = 0
+    local_runtime.hidden_stars = {}
+    local_runtime.rejected_stars = {}
+    local_runtime.hidden_players = {}
+    local_runtime.star_visibility_next = 0
 end
 
 local function update_star_visibility()
-    if get_global_timer() < local_star_visibility_next then return end
-    local_star_visibility_next = get_global_timer() + 1
+    if get_global_timer() < local_runtime.star_visibility_next then return end
+    local_runtime.star_visibility_next = get_global_timer() + 1
     local goal = is_round_active() and not is_boss_mode() and get_local_goal() or nil
     local object = obj_get_first(OBJ_LIST_LEVEL)
     while object ~= nil do
@@ -3603,16 +3603,16 @@ local function update_star_visibility()
                 and goal_matches_star_object(goal, object)
                 and Team.all_coin_tolls_paid(gMarioStates[0])
             if goal ~= nil and not correct then
-                if starhunt_hidden_stars[object] == nil then
-                    starhunt_hidden_stars[object] =
+                if local_runtime.hidden_stars[object] == nil then
+                    local_runtime.hidden_stars[object] =
                         (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0
                 end
                 object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
-            elseif starhunt_hidden_stars[object] ~= nil then
-                if not starhunt_hidden_stars[object] then
+            elseif local_runtime.hidden_stars[object] ~= nil then
+                if not local_runtime.hidden_stars[object] then
                     object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
                 end
-                starhunt_hidden_stars[object] = nil
+                local_runtime.hidden_stars[object] = nil
             end
         end
         object = obj_get_next(object)
@@ -3790,9 +3790,9 @@ local function update_private_player_visibility()
         local object = mario ~= nil and mario.marioObj or nil
         local hide = gNetworkPlayers[i].connected and is_round_active()
             and players_have_private_variant(0, i)
-        local tracked = starhunt_hidden_players[i]
+        local tracked = local_runtime.hidden_players[i]
         if tracked ~= nil and tracked.object ~= object then
-            starhunt_hidden_players[i] = nil
+            local_runtime.hidden_players[i] = nil
             tracked = nil
         end
         if object ~= nil and hide then
@@ -3801,16 +3801,16 @@ local function update_private_player_visibility()
                     object = object,
                     was_invisible = (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0,
                 }
-                starhunt_hidden_players[i] = tracked
+                local_runtime.hidden_players[i] = tracked
             end
             object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
         elseif object ~= nil and tracked ~= nil then
             if not tracked.was_invisible then
                 object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
             end
-            starhunt_hidden_players[i] = nil
+            local_runtime.hidden_players[i] = nil
         elseif not gNetworkPlayers[i].connected then
-            starhunt_hidden_players[i] = nil
+            local_runtime.hidden_players[i] = nil
         end
     end
 end
