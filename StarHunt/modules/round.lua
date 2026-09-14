@@ -41,6 +41,7 @@ local clamp = core.clamp
 local is_round_active = core.is_round_active
 local selected_mode = core.selected_mode
 local is_boss_mode = core.is_boss_mode
+local player_record_key = core.player_record_key
 local translated = require("i18n").translated
 local save = require("save")
 local flush_starhunt_save_removals = save.flush_starhunt_save_removals
@@ -163,13 +164,6 @@ local function host_assign_goal(player_index, avoid_modifier_kind, avoid_level)
     sync.sh5_manual_reroll_ready_frame =
         get_global_timer() + Team.manualRerollCooldown
     return true
-end
-
-local function player_record_key(player_index)
-    local player = gNetworkPlayers[player_index]
-    if player == nil then return nil end
-    if player.globalIndex ~= nil then return "g:" .. tostring(player.globalIndex) end
-    return "slot:" .. tostring(player_index)
 end
 
 local function update_winner_candidate(name, score, best_score, winners)
@@ -929,7 +923,6 @@ end
 return {
     configured_time_range = configured_time_range,
     connected_player_count = connected_player_count,
-    player_record_key = player_record_key,
     host_start_round = host_start_round,
     host_end_round = host_end_round,
     host_update_round = host_update_round,

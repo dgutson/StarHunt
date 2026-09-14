@@ -38,6 +38,22 @@ local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
 -- to total the scores of players who have disconnected.
 Team.host_player_records = {}
 
+-- The stable key that names a player's entry in the table above. The global
+-- index survives a reconnect and a slot change, so it is preferred; the slot
+-- is only a fallback for a player the network has not given one to yet.
+--
+-- It sits here with the table it keys rather than in round.lua, where it used
+-- to live, because Team mode's score totals need it too and team.lua cannot
+-- require round.lua: modifiers.lua already requires team.lua for
+-- on_allow_pvp_attack, and round.lua requires modifiers.lua, so the import
+-- would close a cycle.
+local function player_record_key(player_index)
+    local player = gNetworkPlayers[player_index]
+    if player == nil then return nil end
+    if player.globalIndex ~= nil then return "g:" .. tostring(player.globalIndex) end
+    return "slot:" .. tostring(player_index)
+end
+
 -- Everything the local player's own frame-by-frame code needs to remember
 -- between frames. It is per-player and never synchronized: the host's copy says
 -- nothing about anyone else.
@@ -159,6 +175,7 @@ return {
     NEXT_GOAL_DELAY = NEXT_GOAL_DELAY,
     modifier = modifier,
     is_round_active = is_round_active,
+    player_record_key = player_record_key,
     selected_mode = selected_mode,
     is_boss_mode = is_boss_mode,
 }
