@@ -29,6 +29,7 @@ local CASTLE_LOWERED_MOAT = -450
 local Team = core.Team
 local translated = require("modules/i18n").translated
 local is_round_active = core.is_round_active
+local modifier = core.modifier
 local save = require("modules/save")
 local remove_starhunt_save_flag = save.remove_starhunt_save_flag
 local flush_starhunt_save_removals = save.flush_starhunt_save_removals
@@ -90,10 +91,6 @@ local MODIFIER_KINDS = {
     gravity_wave = true,
     overheat = true,
 }
-
-local function modifier(kind, value, label)
-    return { kind = kind, value = value, label = label }
-end
 
 -- Boss player modifiers never remove B: every Bowser must remain grabbable.
 local BOSS_PLAYER_MODIFIERS = {

@@ -21,6 +21,15 @@ local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
     manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
+-- Every modifier in the mod is this shape: a kind that selects the effect, a
+-- value the effect reads, and the label shown on the HUD. The constructor is
+-- here rather than with the modifier code because the goal catalog, the audit
+-- catalog and the Boss catalogs all build modifiers, and they end up in three
+-- different modules.
+local function modifier(kind, value, label)
+    return { kind = kind, value = value, label = label }
+end
+
 -- Whether a StarHunt round is running. This is a read of synchronized state, so
 -- it gives the same answer on the host and on every client. It lives here
 -- because almost every module asks it: it is the most referenced function in
@@ -32,5 +41,6 @@ end
 return {
     Team = Team,
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
+    modifier = modifier,
     is_round_active = is_round_active,
 }
