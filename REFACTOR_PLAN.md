@@ -8,7 +8,8 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Twelve of the thirteen modules are out; only `hud` remains. Nothing else in
+All thirteen modules now exist. `hud.lua` is the only one still unfinished, and it came out
+in one piece so far: its text layer and the native HUD's visibility. Nothing else in
 `main.lua` belongs to a module that exists. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
@@ -47,13 +48,35 @@ extracted was planned from a reference graph, not measured.
 `draw_config_menu` stays with the HUD, and that is now settled rather than open. It draws
 through `draw_hud_text` and `measure_hud_text`, and the HUD's `draw_hud` calls it back, so a
 `menu.lua` that owned it would be half of a require cycle. It reads `menu.lua`'s three option
-functions instead, which is the `hud -> menu` edge.
+functions instead, so the `hud -> menu` edge appears in the pass that moves it -- it does not
+exist yet, because `draw_config_menu` has not moved.
 
 The selection needed the migration step first, in its own commit: `config_selection` is
 **rebound** on every press and `draw_config_menu` reads it, so it joined `config_open` on
 `local_runtime`. `config_button_latch` and `config_stick_latched` are rebound too and were
 left alone, because nothing outside the menu reads them -- migrate what crosses a boundary,
 not every rebound local in the block.
+
+**`hud.lua` came out in two ranges and needs only `core`.** The first pass took the text
+layer -- `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
+`draw_centered_hud_text`, `Team.objective_text_max_width` and
+`Team.draw_scaled_centered_text` -- together with `apply_counter_visibility`,
+`update_native_hud_visibility`, `Team.draw_darkness_behind` and
+`hide_native_hud_before_render` -- eleven declarations in one contiguous block -- plus the two state locals
+`local_hud_flags_before_round` and `local_counter_round_active`, which sat with the other
+`local_*` declarations at the top of the file and are read nowhere but
+`apply_counter_visibility`. The scan named five dependencies and all five are in `core`, so
+the new file's only import is `core` -- no `i18n`, no `menu`, no `round`. Nothing requires
+`hud`, so it can import anything later.
+
+What is left of the HUD is the drawing that needs the rest: the start banner, the score,
+health, timer and objective panels, `draw_config_menu`, `draw_hud` itself,
+`local_round_notifications`, `modifier_text` and `Team.draw_gun_mod_hud_compatibility`.
+**The banner and the notifications have to move in the same pass**, because
+`local_round_notifications` rebinds `local_start_banner_until` and `draw_start_banner` reads
+it; either they travel together or that local is migrated onto `local_runtime` first, in its
+own commit, the way `config_selection` was. That is the one piece of sequencing this pass
+settled and the next one should not re-derive.
 
 ## The rule that makes the split safe
 
@@ -132,6 +155,7 @@ is gone.
    modifiers -> goals              so goals may not require modifiers
    goals     -> core, i18n, save, boss
    menu      -> core, i18n, round  so round may not require menu
+   hud       -> core               and nothing requires hud, so it may import anything
    ```
 
    That is why `run_static_modifier_checks` could not live in `goals.lua` even though it walks
@@ -161,8 +185,13 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **fifteen of the seventeen** passes so far. The config menu was the worst
-   of them: `update_config_input` -- every key a player can press -- was published in
+   coverage gap in **sixteen of the eighteen** passes so far. The HUD's text layer is the
+   worst of them by a wide margin: **77 of 80 mutations survived**, and the only three the
+   suite caught were caught by the colon tests. Four of its functions --
+   `counter_visibility`, `native_hud_visibility`, `hide_native_hud_before_render` and
+   `draw_darkness_behind` -- were published in `STARHUNT_TEST_API` and called by no test at
+   all, and five engine stubs made them unobservable even in principle. Before that the
+   config menu: `update_config_input` -- every key a player can press -- was published in
    `STARHUNT_TEST_API` and called by no test at all, and of 67 mutations 18 survived the first
    green run. Before that the Chaos round
    loop, which could be replaced with an empty body and 456 tests stayed green. Before that, the interaction
@@ -311,6 +340,17 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `host_prepare_player`, each write `sh5_chaos_eliminated` in the same breath. The `or 0` on
   `sh5_chaos_roster_locked` is unreachable because `host_start_round` writes it before any
   round can be active, and the loop runs only inside an active round.
+  The HUD's text layer produced three more out of 80, and all three are guards or seeds that
+  no reachable state reaches. `local_hud_flags_before_round` starts as `nil` and is released
+  back to `nil`, and the only expression that reads it,
+  `local_hud_flags_before_round or flags`, runs inside the `elseif local_counter_round_active`
+  branch -- and `local_counter_round_active` is only ever set true on the line straight after
+  the save, so neither the initial value nor the released one can be read. The `text_width > 0`
+  guard in `Team.draw_scaled_centered_text` protects a division by zero that needs a negative
+  `maximum_width` to reach, and every caller passes either a positive literal or
+  `Team.objective_text_max_width()`, which has a floor of 24. **Leave all three as they are**,
+  and note that the two `nil`s are the kind of clause worth keeping: they are cheap, and they
+  are what makes the read at the bottom safe if a later pass ever reorders those branches.
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
@@ -321,7 +361,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   command. Never read the target file while a sweep is running: it will show you a mutant and
   you will believe it.
 
-- **A generated engine stub can silently disable a guard. Ten now.** `test/engine_stub.lua`
+- **A generated engine stub can silently disable a guard. Seventeen now.** `test/engine_stub.lua`
   returns `nil` from most engine functions, which is right for a function whose return value
   nothing reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
   "hold this warp back while the level loads" guard could be deleted with no test noticing;
@@ -343,6 +383,17 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   spawns was the same size and the three attacks that scale theirs differently could not be
   told apart; and `atan2s` returned `nil`, which does not disable hunter fire but **crashes**
   it, because the attack adds `0x0800` to the yaw it reads. All three now have real bodies.
+  Seven more came with the HUD, and together they are the largest single case of this so far:
+  `hud_get_value` answered 0 for every display value, `hud_set_value` threw the write away,
+  and `hud_hide`, `hud_show` and `hud_is_hidden` were a no-op, a no-op and a constant `false`.
+  Between them they made the whole of `apply_counter_visibility` and
+  `update_native_hud_visibility` unobservable -- the star and coin counters StarHunt saves
+  before a round and restores after it could have been deleted outright, and so could the
+  code that gives the player back a native HUD they had hidden themselves. Tests now set
+  `ctl.hud.values` and `ctl.hud.hidden` and read the same two back. `djui_hud_render_rect`
+  discarded the rectangle's position and size, so a darkness rectangle ten pixels wide looked
+  exactly like one covering the screen, and `djui_hud_set_resolution` discarded the
+  resolution; both now record what they were given.
   **When a mutation survives, check whether the stub made the branch unreachable before
   concluding the test is wrong.**
 
@@ -374,13 +425,17 @@ graph (660 symbol-to-symbol edges among top-level declarations), cross-checked a
 community detection in the code graph. The communities the graph found on its own matched the
 planned layout closely.
 
-The one module left, as measured on the released file:
+The HUD, as measured on the released file, was 31 declarations and about 601 lines -- 30 of
+them really, since one of the 31 turned out to be a translation table that had gone to
+`i18n.lua` passes earlier. Thirteen of those declarations and 131 lines are now in
+`modules/hud.lua`; the rest is still in `main.lua`:
 
-| module | decls | ~lines |
-|---|---|---|
-| hud | 31 | 601 |
+| part of hud | decls | ~lines | where |
+|---|---|---|---|
+| text layer and native-HUD visibility | 13 | 131 | `modules/hud.lua` |
+| banner, panels, config menu, `draw_hud`, notifications | 17 | ~470 | `main.lua` |
 
-Its heaviest references to modules that are already out:
+The part still to move has the heavy couplings; the part that came out had none of them:
 
 ```
 hud   -> i18n       51
@@ -412,29 +467,20 @@ Two things to know when reading it:
   while the config menu is open, reads nothing from `modifiers`, and has no caller but the
   menu and the hook block.
 
-### `modules/hud.lua` — 31 declarations, ~601 lines
+### `modules/hud.lua` — 17 of its declarations are still in `main.lua`
+
+Thirteen came out in the first pass and are listed after the table. Everything below is still in
+`main.lua`; the line numbers are from the **released** file and are stale, so re-derive every
+range with grep.
 
 ```
-   13-13    local_var       START_BANNER_FRAMES
+   13-13    local_var       START_BANNER_FRAMES        (read by local_round_notifications)
   893-893   local_var       local_seen_round
   894-894   local_var       local_seen_result
-  898-898   local_var       local_start_banner_until
-  899-899   local_var       local_hud_flags_before_round
-  900-900   local_var       local_counter_round_active
- 1143-1148  table_function  Team.darkness_active
- 1157-1164  table_field     Team.menu_lock_labels
+  898-898   local_var       local_start_banner_until   REBOUND by local_round_notifications
+ 1143-1148  table_function  Team.darkness_active       (on Team; draw_darkness_behind already
+                                                        reads it from hud.lua by reference)
  1388-1446  local_function  modifier_text
- 4286-4290  local_function  format_remaining_time
- 4292-4305  local_function  measure_hud_text
- 4307-4329  local_function  draw_hud_text
- 4331-4334  local_function  draw_centered_hud_text
- 4336-4345  table_function  Team.objective_text_max_width
- 4347-4354  table_function  Team.draw_scaled_centered_text
- 4356-4379  local_function  apply_counter_visibility
- 4384-4384  local_var       native_hud_hidden
- 4385-4397  local_function  update_native_hud_visibility
- 4401-4411  table_function  Team.draw_darkness_behind
- 4413-4416  local_function  hide_native_hud_before_render
  4418-4429  local_function  draw_start_banner
  4431-4518  local_function  draw_config_menu
  4520-4527  table_function  Team.draw_hud_panel
@@ -447,6 +493,15 @@ Two things to know when reading it:
  4761-4780  local_function  draw_hud
  4782-4835  local_function  local_round_notifications
 ```
+
+Already in `modules/hud.lua`: `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
+`draw_centered_hud_text`, `Team.objective_text_max_width`, `Team.draw_scaled_centered_text`,
+`apply_counter_visibility`, `local_hud_flags_before_round`, `local_counter_round_active`,
+`native_hud_hidden`, `update_native_hud_visibility`, `Team.draw_darkness_behind` and
+`hide_native_hud_before_render`.
+
+One more seed artifact is now corrected: the appendix listed `Team.menu_lock_labels` under
+`hud`, and it is a translation table that went to `i18n.lua` several passes ago.
 
 ### Unassigned — 5 declarations, need a decision during extraction
 

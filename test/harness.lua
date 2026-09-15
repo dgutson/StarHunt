@@ -90,7 +90,10 @@ local function install_engine()
         chat_commands = {},
         menu_buttons = {},
         menu_renames = {},     -- every update_mod_menu_element_name call
-        hud = { text = {}, rects = 0, textures = 0, colors = {} },
+        -- values: the game's HUD display values, keyed by HUD_DISPLAY_*.
+        -- hidden: whether the native HUD is hidden, as hud_is_hidden reports it.
+        hud = { text = {}, rects = 0, textures = 0, colors = {},
+                values = {}, hidden = false },
         popups = {},
         chat = {},
         save = { removed = {}, saves = 0, star_flags = {} },
@@ -198,7 +201,14 @@ local function install_engine()
     function djui_hud_set_color(r, g, b, a)
         ctl.hud.colors[#ctl.hud.colors + 1] = { r = r, g = g, b = b, a = a }
     end
-    function djui_hud_render_rect() ctl.hud.rects = ctl.hud.rects + 1 end
+    -- The generated stub discarded the rectangle's position and size, so a
+    -- darkness rectangle ten pixels wide looked exactly like one covering the
+    -- screen.  Same for the resolution it is drawn in.
+    function djui_hud_render_rect(x, y, w, h)
+        ctl.hud.rects = ctl.hud.rects + 1
+        ctl.hud.last_rect = { x = x, y = y, w = w, h = h }
+    end
+    function djui_hud_set_resolution(resolution) ctl.hud.resolution = resolution end
     function djui_hud_render_texture() ctl.hud.textures = ctl.hud.textures + 1 end
 
     -- The popup's second argument is its height in lines.  Recording it keeps
@@ -233,8 +243,23 @@ local function install_engine()
     -- during a level transition could be deleted without any test noticing.
     function is_transition_playing() return ctl.transition end
 
-    function hud_is_hidden() return false end
-    function hud_get_value() return 0 end
+    -- All five of these were no-ops: the generated stub threw away every write
+    -- and the two hand-written readers answered with a constant.  That made the
+    -- whole of apply_counter_visibility and update_native_hud_visibility
+    -- unobservable -- the star/coin flags StarHunt saves before a round and
+    -- restores after it could be deleted with the suite still green.  A test
+    -- puts the player's starting HUD in ctl.hud.values and ctl.hud.hidden and
+    -- reads the same two back afterwards.
+    --- @return boolean
+    function hud_is_hidden() return ctl.hud.hidden end
+    --- @return integer
+    function hud_get_value(kind)
+        --- @diagnostic disable-next-line: return-type-mismatch
+        return ctl.hud.values[kind] or 0
+    end
+    function hud_set_value(kind, value) ctl.hud.values[kind] = value end
+    function hud_hide() ctl.hud.hidden = true end
+    function hud_show() ctl.hud.hidden = false end
 
     function get_behavior_from_id(id) return { id = id } end
     -- The generated stub returns nil here, which silently made the whole Boss

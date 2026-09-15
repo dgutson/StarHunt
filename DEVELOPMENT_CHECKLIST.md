@@ -68,7 +68,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |
 | Privacidad/PvP | Oculta jugadores con geometría o área incompatible | `modules/goals.lua` (`players_have_private_variant`, `players_can_share_world`) |
 | Lobby | Agua, puertas, Lakitu y retorno al castillo | `modules/goals.lua` (`on_allow_interact`); `modules/modifiers.lua` (`keep_moat_lowered`); `main.lua` (`remove_castle_lakitu`) |
-| HUD y menú | Marcadores, timer, salud, menú `/starhunt` | `modules/menu.lua` (opciones, selección y `/starhunt`); `main.lua` (`draw_hud`, `draw_player_health_bar`, `draw_config_menu`) |
+| HUD y menú | Marcadores, timer, salud, menú `/starhunt` | `modules/menu.lua` (opciones, selección y `/starhunt`); `modules/hud.lua` (`draw_hud_text`, `measure_hud_text`, contadores nativos y DARKNESS PULSE); `main.lua` (`draw_hud`, `draw_player_health_bar`, `draw_config_menu`) |
 | Autocomprobación | Revisa el catálogo y la matriz al cargar el mod | `modules/modifiers.lua` (`MODIFIER_KINDS`, `run_static_modifier_checks`) |
 | Compartido | `Team`, `local_runtime` y los ayudantes transversales | `modules/core.lua` (incluye `is_local_player_on_floor`, que usan los modificadores y los peligros del Boss) |
 

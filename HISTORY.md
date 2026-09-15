@@ -13,6 +13,63 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — `modules/hud.lua`, first pass: the text layer and the native HUD
+
+One commit. `main.lua` fell from 1,286 to **1,164** lines, `modules/hud.lua` arrived at
+**187**, and the suite went from 509 to **534** tests. All thirteen modules now exist. R-003
+is **not** finished and was rewritten to what is left: about 470 lines of drawing that needs
+the other modules.
+
+**Thirteen declarations moved, in two ranges, and the new file imports only `core`.** The
+text layer -- `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
+`draw_centered_hud_text`, `Team.objective_text_max_width`, `Team.draw_scaled_centered_text`
+-- came out with `apply_counter_visibility`, `update_native_hud_visibility`,
+`Team.draw_darkness_behind` and `hide_native_hud_before_render`, which are one contiguous
+block, plus `local_hud_flags_before_round` and `local_counter_round_active`, which sat with
+the other `local_*` declarations far above and are read nowhere else. `module_deps.py` named
+five dependencies and all five were in `core`, so there is no `i18n`, `menu` or `round` edge
+yet. Nothing requires `hud`, so it can import anything in a later pass.
+
+**Only part of the module could move, which is what the standing rule asks for.** The rest of
+the HUD needs sequencing this pass established and recorded: `local_round_notifications`
+rebinds `local_start_banner_until` and `draw_start_banner` reads it, so those two travel
+together or that local is migrated onto `local_runtime` first, in its own commit.
+
+**This was the worst-covered area in the whole refactor: 77 of 80 mutations survived.** The
+three the suite caught were caught by the colon tests that were already there. Four functions
+-- `counter_visibility`, `native_hud_visibility`, `hide_native_hud_before_render` and
+`draw_darkness_behind` -- were published in `STARHUNT_TEST_API` and called by no test at all,
+which is the third time that exact pattern has turned up.
+
+**Seven engine stubs were making the area unobservable even in principle**, the largest single
+case of that trap so far. `hud_get_value` answered 0 for every display value, `hud_set_value`
+threw the write away, and `hud_hide`, `hud_show` and `hud_is_hidden` were a no-op, a no-op and
+a constant `false`. Between them, the star and coin counters StarHunt saves before a round and
+restores after it could have been deleted outright, and so could the code that gives a player
+back a native HUD they had hidden themselves -- one of the behaviours `CLAUDE.md` lists as easy
+to break again. `djui_hud_render_rect` discarded the rectangle's position and size, so a
+darkness rectangle ten pixels wide looked identical to one covering the screen, and
+`djui_hud_set_resolution` discarded the resolution. All seven now have real bodies driven by
+`ctl.hud.values`, `ctl.hud.hidden`, `ctl.hud.last_rect` and `ctl.hud.resolution`.
+
+`test/suite/hud.lua` went from 81 lines and 6 tests to 425 and 31. The second sweep caught 77
+of the 80, each by the test written for it. One gap the first round of tests missed is worth
+keeping: the colon's two dots are drawn by two separate lines, and a test that pins only the
+upper dot's scale leaves the lower one free.
+
+**Three survivors are equivalent mutants and stay exactly as they are.**
+`local_hud_flags_before_round` starts as `nil` and is released back to `nil`, and the only
+read of it sits behind a flag that is set on the line straight after the save, so neither
+value can be reached. The `text_width > 0` guard in `Team.draw_scaled_centered_text` protects
+a division by zero that needs a negative box width, and every caller passes a positive literal
+or `Team.objective_text_max_width()`, whose floor is 24. The reasoning is in
+`REFACTOR_PLAN.md` so the next sweep does not redo it.
+
+Both byte-identity directions held, `main.lua` was reconstructed from the previous commit and
+matched exactly, and the ranges were re-diffed immediately before committing. The only text
+that is not a relocation is `hud.lua`'s header. 534 tests pass; luacheck stays at 2 warnings /
+0 errors, now over 41 files; lua-language-server at 10 problems in 2 files.
+
 ### 2026-09-15 — `modules/menu.lua`, out of order and ahead of `hud`
 
 Two commits. `main.lua` fell from 1,541 to **1,286** lines, `modules/menu.lua` arrived at
