@@ -8,9 +8,12 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-All thirteen modules now exist. `hud.lua` is the only one still unfinished, and it came out
-in one piece so far: its text layer and the native HUD's visibility. Nothing else in
-`main.lua` belongs to a module that exists. `round.lua` is finished: its client half
+All thirteen modules now exist. `hud.lua` is the only one still unfinished, and it has come
+out in two passes so far: its text layer and the native HUD's visibility first, then its
+picture layer -- `modifier_text`, the panel every card is built from, the health bar, the
+score/timer strip, the objective panel and the Gun Mod repaint. What is left of it is the
+start banner, the config menu's drawing, `draw_hud` itself and the round notifications.
+Nothing else in `main.lua` belongs to a module that exists. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
@@ -69,14 +72,22 @@ layer -- `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
 the new file's only import is `core` -- no `i18n`, no `menu`, no `round`. Nothing requires
 `hud`, so it can import anything later.
 
-What is left of the HUD is the drawing that needs the rest: the start banner, the score,
-health, timer and objective panels, `draw_config_menu`, `draw_hud` itself,
-`local_round_notifications`, `modifier_text` and `Team.draw_gun_mod_hud_compatibility`.
-**The banner and the notifications have to move in the same pass**, because
-`local_round_notifications` rebinds `local_start_banner_until` and `draw_start_banner` reads
-it; either they travel together or that local is migrated onto `local_runtime` first, in its
-own commit, the way `config_selection` was. That is the one piece of sequencing this pass
-settled and the next one should not re-derive.
+**The second pass took the picture layer and gave `hud.lua` its first imports.**
+`Team.darkness_active` and `modifier_text` came out together, and the panels --
+`Team.draw_hud_panel`, `Team.health_wedges`, `Team.health_color`, `draw_player_health_bar`,
+`Team.draw_round_status_panels`, `Team.draw_objective_panel` and
+`Team.draw_gun_mod_hud_compatibility` -- as one contiguous block below them. The scan named
+ten dependencies and every one was already imported by `main.lua` from a module that exists,
+so the file gained `i18n`, `goals` and `boss` alongside `core`, and no cycle: nothing
+requires `hud`. `main.lua`'s `local BOSS_MODIFIER_FIELDS` had no reader left afterwards and
+went with it.
+
+What is left of the HUD is the start banner, `draw_config_menu`, `draw_hud` itself and
+`local_round_notifications`. **The banner and the notifications have to move in the same
+pass**, because `local_round_notifications` rebinds `local_start_banner_until` and
+`draw_start_banner` reads it; either they travel together or that local is migrated onto
+`local_runtime` first, in its own commit, the way `config_selection` was. That is the one
+piece of sequencing the first pass settled and the next one should not re-derive.
 
 ## The rule that makes the split safe
 
@@ -155,7 +166,7 @@ is gone.
    modifiers -> goals              so goals may not require modifiers
    goals     -> core, i18n, save, boss
    menu      -> core, i18n, round  so round may not require menu
-   hud       -> core               and nothing requires hud, so it may import anything
+   hud       -> core, i18n, goals, boss   and nothing requires hud, so it may import anything
    ```
 
    That is why `run_static_modifier_checks` could not live in `goals.lua` even though it walks
@@ -185,8 +196,14 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **sixteen of the eighteen** passes so far. The HUD's text layer is the
-   worst of them by a wide margin: **77 of 80 mutations survived**, and the only three the
+   coverage gap in **seventeen of the nineteen** passes so far. The HUD's picture layer is
+   the worst of them by a wide margin: **500 of 507 mutations survived**, and the only seven
+   the suite caught were caught by the darkness and health-colour tests written for the pass
+   before it. Three more engine stubs were hiding it: `djui_hud_render_rect` kept only the
+   last rectangle and `djui_hud_render_texture` only a count, so a panel -- which is a stack
+   of rectangles -- could be moved, resized or recoloured unobserved, and `gTextures` was
+   empty, which put the star and the coin icons behind a guard no test could satisfy. Before
+   that its text layer: **77 of 80 mutations survived**, and the only three the
    suite caught were caught by the colon tests. Four of its functions --
    `counter_visibility`, `native_hud_visibility`, `hide_native_hud_before_render` and
    `draw_darkness_behind` -- were published in `STARHUNT_TEST_API` and called by no test at
@@ -340,6 +357,13 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `host_prepare_player`, each write `sh5_chaos_eliminated` in the same breath. The `or 0` on
   `sh5_chaos_roster_locked` is unreachable because `host_start_round` writes it before any
   round can be active, and the loop runs only inside an active round.
+  The HUD's picture layer produced four more out of 507, and all four are in one line:
+  `Team.health_wedges` is `clamp(math.floor(clamp(health or 0x880, 0, 0x880) / 0x100), 0, 8)`,
+  and the outer clamp, the inner clamp's own bounds and the `or 0x880` default overlap so
+  completely that raising any one of them changes nothing. Checked exhaustively rather than
+  argued: each of the four mutants agrees with the original on `nil` and on every integer
+  from -5,000 to 20,000. The redundancy is deliberate belt and braces around a health value
+  that arrives from the engine, so **leave all four exactly as they are**.
   The HUD's text layer produced three more out of 80, and all three are guards or seeds that
   no reachable state reaches. `local_hud_flags_before_round` starts as `nil` and is released
   back to `nil`, and the only expression that reads it,
@@ -467,38 +491,32 @@ Two things to know when reading it:
   while the config menu is open, reads nothing from `modifiers`, and has no caller but the
   menu and the hook block.
 
-### `modules/hud.lua` — 17 of its declarations are still in `main.lua`
+### `modules/hud.lua` — 8 of its declarations are still in `main.lua`
 
-Thirteen came out in the first pass and are listed after the table. Everything below is still in
-`main.lua`; the line numbers are from the **released** file and are stale, so re-derive every
-range with grep.
+Twenty-two came out in the first two passes and are listed after the table. Everything below
+is still in `main.lua`; the line numbers are from the **released** file and are stale, so
+re-derive every range with grep.
 
 ```
    13-13    local_var       START_BANNER_FRAMES        (read by local_round_notifications)
   893-893   local_var       local_seen_round
   894-894   local_var       local_seen_result
   898-898   local_var       local_start_banner_until   REBOUND by local_round_notifications
- 1143-1148  table_function  Team.darkness_active       (on Team; draw_darkness_behind already
-                                                        reads it from hud.lua by reference)
- 1388-1446  local_function  modifier_text
  4418-4429  local_function  draw_start_banner
  4431-4518  local_function  draw_config_menu
- 4520-4527  table_function  Team.draw_hud_panel
- 4529-4531  table_function  Team.health_wedges
- 4533-4537  table_function  Team.health_color
- 4539-4561  local_function  draw_player_health_bar
- 4563-4620  table_function  Team.draw_round_status_panels
- 4622-4713  table_function  Team.draw_objective_panel
- 4718-4759  table_function  Team.draw_gun_mod_hud_compatibility
  4761-4780  local_function  draw_hud
  4782-4835  local_function  local_round_notifications
 ```
 
-Already in `modules/hud.lua`: `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
-`draw_centered_hud_text`, `Team.objective_text_max_width`, `Team.draw_scaled_centered_text`,
+Already in `modules/hud.lua`, from the first pass: `format_remaining_time`,
+`measure_hud_text`, `draw_hud_text`, `draw_centered_hud_text`,
+`Team.objective_text_max_width`, `Team.draw_scaled_centered_text`,
 `apply_counter_visibility`, `local_hud_flags_before_round`, `local_counter_round_active`,
 `native_hud_hidden`, `update_native_hud_visibility`, `Team.draw_darkness_behind` and
-`hide_native_hud_before_render`.
+`hide_native_hud_before_render`; and from the second, `Team.darkness_active`,
+`modifier_text`, `Team.draw_hud_panel`, `Team.health_wedges`, `Team.health_color`,
+`draw_player_health_bar`, `Team.draw_round_status_panels`, `Team.draw_objective_panel` and
+`Team.draw_gun_mod_hud_compatibility`.
 
 One more seed artifact is now corrected: the appendix listed `Team.menu_lock_labels` under
 `hud`, and it is a translation table that went to `i18n.lua` several passes ago.

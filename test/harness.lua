@@ -92,7 +92,11 @@ local function install_engine()
         menu_renames = {},     -- every update_mod_menu_element_name call
         -- values: the game's HUD display values, keyed by HUD_DISPLAY_*.
         -- hidden: whether the native HUD is hidden, as hud_is_hidden reports it.
+        -- rect_calls and texture_calls keep every shape with the colour that
+        -- was in force when it was drawn, and each text call carries the same
+        -- colour, which is how a panel's layout can be pinned at all.
         hud = { text = {}, rects = 0, textures = 0, colors = {},
+                rect_calls = {}, texture_calls = {}, color = nil, font = nil,
                 values = {}, hidden = false },
         popups = {},
         chat = {},
@@ -195,21 +199,45 @@ local function install_engine()
     function djui_hud_get_screen_width() return ctl.screen.w end
     function djui_hud_get_screen_height() return ctl.screen.h end
     function djui_hud_measure_text(text) return #tostring(text) * 8 end
+    local function current_color()
+        local c = ctl.hud.color or {}
+        return c.r, c.g, c.b, c.a
+    end
     function djui_hud_print_text(text, x, y, scale)
-        table.insert(ctl.hud.text, { text = text, x = x, y = y, scale = scale })
+        local r, g, b, a = current_color()
+        table.insert(ctl.hud.text,
+            { text = text, x = x, y = y, scale = scale, r = r, g = g, b = b, a = a })
     end
     function djui_hud_set_color(r, g, b, a)
         ctl.hud.colors[#ctl.hud.colors + 1] = { r = r, g = g, b = b, a = a }
+        ctl.hud.color = { r = r, g = g, b = b, a = a }
     end
     -- The generated stub discarded the rectangle's position and size, so a
     -- darkness rectangle ten pixels wide looked exactly like one covering the
-    -- screen.  Same for the resolution it is drawn in.
+    -- screen.  Same for the resolution it is drawn in.  It also discarded the
+    -- texture's position and scale, and every panel in the HUD is a stack of
+    -- rectangles, so a panel could be moved or resized with nothing noticing.
     function djui_hud_render_rect(x, y, w, h)
         ctl.hud.rects = ctl.hud.rects + 1
         ctl.hud.last_rect = { x = x, y = y, w = w, h = h }
+        local r, g, b, a = current_color()
+        ctl.hud.rect_calls[#ctl.hud.rect_calls + 1] =
+            { x = x, y = y, w = w, h = h, r = r, g = g, b = b, a = a }
     end
     function djui_hud_set_resolution(resolution) ctl.hud.resolution = resolution end
-    function djui_hud_render_texture() ctl.hud.textures = ctl.hud.textures + 1 end
+    function djui_hud_set_font(font) ctl.hud.font = font end
+    function djui_hud_render_texture(texture, x, y, scale_x, scale_y)
+        ctl.hud.textures = ctl.hud.textures + 1
+        local r, g, b, a = current_color()
+        ctl.hud.texture_calls[#ctl.hud.texture_calls + 1] =
+            { texture = texture, x = x, y = y, scale_x = scale_x, scale_y = scale_y,
+              r = r, g = g, b = b, a = a }
+    end
+    -- The generated stub leaves gTextures empty, and the star and the coin the
+    -- status panel draws are both behind an `if gTextures.x ~= nil` guard, so
+    -- neither icon was reachable from a test at all.
+    gTextures.star = "TEX_STAR"
+    gTextures.coin = "TEX_COIN"
 
     -- The popup's second argument is its height in lines.  Recording it keeps
     -- a wrong value from being invisible to the suite.
@@ -386,6 +414,14 @@ function harness.load(setup)
     STARHUNT_TEST_API = nil
     for _, name in ipairs({ "gGlobalSyncTable", "gPlayerSyncTable", "gNetworkPlayers",
                             "gMarioStates", "gServerSettings", "gBehaviorValues", "gTextures" }) do
+        _G[name] = nil
+    end
+    -- StarHunt reaches other mods through rawget(_G, ...), so a test fakes one
+    -- by installing the global itself.  None of these is part of the engine
+    -- stub, so nothing else would ever clear them and a faked Gun Mod would
+    -- still be installed in every suite that ran afterwards.
+    for _, name in ipairs({ "gunModApi", "TEX_CROSSHAIR", "get_first_person_enabled",
+                            "is_game_paused", "id_bhvActSelector" }) do
         _G[name] = nil
     end
 

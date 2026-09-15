@@ -13,6 +13,54 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — `modules/hud.lua`, second pass: the picture layer
+
+One commit. `main.lua` fell from 1,164 to **857** lines, `modules/hud.lua` grew from 187 to
+**510**, and the suite went from 534 to **601** tests. R-003 is still **not** finished and was
+rewritten again: eight declarations and roughly 200 lines are left -- the start banner,
+`draw_config_menu`, `draw_hud` itself and the round notifications.
+
+**Nine declarations moved, in two ranges, and `hud.lua` gained its first imports.**
+`Team.darkness_active` and `modifier_text` came out together, and the panels --
+`Team.draw_hud_panel`, `Team.health_wedges`, `Team.health_color`, `draw_player_health_bar`,
+`Team.draw_round_status_panels`, `Team.draw_objective_panel` and
+`Team.draw_gun_mod_hud_compatibility` -- as one contiguous block. `module_deps.py` named ten
+dependencies and every one was already imported by `main.lua` from a module that exists, so
+the file now requires `i18n`, `goals` and `boss` as well as `core`, and there is still no
+cycle because nothing requires `hud`. `main.lua`'s `local BOSS_MODIFIER_FIELDS` had no reader
+left afterwards and went with it.
+
+**This was the worst-covered area in the whole refactor by a wide margin: 500 of 507
+mutations survived.** The seven the suite caught were caught by the darkness and
+health-colour tests written for the first pass. `modifier_text` -- every modifier's name in
+three languages -- was not published in `STARHUNT_TEST_API` at all, and neither was
+`Team.draw_hud_panel`; both were added. The whole picture layer could have been moved,
+resized, recoloured or deleted outright with the suite still green.
+
+**Three engine stubs were hiding it, the same trap as the pass before.**
+`djui_hud_render_rect` kept only the last rectangle and `djui_hud_render_texture` only a
+count, and every card in the HUD is a stack of rectangles, so a panel's position, size and
+colour were all invisible; `gTextures` was empty, which put the star and coin icons behind an
+`if gTextures.x ~= nil` guard no test could satisfy. `ctl.hud` now carries `rect_calls` and
+`texture_calls` with the colour in force at the time, each text call carries the same colour,
+`djui_hud_set_font` records what it was given, and `gTextures.star` and `gTextures.coin` have
+values. The harness also clears the five third-party globals a test installs to fake Gun Mod,
+which nothing else would ever have cleared.
+
+**A new suite, `test/suite/hud_panels.lua`, with 67 tests, brought the sweep to 503 of 507.**
+Every one of the 20 survivors of the first re-sweep was killed by a test written for it, and
+the "which test caught it" column was checked rather than the count alone. The four that are
+left are all in one line: `Team.health_wedges` clamps twice around a `math.floor`, and the
+bounds overlap so completely that raising any one of them changes nothing. That was settled
+exhaustively rather than argued -- each mutant agrees with the original on `nil` and on every
+integer from -5,000 to 20,000 -- and recorded in `REFACTOR_PLAN.md` so the next sweep does not
+re-investigate it. **Leave all four exactly as they are.**
+
+**Baselines held.** luacheck stayed at 2 warnings / 0 errors, and lua-language-server at 10
+problems in 2 files -- though the new suite first pushed it to 33, all of them `need-check-nil`
+on helpers whose nil branch ends in `t.fail`. The type checker does not know `t.fail` never
+returns; the helpers now end `return got or {}`, which says the same thing in a way it reads.
+
 ### 2026-09-15 — `modules/hud.lua`, first pass: the text layer and the native HUD
 
 One commit. `main.lua` fell from 1,286 to **1,164** lines, `modules/hud.lua` arrived at
