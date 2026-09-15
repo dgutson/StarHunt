@@ -23,6 +23,7 @@ local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local local_runtime = core.local_runtime
 local clamp = core.clamp
 local is_round_active = core.is_round_active
+local is_local_player_on_floor = core.is_local_player_on_floor
 local selected_mode = core.selected_mode
 local is_boss_mode = core.is_boss_mode
 local translated = require("i18n").translated
@@ -107,11 +108,6 @@ Team.local_modifier_of_kind = function(kind)
         if modifier_data.kind == kind then return modifier_data end
     end
     return nil
-end
-
-local function is_local_player_on_floor(m)
-    if m.floor == nil or (m.action & ACT_FLAG_SWIMMING) ~= 0 then return false end
-    return math.abs(m.pos.y - m.floorHeight) < 22
 end
 
 local function reset_local_modifier_state()
@@ -819,7 +815,6 @@ end
 -- file-local ones main.lua still needs: for its hook block, for its load-time
 -- self-check, and for the test API.
 return {
-    is_local_player_on_floor = is_local_player_on_floor,
     reset_local_modifier_state = reset_local_modifier_state,
     capped_horizontal_velocity = capped_horizontal_velocity,
     grant_infinite_lives = grant_infinite_lives,

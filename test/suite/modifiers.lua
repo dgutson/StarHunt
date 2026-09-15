@@ -235,4 +235,90 @@ return function(t, harness)
         t.eq(sx, 3, "a vector inside the cap was changed")
         t.eq(sz, 4, "a vector inside the cap was changed")
     end)
+
+    -- Whether the local player counts as standing on the ground.
+    --
+    -- Seven modifiers ask this before doing anything at all -- the cursed
+    -- floor, the jump limit, Slippery, Keep Moving, the jump cooldown, the
+    -- momentum burst and Overheat -- and so do Bowser's shockwaves. Nothing
+    -- tested it: the suite's Mario has no floor at all, so the answer was
+    -- always false and every one of those effects was being skipped. The
+    -- predicate could be replaced by `return true` with the suite still green.
+    --
+    -- The cursed floor is what these drive it through, because it is the one
+    -- caller that keeps a visible running count of the frames it accepted.
+
+    --- Place Mario `height` units above a floor, optionally swimming.
+    local function stand(m, height, swimming)
+        m.floor = {}
+        m.floorHeight = 0
+        m.pos.y = height
+        m.action = swimming and ACT_FLAG_SWIMMING or 0
+        m.health = 0x880
+    end
+
+    --- Run the cursed floor for a whole `seconds` worth of frames.
+    local function endure(api, m, seconds)
+        for _ = 1, seconds * 30 do api.modifier(m) end
+    end
+
+    s.test("standing on the ground is what the cursed floor counts", function()
+        local api, ctl = harness.load()
+        local doom = arm(api, ctl, "floor_doom")
+        local m = mario()
+        stand(m, 0, false)
+        endure(api, m, doom.value)
+        t.eq(m.health, 0, "the cursed floor never fired on a player stood on it")
+    end)
+
+    s.test("a player with no floor under them is not on the ground", function()
+        local api, ctl = harness.load()
+        local doom = arm(api, ctl, "floor_doom")
+        local m = mario()
+        m.health = 0x880
+        m.floor = nil          -- mid-air: the height below would say "on the floor"
+        m.floorHeight = 0
+        m.pos.y = 0
+        endure(api, m, doom.value * 2)
+        t.eq(m.health, 0x880, "the cursed floor fired on a player who was not on a floor")
+    end)
+
+    s.test("a swimming player is not on the ground", function()
+        local api, ctl = harness.load()
+        local doom = arm(api, ctl, "floor_doom")
+        local m = mario()
+        stand(m, 0, true)      -- standing on the sea bed is still swimming
+        endure(api, m, doom.value * 2)
+        t.eq(m.health, 0x880, "the cursed floor fired on a swimming player")
+    end)
+
+    s.test("the ground reaches 22 units up and no further", function()
+        -- The boundary is pinned at exactly 22, one unit either side. Reading
+        -- the tolerance back out of the mod would agree with whatever the mod
+        -- said it was.
+        local api, ctl = harness.load()
+        local doom = arm(api, ctl, "floor_doom")
+        local near = mario()
+        stand(near, 21, false)
+        endure(api, near, doom.value)
+        t.eq(near.health, 0, "21 units above the floor did not count as on it")
+
+        local api2, ctl2 = harness.load()
+        local doom2 = arm(api2, ctl2, "floor_doom")
+        local far = mario()
+        stand(far, 22, false)
+        endure(api2, far, doom2.value * 2)
+        t.eq(far.health, 0x880, "22 units above the floor counted as on it")
+    end)
+
+    s.test("a player below the floor is not standing on it", function()
+        -- The distance is an absolute one. Without that, everything under the
+        -- floor -- at any depth at all -- reads as standing on it.
+        local api, ctl = harness.load()
+        local doom = arm(api, ctl, "floor_doom")
+        local m = mario()
+        stand(m, -100, false)
+        endure(api, m, doom.value * 2)
+        t.eq(m.health, 0x880, "100 units below the floor counted as on it")
+    end)
 end

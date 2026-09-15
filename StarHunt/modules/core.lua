@@ -124,6 +124,16 @@ local function clamp(value, low, high)
     return value
 end
 
+-- Whether the local player is standing on the ground. It is a plain read of
+-- Mario's state with no modifier meaning of its own, and it sits here for the
+-- same reason player_record_key does: the Boss hazards need it and boss.lua
+-- cannot require modifiers.lua, where it used to live, because modifiers.lua
+-- already requires boss.lua for BOSS_PLAYER_MODIFIERS.
+local function is_local_player_on_floor(m)
+    if m.floor == nil or (m.action & ACT_FLAG_SWIMMING) ~= 0 then return false end
+    return math.abs(m.pos.y - m.floorHeight) < 22
+end
+
 -- Every modifier in the mod is this shape: a kind that selects the effect, a
 -- value the effect reads, and the label shown on the HUD. The constructor is
 -- here rather than with the modifier code because the goal catalog, the audit
@@ -171,6 +181,7 @@ return {
     Team = Team,
     local_runtime = local_runtime,
     clamp = clamp,
+    is_local_player_on_floor = is_local_player_on_floor,
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
     NEXT_GOAL_DELAY = NEXT_GOAL_DELAY,
     modifier = modifier,
