@@ -1238,6 +1238,164 @@ return function(t, harness)
     end)
 
     -- ---------------------------------------------------------------------
+    -- The Chaos round loop
+    -- ---------------------------------------------------------------------
+
+    -- Chaos has no star objective, so its round loop does only three things:
+    -- reroll everybody's modifiers, count who is still in, and end the round
+    -- when the roster is locked and at most one player is left. It lives here
+    -- rather than in chaos.lua because it calls the round's own host
+    -- functions, and this file already requires chaos.lua.
+    --
+    -- A Chaos round with `n` players connected, all enrolled, all alive and the
+    -- roster locked -- which is the state host_start_round leaves behind.
+    local function chaos_round(n)
+        local api, ctl = harness.load()
+        connect(n)
+        gGlobalSyncTable.sh5_mode = api.chaos_mode
+        api.host_start(15)
+        return api, ctl
+    end
+
+    -- host_start_round already seeds sh5_chaos_alive with the connected player
+    -- count, so a test where nobody has dropped out agrees with the loop even
+    -- when the loop never publishes anything. The tests that change the count
+    -- are the ones that prove it is published.
+    s.test("the loop counts every enrolled player who is still in", function()
+        local api = chaos_round(3)
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 3, "wrong number of survivors")
+        t.eq(gGlobalSyncTable.sh5_active, 1, "a round with three players left ended")
+    end)
+
+    s.test("the count reaches the very last player slot", function()
+        -- A full lobby. Slot 15 is the one a loop that stops a slot early
+        -- would drop, and slot 0 the one a loop starting at 1 would drop.
+        local api = chaos_round(16)
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 16, "the loop missed a player slot")
+    end)
+
+    s.test("an eliminated player is not counted as a survivor", function()
+        local api = chaos_round(3)
+        gPlayerSyncTable[1].sh5_chaos_eliminated = 1
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 2, "a dead player was still counted")
+    end)
+
+    s.test("a spectator is not counted as a survivor", function()
+        local api = chaos_round(3)
+        gPlayerSyncTable[1].sh5_enrolled = -1
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 2, "an unenrolled player was counted")
+    end)
+
+    s.test("a disconnected slot is not counted as a survivor", function()
+        local api = chaos_round(3)
+        gNetworkPlayers[2].connected = false
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 2, "a player who left was still counted")
+    end)
+
+    s.test("the loop enrols a player who arrives mid-round, as a spectator", function()
+        -- sh5_enrolled is deliberately left unset on the new slot: the loop
+        -- reads it through `or 0`, and a test that writes 0 by hand would
+        -- never exercise that default.
+        local api, ctl = chaos_round(2)
+        connect(3)
+        api.host_update()
+        t.eq(gPlayerSyncTable[2].sh5_enrolled, 1, "the latecomer was never enrolled")
+        t.eq(gPlayerSyncTable[2].sh5_chaos_eliminated, 1,
+            "a player who arrived after the lock was allowed to fight")
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 2,
+            "the new spectator was counted as a survivor")
+        t.eq(chat_text(ctl), "P2 joined Chaos as a spectator.",
+            "the latecomer did not go through the round's own late-joiner")
+    end)
+
+    s.test("the loop remembers players, so a reconnect is not a late arrival", function()
+        -- The only visible trace of the loop's snapshot: a player it recorded
+        -- gets their Chaos modifier and their alive status back on return,
+        -- while an unrecorded one is treated as a post-lock latecomer and
+        -- starts eliminated.
+        local api = chaos_round(2)
+        api.host_update()
+        local modifier = gPlayerSyncTable[1].sh5_modifier
+        gNetworkPlayers[1].connected = false
+        gNetworkPlayers[1].connected = true
+        gPlayerSyncTable[1].sh5_enrolled = 0
+        gPlayerSyncTable[1].sh5_modifier = 0
+        api.host_update()
+        t.eq(gPlayerSyncTable[1].sh5_chaos_eliminated, 0,
+            "a returning player was treated as somebody who arrived after the lock")
+        t.eq(gPlayerSyncTable[1].sh5_modifier, modifier,
+            "the returning player's Chaos modifier was not restored")
+    end)
+
+    s.test("the loop rerolls the Chaos modifiers", function()
+        -- 15 seconds at 30 frames per second, pinned from CHANGELOG.md.
+        local api, ctl = chaos_round(2)
+        local due = gGlobalSyncTable.sh5_chaos_next_reroll
+        local seq = gGlobalSyncTable.sh5_chaos_modifier_seq or 0
+        ctl.timer = due
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_modifier_seq, seq + 1,
+            "the loop never asked for a reroll")
+        t.eq(gGlobalSyncTable.sh5_chaos_next_reroll, due + 450,
+            "the next reroll was not scheduled 15 seconds out")
+    end)
+
+    s.test("the last player standing wins the round", function()
+        local api = chaos_round(3)
+        gPlayerSyncTable[0].sh5_chaos_eliminated = 1
+        gPlayerSyncTable[2].sh5_chaos_eliminated = 1
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_active, 0, "the round outlived its last two players")
+        t.eq(gGlobalSyncTable.sh5_result_reason, "chaos last standing",
+            "the round ended for the wrong reason")
+        t.eq(gGlobalSyncTable.sh5_chaos_winner, "P1", "the wrong survivor was named")
+        t.eq(gGlobalSyncTable.sh5_result_winner, "P1", "the survivor did not win")
+    end)
+
+    s.test("two survivors keep the round running", function()
+        local api = chaos_round(3)
+        gPlayerSyncTable[0].sh5_chaos_eliminated = 1
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_active, 1, "the round ended with two players still in")
+        t.eq(gGlobalSyncTable.sh5_chaos_alive, 2, "wrong number of survivors")
+    end)
+
+    s.test("with everybody eliminated the round ends with no winner", function()
+        local api = chaos_round(2)
+        for i = 0, 1 do gPlayerSyncTable[i].sh5_chaos_eliminated = 1 end
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_active, 0, "an empty Chaos round kept running")
+        t.eq(gGlobalSyncTable.sh5_chaos_winner, "Nobody", "an eliminated player won")
+        t.eq(gGlobalSyncTable.sh5_result_winner, "Nobody", "an empty round had a winner")
+    end)
+
+    s.test("an unlocked roster never ends the round", function()
+        -- The lock is what says the roster is final. Before it, an empty
+        -- lobby is a round that has not started filling up, not a finished one.
+        local api = chaos_round(2)
+        gGlobalSyncTable.sh5_chaos_roster_locked = 0
+        for i = 0, 1 do gPlayerSyncTable[i].sh5_chaos_eliminated = 1 end
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_active, 1, "the round ended before the roster was locked")
+        t.eq(gGlobalSyncTable.sh5_result_reason or "", "",
+            "an unlocked round reported a result")
+    end)
+
+    s.test("a survivor whose name has not arrived yet is still named", function()
+        local api = chaos_round(2)
+        gPlayerSyncTable[0].sh5_chaos_eliminated = 1
+        gNetworkPlayers[1].name = nil
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_winner, "Player",
+            "a nameless survivor won as somebody else")
+    end)
+
+    -- ---------------------------------------------------------------------
     -- Which goal a player is given
     -- ---------------------------------------------------------------------
 

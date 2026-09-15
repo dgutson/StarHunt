@@ -13,6 +13,54 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — R-002 finished: Chaos's round loop reaches `modules/round.lua`
+
+One commit. `Team.host_update_chaos_round`, the last function in `main.lua` that belonged to a
+module, moved into `round.lua` next to `host_update_boss_round`. `main.lua` fell from 1,562 to
+**1,541** lines, `round.lua` grew from 942 to **966**, and the suite went from 456 to **469**
+tests. With this, **no module owns code that still lives in `main.lua`**; what is left there is
+`hud` and `menu`, which have no module yet.
+
+**The decision R-002 existed to make.** The two options were the ones the Boss pass chose
+between: move what the caller needs into `core.lua`, or accept that a round loop belongs to
+`round.lua`. The second was taken, and the first was measured rather than skipped.
+`tools/module_deps.py` named exactly three dependencies -- `host_end_round`,
+`host_add_late_joiner` and `remember_player_index` -- and all three are the round's own host
+machinery, not plain helpers: `host_end_round` rebinds two of the round's tables, and
+`host_add_late_joiner` goes through `host_prepare_player`, which reads three more. Moving those
+into `core.lua` to satisfy one caller would have put the round's own decisions outside the
+round. So the rule the pass leaves behind is narrower than "shared helpers go to core": **a
+shared helper moves into `core.lua`; a module's own machinery does not.** The move needed no
+new `require` edge at all -- all three names were already file-local in `round.lua`, and
+`Team.host_reroll_chaos_modifiers` is reached through the shared `Team` table.
+
+The move is byte-identical in both directions, and was re-diffed against the original
+immediately before committing. The only text that is not a relocation is the header of
+`round.lua` and of `chaos.lua`, both of which said the loop was still in `main.lua`.
+
+**The loop was completely untested.** Replacing its whole body with an empty one left all 456
+tests green. Thirteen tests now drive it through its real caller, `host_update_round`, in a
+Chaos round: the survivor count and the four things that must not be counted, the latecomer the
+loop enrols as a spectator, the snapshot that makes a reconnect different from a fresh arrival,
+the reroll, the last player standing, and the roster lock that has to be set before an empty
+lobby means anything.
+
+**31 mutations, 27 caught, 4 equivalent.** Each of the 27 is caught by the test written for it,
+with a readable assertion rather than a nil-index error. The 4 survivors are all the same shape
+-- a default or a seed no reachable state can reach -- and are recorded in `REFACTOR_PLAN.md` so
+the next sweep does not re-investigate them: `alive_name`'s seed is never read, which also makes
+reducing `alive_count == 1 and alive_name or "Nobody"` to `alive_name` equivalent; and the
+`or 0` on `sh5_chaos_eliminated` and on `sh5_chaos_roster_locked` both guard fields that are
+always written before the loop can read them.
+
+One thing worth knowing for any later test of this area, and now a comment in the suite:
+`host_start_round` already seeds `sh5_chaos_alive` with the connected player count, so a test
+where nobody has dropped out agrees with the loop even when the loop publishes nothing. Only a
+test that changes the count proves anything.
+
+`test/README.md` also gained the `round_host` row it never had. Six suites are still missing
+from that table -- `core`, `i18n`, `team`, `world`, `modifiers` and `chaos`.
+
 ### 2026-09-14 — R-002, fifth part: Bowser's attack queue and hazards reach `modules/boss.lua`
 
 Two commits. The first moved `is_local_player_on_floor` out of `modifiers.lua` and into

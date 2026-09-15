@@ -341,27 +341,6 @@ local function on_before_boss_cutscene(m, incoming_action, _)
     return 1
 end
 
-Team.host_update_chaos_round = function()
-    Team.host_reroll_chaos_modifiers()
-    local alive_count, alive_name = 0, "Nobody"
-    for i = 0, MAX_PLAYERS - 1 do
-        if gNetworkPlayers[i].connected then
-            local sync = gPlayerSyncTable[i]
-            if (sync.sh5_enrolled or 0) == 0 then host_add_late_joiner(i) end
-            if (sync.sh5_enrolled or 0) == 1 and (sync.sh5_chaos_eliminated or 0) == 0 then
-                alive_count = alive_count + 1
-                alive_name = gNetworkPlayers[i].name or "Player"
-            end
-            remember_player_index(i)
-        end
-    end
-    gGlobalSyncTable.sh5_chaos_alive = alive_count
-    if (gGlobalSyncTable.sh5_chaos_roster_locked or 0) == 1 and alive_count <= 1 then
-        gGlobalSyncTable.sh5_chaos_winner = alive_count == 1 and alive_name or "Nobody"
-        host_end_round("chaos last standing")
-    end
-end
-
 local function local_goal_warp_update(m)
     if m.playerIndex ~= 0 then return end
     if is_boss_mode() or Team.is_chaos_mode() then return end

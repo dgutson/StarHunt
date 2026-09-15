@@ -21,11 +21,14 @@
 --
 -- Two things that look like they belong elsewhere and do not:
 --
---   * `host_update_boss_round` is Boss's round loop, but it cannot live in
---     boss.lua.  This file requires boss.lua for the time range, the modifier
---     slots and the health report, so an edge back the other way would be a
---     require cycle.  The same is true of Chaos's round loop, still in
---     main.lua: round requires chaos.lua for CHAOS_REROLL_FRAMES.
+--   * `host_update_boss_round` is Boss's round loop and
+--     `Team.host_update_chaos_round` is Chaos's, yet neither can live in the
+--     module of the mode it belongs to.  This file requires boss.lua for the
+--     time range, the modifier slots and the health report, and chaos.lua for
+--     CHAOS_REROLL_FRAMES, so an edge back the other way would be a require
+--     cycle.  Chaos's loop also calls host_end_round, host_add_late_joiner and
+--     remember_player_index, which are this file's own host machinery rather
+--     than shared helpers, so moving them to core.lua was not a way out.
 --   * `configured_time_range` reads the mode and dispatches to Boss's own
 --     table.  It is the round's question -- how long is this round -- so it is
 --     answered here.
@@ -667,6 +670,27 @@ local function host_update_boss_round()
         interval = math.max(Team.selected_difficulty() == Team.NIGHTMARE and 2 or 3,
             math.floor(interval * difficulty_factors[Team.selected_difficulty() + 1] + 0.5))
         gGlobalSyncTable.sh5_boss_attack_frame = get_global_timer() + interval * FRAMES_PER_SECOND
+    end
+end
+
+Team.host_update_chaos_round = function()
+    Team.host_reroll_chaos_modifiers()
+    local alive_count, alive_name = 0, "Nobody"
+    for i = 0, MAX_PLAYERS - 1 do
+        if gNetworkPlayers[i].connected then
+            local sync = gPlayerSyncTable[i]
+            if (sync.sh5_enrolled or 0) == 0 then host_add_late_joiner(i) end
+            if (sync.sh5_enrolled or 0) == 1 and (sync.sh5_chaos_eliminated or 0) == 0 then
+                alive_count = alive_count + 1
+                alive_name = gNetworkPlayers[i].name or "Player"
+            end
+            remember_player_index(i)
+        end
+    end
+    gGlobalSyncTable.sh5_chaos_alive = alive_count
+    if (gGlobalSyncTable.sh5_chaos_roster_locked or 0) == 1 and alive_count <= 1 then
+        gGlobalSyncTable.sh5_chaos_winner = alive_count == 1 and alive_name or "Nobody"
+        host_end_round("chaos last standing")
     end
 end
 

@@ -42,7 +42,7 @@ de los siete pasos:
   direcciones: el cuerpo del módulo contra las líneas extraídas, y el
   `main.lua` reconstruido desde el commit anterior contra el archivo nuevo.
 - Mutar el código movido y comprobar que la prueba lo detecta. Una ejecución
-  verde no demuestra que el traslado sea correcto; en doce de los catorce traslados
+  verde no demuestra que el traslado sea correcto; en catorce de los dieciséis traslados
   ya hechos la mutación encontró un área sin ninguna cobertura.
 - Volver a comparar el módulo contra su original **justo antes** de hacer
   commit. Una vez quedó una mutación aplicada y la prueba siguió pasando.
@@ -63,7 +63,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `modules/goals.lua` (`apply_goal_power`, `restore_starhunt_power`) |
 | Guardado | Quita solo la bandera temporal de la estrella obtenida | `modules/save.lua` (`save_course_index_for`, `remove_starhunt_save_flag`) |
 | Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques y `apply_boss_hazards`); `modules/round.lua` (`host_update_boss_round`) |
-| Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `main.lua` (`host_update_chaos_round`) |
+| Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `modules/round.lua` (`host_update_chaos_round`) |
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |
 | Privacidad/PvP | Oculta jugadores con geometría o área incompatible | `modules/goals.lua` (`players_have_private_variant`, `players_can_share_world`) |

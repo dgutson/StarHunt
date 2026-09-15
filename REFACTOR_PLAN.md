@@ -4,12 +4,12 @@ Branch `refactor/modularize`. This document holds **how** to do the split correc
 rules, the verification discipline, and the traps that have already cost a session. It does
 not track progress.
 
-- **What is left, and in what order:** `ROADMAP.md` (items R-001 to R-004).
+- **What is left, and in what order:** `ROADMAP.md` (items R-003 and R-004).
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Eleven of the thirteen modules are out. `hud` and `menu` remain, plus one function that calls
-into the round loop. `round.lua` is finished: its client half
+Eleven of the thirteen modules are out, and `hud` and `menu` remain. Nothing else in
+`main.lua` belongs to a module that exists. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
@@ -21,9 +21,20 @@ static data and the health pool, then the readers, then the attack queue and the
 that last one once `is_local_player_on_floor` had moved into `core.lua`, the second time a
 shared helper had to move before a module could follow it.
 
-**All that is left of R-002 is `Team.host_update_chaos_round`**, which cannot live in
-`chaos.lua` because `round.lua` requires `chaos.lua`. `host_update_boss_round` was the same
-case and went into `round.lua`; where this one goes is the decision R-002 still has to make.
+**R-002 is finished.** Its last function, `Team.host_update_chaos_round`, went into
+`round.lua`, and the reason is the one `host_update_boss_round` had before it: a mode's round
+loop cannot live in that mode's own module, because `round.lua` requires `boss.lua` and
+`chaos.lua` and an edge back the other way would be a cycle. The first of the two options --
+move what the caller needs into `core.lua` -- was measured and rejected rather than skipped.
+The scan named three dependencies, `host_end_round`, `host_add_late_joiner` and
+`remember_player_index`, and all three are the round's own host machinery rather than plain
+helpers: `host_end_round` rebinds two of the round's tables, and `host_add_late_joiner` goes
+through `host_prepare_player`, which reads three more. Moving those into `core.lua` to satisfy
+one caller would have put the round's own decisions outside the round. So the rule this pass
+establishes is the narrow one: **a shared helper moves into `core.lua`; a module's own
+machinery does not.** The move needed no new `require` edge at all -- all three names were
+already file-local in `round.lua`, and `Team.host_reroll_chaos_modifiers` is reached through
+the shared `Team` table.
 
 ## The rule that makes the split safe
 
@@ -130,7 +141,8 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **thirteen of the fifteen** passes so far, most recently the interaction
+   coverage gap in **fourteen of the sixteen** passes so far, most recently the Chaos round
+   loop, which could be replaced with an empty body and 456 tests stayed green. Before that, the interaction
    handlers and star visibility, where the whole area was untested: `allow_interact` and
    `interact` were published in `STARHUNT_TEST_API` and called by no test at all, and
    `update_star_visibility` and `reset_hidden_object_tracking` were not published at all.
@@ -149,8 +161,8 @@ comment lines vanish from the count. It produced a false "3 lines missing" alarm
 ## How to find out what a module still needs
 
 ```bash
-grep -n "^Team.host_update_chaos_round" StarHunt/main.lua   # re-derive the range FIRST
-python3 tools/module_deps.py 1084,1103
+grep -n "^local function draw_hud" StarHunt/main.lua   # re-derive the range FIRST
+python3 tools/module_deps.py 1200,1219
 ```
 
 `tools/module_deps.py` prints every top-level name in `main.lua` that the given line ranges
@@ -176,8 +188,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
 - **Follow the real dependency, do not fake a leaf.** `audit` was meant to precede `goals`,
   but `rebuild_audited_modifiers()` walks `GOALS`, so the order moved instead of passing
   `GOALS` in as a parameter — that would hide a real dependency to preserve an arbitrary
-  sequence. Applied again to `chaos`: `host_update_chaos_round` stayed in `main.lua` rather
-  than taking round's three functions as arguments.
+  sequence. Applied again to `chaos`: `host_update_chaos_round` was never given round's three
+  functions as arguments to let it sit in `chaos.lua`; it went to `round.lua`, where the
+  functions already are.
 - **A module may come out in two or three passes.** Take the part whose dependencies are
   satisfied, usually the static data, and leave the runtime for when its own dependencies
   land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `boss` took three and is now
@@ -251,6 +264,15 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   returns anyway with both pending queues already emptied; and the fast-path
   `if attack_seq == local_runtime.boss_hazard_seq then return end` is equivalent, because
   `first_seq` then lands one past `attack_seq` and the replay loop runs zero times.
+  Chaos's round loop produced four more out of 31, and all four are the same shape -- a
+  default or a seed that no reachable state can reach. `alive_name`'s seed is never read,
+  because the only expression that reads it, `alive_count == 1 and alive_name or "Nobody"`,
+  uses it only when the loop has already assigned it; that also makes reducing that whole
+  expression to `alive_name` equivalent. The `or 0` on `sh5_chaos_eliminated` is unreachable
+  because `and` short-circuits and the only two writers of `sh5_enrolled = 1`, both inside
+  `host_prepare_player`, each write `sh5_chaos_eliminated` in the same breath. The `or 0` on
+  `sh5_chaos_roster_locked` is unreachable because `host_start_round` writes it before any
+  round can be active, and the loop runs only inside an active round.
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.

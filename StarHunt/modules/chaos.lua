@@ -11,11 +11,12 @@
 -- rules here are the only thing keeping two modifiers from cancelling each
 -- other out or stacking into something unplayable -- see Team.chaos_conflicts.
 --
--- The host side of the round loop, Team.host_update_chaos_round, is still in
--- main.lua: it counts survivors and ends the round, so it calls round's
--- host_end_round, host_add_late_joiner and remember_player_index. It joins this
--- module once round.lua exists, the same way goals, team and boss each came out
--- in two passes.
+-- The host side of the round loop, Team.host_update_chaos_round, lives in
+-- round.lua and cannot come here. It counts survivors and ends the round, so it
+-- calls round's host_end_round, host_add_late_joiner and remember_player_index,
+-- and round.lua already requires this module for CHAOS_REROLL_FRAMES -- an edge
+-- back the other way would be a require cycle. Boss's round loop is elsewhere
+-- for the same reason.
 
 local core = require("core")
 local Team = core.Team
