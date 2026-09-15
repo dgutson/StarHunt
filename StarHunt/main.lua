@@ -100,7 +100,6 @@ local local_counter_round_active = false
 local local_lakitu_scan_at = 0
 Team.lifetime = math.max(0, math.floor(tonumber(
     mod_storage_load("starhunt_lifetime_stars")) or 0))
-local config_selection = 1
 local config_button_latch = 0
 local config_stick_latched = false
 local local_boss_health_object = nil
@@ -498,7 +497,7 @@ Team.set_config_menu_open = function(opening)
     if opening and changed then Team.close_widdlepets_menu() end
     local_runtime.config_open = opening
     if opening and changed then
-        config_selection = clamp(config_selection, 1, config_option_count())
+        local_runtime.config_selection = clamp(local_runtime.config_selection, 1, config_option_count())
         config_button_latch = 0
         config_stick_latched = false
         local_runtime.menu_freeze_x = nil
@@ -601,13 +600,13 @@ local function update_config_input(m)
     if (pressed & (B_BUTTON | START_BUTTON)) ~= 0 then
         if is_round_active() then Team.set_config_menu_open(false) end
     elseif (pressed & U_JPAD) ~= 0 or stick_up then
-        config_selection = config_selection - 1
-        if config_selection < 1 then config_selection = count end
+        local_runtime.config_selection = local_runtime.config_selection - 1
+        if local_runtime.config_selection < 1 then local_runtime.config_selection = count end
     elseif (pressed & D_JPAD) ~= 0 or stick_down then
-        config_selection = config_selection + 1
-        if config_selection > count then config_selection = 1 end
+        local_runtime.config_selection = local_runtime.config_selection + 1
+        if local_runtime.config_selection > count then local_runtime.config_selection = 1 end
     elseif (pressed & (L_JPAD | R_JPAD)) ~= 0 or stick_left or stick_right then
-        local option = config_option_kind(config_selection)
+        local option = config_option_kind(local_runtime.config_selection)
         if option == "language" then
             local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
             Team.language = (Team.language + delta) % #Team.language_codes
@@ -639,7 +638,7 @@ local function update_config_input(m)
             end
         end
     elseif (pressed & A_BUTTON) ~= 0 then
-        local option = config_option_kind(config_selection)
+        local option = config_option_kind(local_runtime.config_selection)
         if option == "start" then
             local minimum, maximum = configured_time_range(connected_player_count())
             if host_start_round(clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)) then
@@ -889,14 +888,14 @@ local function draw_config_menu()
             text = translated("STATUS", "ESTADO") .. " - " .. config_status_text()
         end
 
-        if config_selection == index then
+        if local_runtime.config_selection == index then
             djui_hud_set_color(255, 255, 255, 45)
             djui_hud_render_rect(x + 10, line_y - 2, box_w - 20, 16)
         end
         local disabled = (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
             and connected_player_count() < 2
             and (option == "mode" or option == "start")
-        draw_hud_text((config_selection == index and "> " or "  ") .. text,
+        draw_hud_text((local_runtime.config_selection == index and "> " or "  ") .. text,
             x + 16, line_y, 0.62, 255, 255, 255, disabled and 105 or 255)
         line_y = line_y + 21
     end
@@ -1430,6 +1429,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         update_config_menu_lock = Team.update_config_menu_lock,
         manual_reroll_cooldown = Team.manualRerollCooldown,
         toggle_menu = open_config_menu,
+        chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
         set_language = function(value)
             Team.language = clamp(math.floor(value or 0), 0, #Team.language_codes - 1)
