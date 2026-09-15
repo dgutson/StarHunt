@@ -13,6 +13,60 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — `modules/menu.lua`, out of order and ahead of `hud`
+
+Two commits. `main.lua` fell from 1,541 to **1,286** lines, `modules/menu.lua` arrived at
+**320**, and the suite went from 469 to **509** tests. Twelve of the thirteen modules now
+exist; only `hud` is left.
+
+**The planned order was backwards, and the scan said so.** `ROADMAP.md` had `hud` first with
+`menu` blocked behind it. `tools/module_deps.py` measured the opposite: the HUD block's only
+dependencies still in `main.lua` were four menu declarations -- `config_option_count`,
+`config_option_kind`, `config_status_text` and the selection -- while the menu block depended
+on nothing outside the modules that already existed. Menu was the leaf, so menu went first and
+the two roadmap items swapped. The order past the modules already extracted was planned from a
+reference graph and never measured; **run the scan before trusting it.**
+
+**`draw_config_menu` is settled and stays with the HUD.** The plan's appendix had it in `hud`
+only because its name starts with `draw_`, and R-004 asked whether it belonged in `menu`. It
+cannot: it draws through `draw_hud_text` and `draw_centered_hud_text`, and `draw_hud` calls it
+back, so a `menu.lua` that owned it would be half of a require cycle. `Team.freeze_menu_mario`,
+which the appendix suggested reconsidering against `modifiers`, did come here -- it pins Mario
+only while the config menu is open and reads nothing from `modifiers`.
+
+**The migration came first, in its own commit.** `config_selection` is rebound on every press
+and `draw_config_menu` reads it, so it joined `config_open` on `local_runtime`.
+`config_button_latch` and `config_stick_latched` are rebound too and were deliberately left
+alone, because nothing outside the menu reads them: migrate what crosses a boundary, not every
+rebound local in the block.
+
+All three moved blocks are byte-identical in both directions, `main.lua` was reconstructed from
+the previous commit and matched exactly, and the blocks were re-diffed immediately before
+committing. The only text that is not a relocation is `menu.lua`'s header.
+
+**The menu was the worst-covered area found so far.** `update_config_input` -- every key a
+player can press -- was published in `STARHUNT_TEST_API` as `menu_input` and called by no test
+at all; only `is_menu_open` was reachable. Of 67 mutations, **18 survived the first green run**
+and 9 more were found once the first round of new tests went in. `test/suite/menu.lua` now
+holds 40 tests and catches 63 of the 67.
+
+Three of those gaps came from the same trap, and it is worth remembering: **the menu zeroes the
+controller on its way out**, so a test that holds a button or a stick has to set it again every
+frame, exactly as the engine does. Tests that did not looked like they were exercising the
+latch and were only observing the zeroing.
+
+**Four mutations survive and cannot be caught**, each recorded in `REFACTOR_PLAN.md` with its
+reason. Three are clauses a second, outer check has already settled: `if Team.language < 0`
+after a `%` is unreachable because Lua's `%` follows the sign of the divisor; the
+`and network_is_server()` on the mode, difficulty and time branches cannot fire on a client,
+because `config_option_kind` only names those rows inside its own server branch; and the
+`clamp` before `host_start_round` is redundant because that function clamps its own argument.
+The fourth, `set_config_menu_open(true)` after `host_end_round`, is a no-op because the branch
+only runs while the menu is already open. All four stay exactly as they are.
+
+`test/README.md` gained rows for `menu` and, in the previous pass, `round_host`. Five suites
+are still missing from that table: `core`, `i18n`, `team`, `world` and `modifiers`.
+
 ### 2026-09-15 — R-002 finished: Chaos's round loop reaches `modules/round.lua`
 
 One commit. `Team.host_update_chaos_round`, the last function in `main.lua` that belonged to a

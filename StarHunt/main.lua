@@ -91,6 +91,13 @@ local host_add_late_joiner = local_round.host_add_late_joiner
 local remember_player_index = local_round.remember_player_index
 local remember_disconnected_player = local_round.remember_disconnected_player
 local mark_connected_player_unenrolled = local_round.mark_connected_player_unenrolled
+local menu = require("modules/menu")
+local config_option_count = menu.config_option_count
+local config_option_kind = menu.config_option_kind
+local config_status_text = menu.config_status_text
+local open_config_menu = menu.open_config_menu
+local update_config_input = menu.update_config_input
+local starhunt_command = menu.starhunt_command
 
 local local_seen_round = nil
 local local_seen_result = nil
@@ -100,8 +107,6 @@ local local_counter_round_active = false
 local local_lakitu_scan_at = 0
 Team.lifetime = math.max(0, math.floor(tonumber(
     mod_storage_load("starhunt_lifetime_stars")) or 0))
-local config_button_latch = 0
-local config_stick_latched = false
 local local_boss_health_object = nil
 local local_boss_health_initialized = false
 local local_boss_health_last_value = nil
@@ -455,229 +460,6 @@ local function on_find_water_level(_, _, water_level)
     -- Returning a fixed height here would create water under every coordinate
     -- on the castle grounds, including places outside those water boxes.
     return water_level
-end
-
-local function config_option_count()
-    return network_is_server() and 6 or 2
-end
-
-local function config_option_kind(index)
-    if network_is_server() then
-        if index == 1 then return "language" end
-        if index == 2 then return "mode" end
-        if index == 3 then return "difficulty" end
-        if index == 4 then return "time" end
-        if index == 5 then return "status" end
-        -- Keep the primary round action at the bottom of the full menu.
-        return is_round_active() and "stop" or "start"
-    end
-    if index == 1 then return "language" end
-    return "status"
-end
-
-local function config_status_text()
-    if not is_round_active() then return translated("WAITING", "ESPERANDO") end
-    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or 0) - get_global_timer())
-    local minutes = math.floor(remaining / (60 * FRAMES_PER_SECOND))
-    local seconds = math.floor((remaining / FRAMES_PER_SECOND) % 60)
-    return translated("ACTIVE ", "ACTIVA ") .. string.format("%d:%02d", minutes, seconds)
-end
-
-Team.close_widdlepets_menu = function()
-    local pets = rawget(_G, "wpets")
-    if type(pets) == "table" and type(pets.is_menu_opened) == "function"
-        and type(pets.close_menu) == "function" and pets.is_menu_opened() then
-        pets.close_menu()
-    end
-end
-
-Team.set_config_menu_open = function(opening)
-    opening = opening and true or false
-    local changed = local_runtime.config_open ~= opening
-    if opening and changed then Team.close_widdlepets_menu() end
-    local_runtime.config_open = opening
-    if opening and changed then
-        local_runtime.config_selection = clamp(local_runtime.config_selection, 1, config_option_count())
-        config_button_latch = 0
-        config_stick_latched = false
-        local_runtime.menu_freeze_x = nil
-        local_runtime.menu_freeze_y = nil
-        local_runtime.menu_freeze_z = nil
-    end
-end
-
-local function open_config_menu()
-    if local_runtime.config_open and not is_round_active() then
-        Team.close_widdlepets_menu()
-        return
-    end
-    Team.set_config_menu_open(not local_runtime.config_open)
-end
-
-Team.update_config_menu_lock = function()
-    local active = is_round_active()
-    if local_runtime.config_round_was_active == nil then
-        Team.set_config_menu_open(not active)
-    elseif not active then
-        Team.set_config_menu_open(true)
-    elseif not local_runtime.config_round_was_active then
-        Team.set_config_menu_open(false)
-    end
-    local_runtime.config_round_was_active = active
-end
-
-Team.cycle_mode = function(delta)
-    local next_mode = (selected_mode() + delta) % 4
-    if next_mode < 0 then next_mode = next_mode + 4 end
-    gGlobalSyncTable.sh5_mode = next_mode
-    local minimum, maximum = configured_time_range(connected_player_count())
-    gGlobalSyncTable.sh5_config_minutes =
-        clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)
-end
-
-Team.cycle_difficulty = function(delta)
-    local next_difficulty = (Team.selected_difficulty() + delta) % 4
-    if next_difficulty < 0 then next_difficulty = next_difficulty + 4 end
-    gGlobalSyncTable.sh5_difficulty = next_difficulty
-end
-
-Team.freeze_menu_mario = function(m)
-    if m.playerIndex ~= 0 then return end
-    if not local_runtime.config_open then
-        local_runtime.menu_freeze_x = nil
-        local_runtime.menu_freeze_y = nil
-        local_runtime.menu_freeze_z = nil
-        return
-    end
-    if local_runtime.menu_freeze_x == nil then
-        local_runtime.menu_freeze_x = m.pos.x
-        local_runtime.menu_freeze_y = m.pos.y
-        local_runtime.menu_freeze_z = m.pos.z
-    end
-    m.pos.x = local_runtime.menu_freeze_x
-    m.pos.y = local_runtime.menu_freeze_y
-    m.pos.z = local_runtime.menu_freeze_z
-    m.vel.x, m.vel.y, m.vel.z = 0, 0, 0
-    m.forwardVel = 0
-    m.slideVelX = 0
-    m.slideVelZ = 0
-    m.intendedMag = 0
-    m.controller.buttonPressed = 0
-    m.controller.buttonDown = 0
-    m.controller.stickX = 0
-    m.controller.stickY = 0
-    m.controller.rawStickX = 0
-    m.controller.rawStickY = 0
-    if m.marioObj ~= nil then
-        m.marioObj.oPosX = m.pos.x
-        m.marioObj.oPosY = m.pos.y
-        m.marioObj.oPosZ = m.pos.z
-    end
-    if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
-end
-
-local function update_config_input(m)
-    if m.playerIndex ~= 0 or not local_runtime.config_open then return end
-    local held = m.controller.buttonDown
-    local pressed = held & ~config_button_latch
-    config_button_latch = held
-    local count = config_option_count()
-    local stick_x = m.controller.stickX
-    local stick_y = m.controller.stickY
-
-    if math.abs(stick_x) < 18 and math.abs(stick_y) < 18 then
-        config_stick_latched = false
-    end
-    local stick_ready = not config_stick_latched
-    local stick_up = stick_ready and stick_y > 24
-    local stick_down = stick_ready and stick_y < -24
-    local stick_left = stick_ready and stick_x < -24
-    local stick_right = stick_ready and stick_x > 24
-    if stick_up or stick_down or stick_left or stick_right then
-        config_stick_latched = true
-    end
-
-    if (pressed & (B_BUTTON | START_BUTTON)) ~= 0 then
-        if is_round_active() then Team.set_config_menu_open(false) end
-    elseif (pressed & U_JPAD) ~= 0 or stick_up then
-        local_runtime.config_selection = local_runtime.config_selection - 1
-        if local_runtime.config_selection < 1 then local_runtime.config_selection = count end
-    elseif (pressed & D_JPAD) ~= 0 or stick_down then
-        local_runtime.config_selection = local_runtime.config_selection + 1
-        if local_runtime.config_selection > count then local_runtime.config_selection = 1 end
-    elseif (pressed & (L_JPAD | R_JPAD)) ~= 0 or stick_left or stick_right then
-        local option = config_option_kind(local_runtime.config_selection)
-        if option == "language" then
-            local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-            Team.language = (Team.language + delta) % #Team.language_codes
-            if Team.language < 0 then Team.language = Team.language + #Team.language_codes end
-            mod_storage_save("starhunt_v11_language", tostring(Team.language))
-        elseif option == "mode" and network_is_server() then
-            if is_round_active() then
-                djui_popup_create(translated("MODE IS LOCKED DURING A ROUND", "EL MODO ESTA BLOQUEADO DURANTE LA RONDA"), 1)
-            else
-                local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-                Team.cycle_mode(delta)
-            end
-        elseif option == "difficulty" and network_is_server() then
-            if is_round_active() then
-                djui_popup_create(translated("DIFFICULTY IS LOCKED DURING A ROUND",
-                    "LA DIFICULTAD ESTA BLOQUEADA DURANTE LA RONDA"), 1)
-            else
-                local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-                Team.cycle_difficulty(delta)
-            end
-        elseif option == "time" and network_is_server() then
-            if is_round_active() then
-                djui_popup_create(translated("TIME IS LOCKED DURING A ROUND", "EL TIEMPO ESTA BLOQUEADO DURANTE LA RONDA"), 1)
-            else
-                local minimum, maximum = configured_time_range(connected_player_count())
-                local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-                local current = clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)
-                gGlobalSyncTable.sh5_config_minutes = clamp(current + delta, minimum, maximum)
-            end
-        end
-    elseif (pressed & A_BUTTON) ~= 0 then
-        local option = config_option_kind(local_runtime.config_selection)
-        if option == "start" then
-            local minimum, maximum = configured_time_range(connected_player_count())
-            if host_start_round(clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)) then
-                Team.set_config_menu_open(false)
-            end
-        elseif option == "stop" then
-            host_end_round("stopped by host")
-            Team.set_config_menu_open(true)
-        elseif option == "language" then
-            Team.language = (Team.language + 1) % #Team.language_codes
-            mod_storage_save("starhunt_v11_language", tostring(Team.language))
-        elseif option == "mode" and network_is_server() then
-            if not is_round_active() then
-                Team.cycle_mode(1)
-            end
-        elseif option == "difficulty" and network_is_server() then
-            if not is_round_active() then Team.cycle_difficulty(1) end
-        elseif option == "status" then
-            djui_popup_create(config_status_text(), 1)
-        end
-    end
-
-    -- The menu owns all movement. The analog stick navigates it and is then
-    -- neutralized before Mario's movement logic can see it.
-    m.controller.buttonPressed = 0
-    m.controller.buttonDown = 0
-    m.controller.stickX = 0
-    m.controller.stickY = 0
-    m.controller.rawStickX = 0
-    m.controller.rawStickY = 0
-    m.intendedMag = 0
-    m.forwardVel = 0
-    m.slideVelX = 0
-    m.slideVelZ = 0
-    m.vel.x = 0
-    m.vel.y = 0
-    m.vel.z = 0
-    if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
-    if local_runtime.config_open then Team.freeze_menu_mario(m) end
 end
 
 local function format_remaining_time(frames)
@@ -1242,43 +1024,6 @@ local function on_joined_game()
                 "STARHUNT ESTA ACTIVO: RECIBIRAS UN RETO."), 1)
         end
     end
-end
-
-local function show_help()
-    djui_chat_message_create("/starhunt - " .. translated("open the StarHunt menu", "abre el menu de StarHunt"))
-    djui_chat_message_create("/starhunt updates - "
-        .. translated("show what StarHunt is and what changed", "muestra de que trata StarHunt y que cambio"))
-end
-
-Team.show_updates = function()
-    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1")
-    djui_chat_message_create(translated(
-        "ABOUT: A multiplayer challenge mod with four game modes.",
-        "DE QUE TRATA: Un mod multijugador de desafios con cuatro modos."))
-    djui_chat_message_create(translated(
-        "MODES: Normal star race, team competition, cooperative Boss and last-player-standing Chaos.",
-        "MODOS: Carrera Normal, competencia por equipos, Boss cooperativo y Chaos de ultimo jugador vivo."))
-    djui_chat_message_create(translated(
-        "DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode.",
-        "DIFICULTAD: Facil, Normal, Dificil o Pesadilla se aplica independientemente a cada modo."))
-    djui_chat_message_create(translated(
-        "V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown.",
-        "V1.1: Modificadores personales en Chaos, extras en Pesadilla y boton Otro nivel dentro del juego con espera de dos minutos."))
-end
-
-local function starhunt_command(message)
-    local text = string.lower(message or ""):match("^%s*(.-)%s*$")
-    if text == "" then
-        open_config_menu()
-        return true
-    end
-    if text == "updates" or text == "update" or text == "actualizaciones"
-        or text == "cambios" then
-        Team.show_updates()
-        return true
-    end
-    show_help()
-    return true
 end
 
 -- The engine never sets this flag. The standalone test harness uses named

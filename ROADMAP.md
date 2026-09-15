@@ -29,18 +29,18 @@ session fills the context window and invites mistakes.
 ### R-003 — Extract `modules/hud.lua`
 
 - **Category:** Refactor
-- **What:** Move the HUD drawing code out of `main.lua` into `StarHunt/modules/hud.lua` — around 31 declarations and 601 lines. Run the dependency scan first: whether round actually blocks this is unmeasured, and `REFACTOR_PLAN.md` says plainly that the leaf-first order past the modules already extracted was never validated against real dependencies.
+- **What:** Move the HUD drawing code out of `main.lua` into `StarHunt/modules/hud.lua` — around 31 declarations and 600 lines, and the last module in the split. The scan has now been run: the HUD block's only blockers were four menu declarations, and `modules/menu.lua` is out, so `hud` requires `menu` for `config_option_count`, `config_option_kind`, `config_status_text` and reads the selection from `core`. `draw_config_menu` moves here, and that is settled rather than open: it draws through `draw_hud_text` and `measure_hud_text`, and `draw_hud` calls it back, so a menu that owned it would be half of a require cycle. The rest of the block, including `modifier_text` and `START_BANNER_FRAMES`, needs nothing that is not already a module.
 - **Why:** HUD drawing is the second-largest block left in `main.lua`, and its heaviest couplings — `hud → i18n` at 51 references, `hud → team` at 26, `hud → modifiers` at 22 — are all to modules that are already out, so it may be readier than its position in the planned order suggests. It also carries the colon rule that is easy to break again: `FONT_HUD` renders `:` as an `X`, so nothing may call `djui_hud_print_text` on text containing a colon; it must go through `draw_hud_text` / `measure_hud_text`.
-- **Outcome:** HUD drawing lives in `modules/hud.lua`, with the colon rule documented at the top of the file where the next person to add a string will see it.
+- **Outcome:** HUD drawing lives in `modules/hud.lua`, with the colon rule documented at the top of the file where the next person to add a string will see it. All thirteen modules exist and `main.lua` keeps only its metadata header, the `require` wiring, the hook block and `STARHUNT_TEST_API`.
 - **Blocked-by:** —
 - **Enables:** R-004
 
-### R-004 — Extract `modules/menu.lua`, and settle the five unplaced declarations
+### R-004 — Settle the five declarations that have no module
 
 - **Category:** Refactor
-- **What:** Move the config menu into `StarHunt/modules/menu.lua` — around 18 declarations and 250 lines. Decide at the same time whether `draw_config_menu` belongs in `menu` rather than `hud`, where the plan's appendix put it purely because its name starts with `draw_`. Then give the five declarations that have no assigned module a home: `remove_castle_lakitu`, `remove_existing_castle_lakitu`, `local_lakitu_scan_at`, `on_find_water_level` and `gServerSettings.skipIntro`.
-- **Why:** Menu is the last module in the planned split, and the five unplaced declarations are the only ones the whole planning pass could not assign — leaving them in `main.lua` by default would be a decision made by omission rather than on purpose.
-- **Outcome:** All thirteen modules exist; every top-level declaration in the released file has a deliberate home; the split is structurally complete.
+- **What:** Give the five declarations the planning pass could not assign a deliberate home: `remove_castle_lakitu`, `remove_existing_castle_lakitu`, `local_lakitu_scan_at`, `on_find_water_level` and `gServerSettings.skipIntro`. Staying in `main.lua` is an acceptable answer for a hook callback, but it has to be written down as a decision with a reason, not left by omission. This is also the right moment to write the Lakitu deletion test `DEVELOPMENT_CHECKLIST.md` names as missing — nothing under `test/` mentions Lakitu, and the `obj_has_behavior_id` stub now distinguishes behaviors, so it can be written.
+- **Why:** `modules/menu.lua` is out and the rest of this item is done; what is left is the five declarations. Leaving them where they are by default would be a decision made by omission rather than on purpose, which is the thing the whole split exists to avoid.
+- **Outcome:** Every top-level declaration in the released file has a deliberate home and a recorded reason; the split is structurally complete; Lakitu has a test.
 - **Blocked-by:** R-003
 - **Enables:** R-010
 

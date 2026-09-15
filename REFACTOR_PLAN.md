@@ -8,7 +8,7 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Eleven of the thirteen modules are out, and `hud` and `menu` remain. Nothing else in
+Twelve of the thirteen modules are out; only `hud` remains. Nothing else in
 `main.lua` belongs to a module that exists. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
@@ -35,6 +35,25 @@ establishes is the narrow one: **a shared helper moves into `core.lua`; a module
 machinery does not.** The move needed no new `require` edge at all -- all three names were
 already file-local in `round.lua`, and `Team.host_reroll_chaos_modifiers` is reached through
 the shared `Team` table.
+
+**`menu.lua` came out before `hud.lua`, and the planned order was backwards.** `ROADMAP.md`
+had `hud` first with `menu` blocked behind it. The scan said the opposite: the HUD block's only
+dependencies still in `main.lua` were four menu declarations -- `config_option_count`,
+`config_option_kind`, `config_status_text` and the selection -- while the menu block depended
+on nothing outside the modules that already existed. Menu was the leaf, so menu went first.
+**Run the scan before trusting the order in the roadmap**; the order past the modules already
+extracted was planned from a reference graph, not measured.
+
+`draw_config_menu` stays with the HUD, and that is now settled rather than open. It draws
+through `draw_hud_text` and `measure_hud_text`, and the HUD's `draw_hud` calls it back, so a
+`menu.lua` that owned it would be half of a require cycle. It reads `menu.lua`'s three option
+functions instead, which is the `hud -> menu` edge.
+
+The selection needed the migration step first, in its own commit: `config_selection` is
+**rebound** on every press and `draw_config_menu` reads it, so it joined `config_open` on
+`local_runtime`. `config_button_latch` and `config_stick_latched` are rebound too and were
+left alone, because nothing outside the menu reads them -- migrate what crosses a boundary,
+not every rebound local in the block.
 
 ## The rule that makes the split safe
 
@@ -112,6 +131,7 @@ is gone.
    audit     -> goals    (GOALS)   so goals may not require audit
    modifiers -> goals              so goals may not require modifiers
    goals     -> core, i18n, save, boss
+   menu      -> core, i18n, round  so round may not require menu
    ```
 
    That is why `run_static_modifier_checks` could not live in `goals.lua` even though it walks
@@ -141,7 +161,10 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **fourteen of the sixteen** passes so far, most recently the Chaos round
+   coverage gap in **fifteen of the seventeen** passes so far. The config menu was the worst
+   of them: `update_config_input` -- every key a player can press -- was published in
+   `STARHUNT_TEST_API` and called by no test at all, and of 67 mutations 18 survived the first
+   green run. Before that the Chaos round
    loop, which could be replaced with an empty body and 456 tests stayed green. Before that, the interaction
    handlers and star visibility, where the whole area was untested: `allow_interact` and
    `interact` were published in `STARHUNT_TEST_API` and called by no test at all, and
@@ -264,6 +287,21 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   returns anyway with both pending queues already emptied; and the fast-path
   `if attack_seq == local_runtime.boss_hazard_seq then return end` is equivalent, because
   `first_seq` then lands one past `attack_seq` and the replay loop runs zero times.
+  The config menu produced four more out of 67, and three of them are clauses that a second,
+  outer check has already settled. `if Team.language < 0 then ... end` after
+  `(Team.language + delta) % #Team.language_codes` is unreachable, because Lua's `%` follows
+  the sign of the divisor and never returns a negative for a positive one -- the same is true
+  of the identical guards in `Team.cycle_mode` and `Team.cycle_difficulty`. The
+  `and network_is_server()` on the mode, difficulty and time branches cannot change the
+  outcome, because `config_option_kind` only ever names those three rows inside its own
+  `network_is_server()` branch, so a client's `option` is never one of them. And the `clamp`
+  the menu applies before calling `host_start_round` is redundant, because `host_start_round`
+  clamps its own argument against the same range on its second line. The fourth,
+  `Team.set_config_menu_open(true)` after `host_end_round`, is a no-op: nothing outside
+  menu.lua writes `config_open`, and the branch it sits in only runs while the menu is open.
+  **Leave all four exactly as they are.** A redundant clause found during a move is still not
+  a move's business to delete, and three of these are the cheap outer half of a
+  belt-and-braces pair that would be expensive to get wrong later.
   Chaos's round loop produced four more out of 31, and all four are the same shape -- a
   default or a seed that no reachable state can reach. `alive_name`'s seed is never read,
   because the only expression that reads it, `alive_count == 1 and alive_name or "Nobody"`,
@@ -336,18 +374,17 @@ graph (660 symbol-to-symbol edges among top-level declarations), cross-checked a
 community detection in the code graph. The communities the graph found on its own matched the
 planned layout closely.
 
-The two modules left, as measured on the released file:
+The one module left, as measured on the released file:
 
 | module | decls | ~lines |
 |---|---|---|
 | hud | 31 | 601 |
-| menu | 18 | 250 |
 
-Their heaviest references to modules that are already out:
+Its heaviest references to modules that are already out:
 
 ```
-hud   -> i18n       51      menu  -> i18n       23
-hud   -> team       26      menu  -> modifiers  23
+hud   -> i18n       51
+hud   -> team       26
 hud   -> modifiers  22
 ```
 
@@ -369,9 +406,11 @@ Two things to know when reading it:
   everywhere. They belong where they are semantically. 46 declarations show this pattern.
 - **Known seed artifacts still to correct:** `on_joined_game` landed in `i18n` because it
   calls `translated`, but it is a hook callback and belongs with the hook block in `main.lua`.
-  `draw_config_menu` landed in `hud` with the other `draw_*` functions; it may sit better in
-  `menu` next to the rest of the config code. `Team.freeze_menu_mario` does most of its work
-  against local modifier state and is worth reconsidering against `modifiers`.
+  Two others are now settled: `draw_config_menu` stays in `hud`, because the HUD's own text
+  helpers and its `draw_hud` are on both sides of it; and `Team.freeze_menu_mario`, which the
+  appendix suggested reconsidering against `modifiers`, went to `menu` -- it pins Mario only
+  while the config menu is open, reads nothing from `modifiers`, and has no caller but the
+  menu and the hook block.
 
 ### `modules/hud.lua` — 31 declarations, ~601 lines
 
@@ -407,29 +446,6 @@ Two things to know when reading it:
  4718-4759  table_function  Team.draw_gun_mod_hud_compatibility
  4761-4780  local_function  draw_hud
  4782-4835  local_function  local_round_notifications
-```
-
-### `modules/menu.lua` — 18 declarations, ~250 lines
-
-```
-  913-913   local_var       config_open
-  914-914   local_var       config_selection
-  915-915   local_var       config_button_latch
-  916-916   local_var       config_stick_latched
- 3988-3990  local_function  config_option_count
- 3992-4004  local_function  config_option_kind
- 4006-4012  local_function  config_status_text
- 4014-4020  table_function  Team.close_widdlepets_menu
- 4022-4035  table_function  Team.set_config_menu_open
- 4037-4043  local_function  open_config_menu
- 4045-4055  table_function  Team.update_config_menu_lock
- 4057-4064  table_function  Team.cycle_mode
- 4066-4070  table_function  Team.cycle_difficulty
- 4072-4105  table_function  Team.freeze_menu_mario
- 4107-4209  local_function  update_config_input
- 4874-4878  local_function  show_help
- 4880-4894  table_function  Team.show_updates
- 4896-4909  local_function  starhunt_command
 ```
 
 ### Unassigned — 5 declarations, need a decision during extraction

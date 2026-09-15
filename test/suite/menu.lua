@@ -146,6 +146,19 @@ return function(t, harness)
             "the selection stayed past the end of the client's menu")
     end)
 
+    s.test("the selection is clamped when the menu opens, not when it closes", function()
+        -- The clamp exists to fit the menu the player is about to see. Running
+        -- it on the way out would cut the selection down against the menu being
+        -- left, and a host migration can change the length between the two.
+        local api, ctl, m = menu()
+        api.runtime.config_selection = 6
+        gGlobalSyncTable.sh5_active = 1
+        ctl.is_server = false                    -- this machine loses the host role
+        press(api, m, B_BUTTON)                  -- and then the menu closes
+        t.eq(api.runtime.config_selection, 6,
+            "the selection was cut down against the menu it was leaving")
+    end)
+
     s.test("the stick moves the selection once per push, not once per frame", function()
         local api, _, m = menu()
         api.runtime.config_selection = 1
@@ -311,6 +324,144 @@ return function(t, harness)
         end
         t.eq(gGlobalSyncTable.sh5_mode, api.normal_mode, "a client changed the mode")
         t.eq(gGlobalSyncTable.sh5_active or 0, 0, "a client started a round")
+    end)
+
+
+    s.test("a client's two rows are the language and the status", function()
+        local api, ctl, m = menu(false)
+        api.set_language(0)
+        api.runtime.config_selection = 1
+        press(api, m, R_JPAD)
+        t.eq(ctl.storage["starhunt_v11_language"], "1", "row 1 is not the language")
+
+        api.runtime.config_selection = 2
+        press(api, m, A_BUTTON)
+        t.eq(#ctl.popups, 1, "row 2 did not report the status")
+        t.eq(ctl.storage["starhunt_v11_language"], "1", "row 2 changed the language instead")
+    end)
+
+    s.test("the status counts seconds up to sixty, not thirty", function()
+        local api, ctl, m = menu()
+        gGlobalSyncTable.sh5_active = 1
+        gGlobalSyncTable.sh5_end_frame = 45 * 30      -- forty-five seconds at 30fps
+        ctl.timer = 0
+        api.runtime.config_selection = 5
+        press(api, m, A_BUTTON)
+        t.eq(ctl.popups[1].text, "ACTIVE 0:45", "the seconds were counted on the wrong base")
+    end)
+
+    s.test("a status read after the clock ran out says zero, not a negative", function()
+        local api, ctl, m = menu()
+        gGlobalSyncTable.sh5_active = 1
+        gGlobalSyncTable.sh5_end_frame = 0
+        ctl.timer = 600                          -- twenty seconds past the end
+        api.runtime.config_selection = 5
+        press(api, m, A_BUTTON)
+        t.eq(ctl.popups[1].text, "ACTIVE 0:00", "an expired clock reported a negative time")
+    end)
+
+    s.test("the per-frame lock does not unlatch a stick that is still pushed", function()
+        -- update_config_menu_lock runs on HOOK_UPDATE and calls
+        -- set_config_menu_open(true) on every frame the lobby is waiting. Only
+        -- the `changed` guard stops that from resetting the menu each frame,
+        -- which would let one held stick scroll the whole list.
+        local api, _, m = menu()
+        api.runtime.config_selection = 1
+        m.controller.stickY = -40
+        api.menu_input(m)                        -- moves once and latches
+        t.eq(api.runtime.config_selection, 2, "the first push did nothing")
+
+        api.update_config_menu_lock()            -- the frame the waiting lobby repeats
+        m.controller.stickY = -40                -- the engine refills the stick
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 2, "the per-frame lock unlatched the stick")
+    end)
+
+    s.test("the per-frame lock does not re-pin Mario where he drifted to", function()
+        local api, _, m = menu()
+        m.pos.x = 100
+        api.freeze_menu_mario(m)                 -- pinned at 100
+        m.pos.x = 500                            -- a drift the pin has to undo
+        api.update_config_menu_lock()
+        t.eq(api.runtime.menu_freeze_x, 100, "the per-frame lock adopted the new position")
+        api.freeze_menu_mario(m)
+        t.eq(m.pos.x, 100, "Mario was left where he had drifted to")
+    end)
+
+    s.test("the button latch is cleared when the menu reopens", function()
+        -- The menu zeroes the controller on its way out, so a test that holds a
+        -- button has to set it again every frame, exactly as the engine does.
+        local api, _, m = menu()
+        gGlobalSyncTable.sh5_active = 1
+        api.runtime.config_selection = 1
+        m.controller.buttonDown = D_JPAD
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 2, "the first press did nothing")
+        api.toggle_menu()                        -- close, with D still held
+        api.toggle_menu()                        -- and reopen, still held
+        m.controller.buttonDown = D_JPAD
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 3,
+            "a stale latch swallowed the first press after the menu reopened")
+    end)
+
+    s.test("a button held down acts once, not once per frame", function()
+        local api, _, m = menu()
+        api.runtime.config_selection = 1
+        for _ = 1, 3 do
+            m.controller.buttonDown = D_JPAD     -- the engine refills it each frame
+            api.menu_input(m)
+        end
+        t.eq(api.runtime.config_selection, 2, "a held button scrolled the menu")
+    end)
+
+    s.test("a stick short of the threshold does not move the selection", function()
+        -- The push threshold is strictly past 24, in both directions.
+        local api, _, m = menu()
+        api.runtime.config_selection = 3
+        m.controller.stickY = -24
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 3, "a stick at exactly 24 moved down")
+        m.controller.stickY = 0
+        api.menu_input(m)
+        m.controller.stickY = 24
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 3, "a stick at exactly 24 moved up")
+    end)
+
+    s.test("a closed menu leaves the controller alone", function()
+        local api, _, m = menu()
+        gGlobalSyncTable.sh5_active = 1
+        press(api, m, B_BUTTON)                  -- close it
+        api.runtime.config_selection = 1
+        m.controller.buttonDown = D_JPAD
+        m.controller.stickX = 60
+        api.menu_input(m)
+        t.eq(api.runtime.config_selection, 1, "a closed menu still moved its selection")
+        t.eq(m.controller.buttonDown, D_JPAD, "a closed menu took Mario's buttons")
+        t.eq(m.controller.stickX, 60, "a closed menu took Mario's stick")
+    end)
+
+    s.test("changing the mode pulls the round length into the new mode's range", function()
+        -- Mode 1 is Boss, which has a time table of its own: 7 to 9 minutes for
+        -- two players, against 11 to 20 for a star race. Cycling into it has to
+        -- re-clamp the length or the fight would start with a star race clock.
+        local api, _, m = menu()
+        api.runtime.config_selection = 2         -- mode
+        gGlobalSyncTable.sh5_config_minutes = 99
+        press(api, m, R_JPAD)
+        t.eq(gGlobalSyncTable.sh5_mode, api.boss_mode, "right did not reach Boss")
+        t.eq(gGlobalSyncTable.sh5_config_minutes, 9,
+            "a star-race length survived the change into a Boss round")
+    end)
+
+    s.test("an out-of-range length is clamped before the round is started", function()
+        local api, _, m = menu()
+        api.runtime.config_selection = 6
+        gGlobalSyncTable.sh5_config_minutes = 999
+        press(api, m, A_BUTTON)
+        t.eq(gGlobalSyncTable.sh5_end_frame - gGlobalSyncTable.sh5_start_frame,
+            20 * 60 * 30, "999 minutes reached the round")
     end)
 
     -- ---------------------------------------------------------------------
