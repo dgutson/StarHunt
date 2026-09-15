@@ -62,7 +62,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Retos | Aplica el modificador personal del jugador local | `modules/modifiers.lua` (`apply_local_modifier`) |
 | Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `modules/goals.lua` (`apply_goal_power`, `restore_starhunt_power`) |
 | Guardado | Quita solo la bandera temporal de la estrella obtenida | `modules/save.lua` (`save_course_index_for`, `remove_starhunt_save_flag`) |
-| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos y vida); `modules/round.lua` (`host_update_boss_round`); `main.lua` (`apply_boss_hazards`) |
+| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques y `apply_boss_hazards`); `modules/round.lua` (`host_update_boss_round`) |
 | Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `main.lua` (`host_update_chaos_round`) |
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |
@@ -70,7 +70,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Lobby | Agua, puertas, Lakitu y retorno al castillo | `modules/goals.lua` (`on_allow_interact`); `modules/modifiers.lua` (`keep_moat_lowered`); `main.lua` (`remove_castle_lakitu`) |
 | HUD y menú | Marcadores, timer, salud, menú `/starhunt` | `main.lua` (`draw_hud`, `draw_player_health_bar`, `draw_config_menu`) |
 | Autocomprobación | Revisa el catálogo y la matriz al cargar el mod | `modules/modifiers.lua` (`MODIFIER_KINDS`, `run_static_modifier_checks`) |
-| Compartido | `Team`, `local_runtime` y los ayudantes transversales | `modules/core.lua` |
+| Compartido | `Team`, `local_runtime` y los ayudantes transversales | `modules/core.lua` (incluye `is_local_player_on_floor`, que usan los modificadores y los peligros del Boss) |
 
 ## Errores ya encontrados y solución que no se debe deshacer
 
@@ -81,7 +81,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Gorras desaparecían o quedaban permanentes | Estado de StarHunt y de otros mods se mezclaba | Guardar timer, flags propios y cap externa | `test/suite/caps.lua` (12 pruebas) |
 | Vidas quedaban en 99 | No se restauraba el valor previo | Guardar vidas al empezar y restaurar al terminar | Prueba de vidas |
 | HUD de otro mod se mostraba de nuevo | StarHunt siempre llamaba a `hud_show()` | Recordar si estaba oculto antes de la ronda | Prueba de HUD oculto |
-| Ataques de Bowser se perdían con lag | Solo existía el último ataque sincronizado | Cola circular de 8 ataques | Prueba de dos ataques juntos |
+| Ataques de Bowser se perdían con lag | Solo existía el último ataque sincronizado | Cola circular de 8 ataques, reproducida entera por cada cliente | `test/suite/boss_hazards.lua`: varios ataques llegados en una sola actualización se reproducen todos, la cola da la vuelta en el noveno, y un hueco en la ranura más nueva recurre al campo único |
 | Ráfagas/congelación se omitían | Dependían de un frame exacto | Usar número de ciclo, no igualdad exacta | Pruebas de salto de temporizador |
 | Jugadores se veían entre subzonas | Solo se comparaba el nivel | Comparar también `currAreaIndex` | Prueba de áreas distintas |
 | Retos imposibles | B o Z necesarios, rutas precisas o espera | Auditoría de cuatro etapas y ajustes por estrella | Matriz de 2.976 pares (2.222 aprobados, 754 rechazados); `test/suite/selfcheck.lua` comprueba que no falte ninguna. **2.232 era el tamaño de la matriz en v0.8, con 24 modificadores; esta fila lo citaba todavía** |

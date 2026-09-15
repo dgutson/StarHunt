@@ -8,15 +8,22 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-Eleven of the thirteen modules are out. `hud` and `menu` remain, plus the parts two modules
-left behind because they call into the round loop. `round.lua` is finished: its client half
+Eleven of the thirteen modules are out. `hud` and `menu` remain, plus one function that calls
+into the round loop. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
 came out once `player_record_key` had moved into `core.lua`. `goals.lua` is now finished as
 well, in three passes: the catalog and its readers, then the required-cap code, then the
 interaction handlers and star visibility. `modifiers.lua` has taken the load-time self-check
-and its list of accepted modifier kinds, which is the last piece of R-002 that was unblocked.
+and its list of accepted modifier kinds. `boss.lua` is finished too, in three passes: the
+static data and the health pool, then the readers, then the attack queue and the hazards --
+that last one once `is_local_player_on_floor` had moved into `core.lua`, the second time a
+shared helper had to move before a module could follow it.
+
+**All that is left of R-002 is `Team.host_update_chaos_round`**, which cannot live in
+`chaos.lua` because `round.lua` requires `chaos.lua`. `host_update_boss_round` was the same
+case and went into `round.lua`; where this one goes is the decision R-002 still has to make.
 
 ## The rule that makes the split safe
 
@@ -173,7 +180,8 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   than taking round's three functions as arguments.
 - **A module may come out in two or three passes.** Take the part whose dependencies are
   satisfied, usually the static data, and leave the runtime for when its own dependencies
-  land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `team` took three passes and is now complete. `round` split along a line the
+  land. Done for `goals`, `team`, `boss`, `chaos` and `round`. `boss` took three and is now
+  complete. `team` took three passes and is now complete. `round` split along a line the
   code names itself: the `local_*` half that only reacts to synchronized state came out first,
   and the `host_*` half that writes it followed once Boss's readers had moved. Both halves are
   now in `round.lua`, and the file says in its header that the split between them is the mod's
@@ -216,12 +224,16 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
 - **Check the require graph before assuming a dependency is satisfied.**
   `tools/module_deps.py` answers "what top-level names does this code still need", which is
   necessary but not sufficient: a name can be satisfied by a module that already requires the
-  one you are moving into, and importing it back is a cycle. That is what keeps Boss's hazards
-  and attacks in `main.lua` even though every name they need is extracted —
+  one you are moving into, and importing it back is a cycle. That is what kept Boss's hazards
+  and attacks in `main.lua` for three passes even though every name they needed was extracted —
   `apply_boss_hazards` needs `is_local_player_on_floor` from `modifiers`, and `modifiers`
-  requires `boss`. Two ways out when it is reached: move the shared helper into `core.lua`,
-  or move `BOSS_PLAYER_MODIFIERS` so the `modifiers → boss` edge disappears. Neither was
-  chosen yet.
+  requires `boss`. Two ways out: move the shared helper into `core.lua`,
+  or move `BOSS_PLAYER_MODIFIERS` so the `modifiers → boss` edge disappears. **The first was
+  taken.** The second would have put Boss's own player catalog outside `boss.lua` to satisfy a
+  four-line predicate, and that predicate is a plain read of Mario's state with no modifier
+  meaning of its own — the same shape as `player_record_key`, which moved into `core.lua` for
+  the same reason in R-001. With the helper in `core.lua` the hazards moved with no new require
+  edge at all: `boss.lua` still requires only `core`.
 - **Not every surviving mutation is a coverage gap; some are equivalent mutants.** Six of the
   66 mutations of the load-time self-check survived and none of them was a missing test. One
   clause of the check is redundant: `or modifier_data.kind == "auto_crouch"` cannot change the
@@ -231,6 +243,14 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   a survivor, work out whether the mutation changes behaviour at all — and record the ones that
   cannot, so the next sweep does not re-investigate them. Leave the code exactly as it is: a
   redundant clause discovered during a move is still not a move's business to delete.
+  Bowser's hazards produced five more out of 97, and the reasoning for each is worth keeping so
+  the next sweep does not redo it: three `if bowser == nil then return end` guards sit in
+  helpers that only ever run after `apply_boss_hazards` has already returned on a nil Bowser,
+  so no test can reach them; the `return` ending the intro branch is equivalent, because the
+  branch sets `boss_hazard_seq = attack_seq` first and the sequence check below therefore
+  returns anyway with both pending queues already emptied; and the fast-path
+  `if attack_seq == local_runtime.boss_hazard_seq then return end` is equivalent, because
+  `first_seq` then lands one past `attack_seq` and the replay loop runs zero times.
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
@@ -241,7 +261,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   command. Never read the target file while a sweep is running: it will show you a mutant and
   you will believe it.
 
-- **A generated engine stub can silently disable a guard. Seven now.** `test/engine_stub.lua`
+- **A generated engine stub can silently disable a guard. Ten now.** `test/engine_stub.lua`
   returns `nil` from most engine functions, which is right for a function whose return value
   nothing reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
   "hold this warp back while the level loads" guard could be deleted with no test noticing;
@@ -257,6 +277,12 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   never true and the HMC Metal Cap portal guard could not fire, and `obj_get_first` returned
   nil, so the object walk inside `update_star_visibility` never ran a single iteration. Objects
   now carry `behavior_id`, and tests supply the level's contents through `ctl.level_objects`.
+  Three more came with Bowser's hazards, and one is worse than an unreachable branch:
+  `dist_between_objects` returned 0 for every pair, so `distance < 4800` was true whatever the
+  two objects' positions were; `obj_scale` discarded its arguments, so every flame Bowser
+  spawns was the same size and the three attacks that scale theirs differently could not be
+  told apart; and `atan2s` returned `nil`, which does not disable hunter fire but **crashes**
+  it, because the attack adds `0x0800` to the yaw it reads. All three now have real bodies.
   **When a mutation survives, check whether the stub made the branch unreachable before
   concluding the test is wrong.**
 

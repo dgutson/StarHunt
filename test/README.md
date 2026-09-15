@@ -52,6 +52,7 @@ something the mod uses, this is what picks it up. Run
 | `mechanics` | the load-time banner reporting success at all, darkness timing, Easy pulse width |
 | `boss` | the reserve bomb wave: 0/0/2/4 by difficulty, distinct original positions, not armed before the native five are seen, one wave per round, host only |
 | `boss_readers` | what the rest of the mod asks about a Boss round: the fight's own time range and its four player-count boundaries, which of Bowser's three modifier slots hold a given draw, the two conditions Desperate needs, the modifier name in each language, and the host reading back the lowest health any client reported |
+| `boss_hazards` | Bowser's attacks as every client plays them: the four gates, Instant Knockout's one-kill-per-hit lock, the stun and the config menu it spares, an attack waiting through Bowser's absence rather than being consumed, the intro consuming one, the delayed second wave and the meteor fall, the ring's replay window and its wrap and its newest-slot fallback, and each of the nine attacks that create a hazard of their own |
 | `round` | all sixteen mode/difficulty combinations, Bowser's 3/5/7/9 health, round length by lobby size, the waiting-room menu lock |
 | `round_client` | what a round does on each player's own machine: the warp home when it ends and the retry behind it, hiding players hunting a private variant of the same star, the pause menu refusing to quit mid-round, death costing exactly one forfeit in Normal and none in Boss or Chaos, and Bowser's intro textbox being cancelled |
 
@@ -70,3 +71,19 @@ Three lines of `run_static_modifier_checks` are the known exception, recorded in
 `HISTORY.md`: its water-cap, A/B-swap and control-drift checks call helpers that
 are file-local to `modules/modifiers.lua`, so no test can replace them with a
 broken one. Only the shipped helpers are ever exercised there.
+
+Five lines of Bowser's hazards are the other known exception, for the same kind
+of reason: three `if bowser == nil then return end` guards sit in helpers that
+only ever run after `apply_boss_hazards` has already returned on a nil Bowser,
+and two early returns are equivalent to falling through to the check below them.
+`REFACTOR_PLAN.md` carries the reasoning for each, so the next sweep does not
+re-investigate them.
+
+A stub that answers `nil`, `0` or `false` where the real engine answers something
+meaningful can hide a whole area. Ten have been found so far. The most recent
+three came with Bowser's hazards: `dist_between_objects` answered 0 for every
+pair, so a shockwave stunned the player from any distance; `obj_scale` discarded
+its arguments, so every flame was the same size; and `atan2s` answered `nil`,
+which crashed hunter fire rather than merely disabling it. When a mutation
+survives, check whether a stub made the branch unreachable before concluding the
+test is wrong.

@@ -13,6 +13,82 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-14 — R-002, fifth part: Bowser's attack queue and hazards reach `modules/boss.lua`
+
+Two commits. The first moved `is_local_player_on_floor` out of `modifiers.lua` and into
+`core.lua`; the second moved the 172 lines from `spawn_violet_split_fire` to
+`apply_boss_hazards` out of `main.lua` and into `boss.lua`. `main.lua` fell from 1,735 to
+**1,562** lines, `boss.lua` grew from 158 to **348**, and the suite went from 407 to **456**
+tests.
+
+**The cycle this pass had to settle.** `REFACTOR_PLAN.md` had recorded two ways out and chosen
+neither: move the shared helper into `core.lua`, or move `BOSS_PLAYER_MODIFIERS` out of
+`boss.lua` so the `modifiers -> boss` edge disappears. The first was taken. The second would
+have put Boss's own player catalog outside `boss.lua` to satisfy a four-line predicate, and
+that predicate is a plain read of Mario's state with no modifier meaning of its own -- the same
+shape as `player_record_key`, which moved into `core.lua` for the same reason in R-001. With
+the helper in `core.lua`, the hazards moved **with no new require edge at all**: `boss.lua`
+still requires only `core`.
+
+Both moves are byte-identical in both directions. The only text that is not a relocation is
+`boss.lua`'s header, which now says why the round loop is not there and cannot be.
+
+**`is_local_player_on_floor` was completely untested, and so were the seven modifiers gated on
+it.** All four first-pass mutations survived a green 407-test run, including replacing the
+whole body with `return true`. The cause was the suite's own Mario: it has no `floor`, so the
+predicate always answered false and the cursed floor, the jump limit, Slippery, Keep Moving,
+the jump cooldown, the momentum burst and Overheat were skipped in every test that armed them.
+Five tests in `test/suite/modifiers.lua` now drive it through the cursed floor -- on the ground,
+with no floor underneath, swimming, at 21 and at exactly 22 units up, and 100 units below --
+and all ten mutations fail.
+
+**The hazards had no tests whatsoever**, and three engine stubs would have kept it that way.
+`api.boss_hazards` was published to `STARHUNT_TEST_API` and called by nothing.
+`dist_between_objects` answered 0 for every pair, so `distance < 4800` was true whatever the
+positions were and a shockwave stunned from any range. `obj_scale` discarded its arguments, so
+every flame was the same size. And `atan2s` answered `nil`, which does not disable hunter fire
+but **crashes** it, because the attack adds `0x0800` to the yaw it reads. All three now have
+real bodies in `test/harness.lua`. That makes **ten** stubs found to have silently disabled a
+guard.
+
+`test/suite/boss_hazards.lua` is 44 tests: the four gates, Instant Knockout's one-kill-per-hit
+lock, the stun and the menu it spares, attacks waiting through Bowser's absence rather than
+being consumed, the intro consuming them, the delayed wave and the meteor fall, the ring's
+replay window and its wrap and its newest-slot fallback, and each of the nine attacks that
+create a hazard of their own.
+
+**97 mutations, 92 caught.** The first sweep caught 81; the 16 survivors split into 11 real
+gaps and 5 that cannot be caught. Both the gaps and the reasoning for the five are worth
+recording, because the pattern repeats:
+
+- Three `if bowser == nil then return end` guards sit in helpers that only ever run after
+  `apply_boss_hazards` has already returned on a nil Bowser. Unreachable from any test.
+- The `return` ending the intro branch is equivalent: the branch sets
+  `boss_hazard_seq = attack_seq` first, so falling through hits the sequence check below and
+  returns anyway, with both pending queues already emptied.
+- The fast-path `if attack_seq == local_runtime.boss_hazard_seq then return end` is equivalent:
+  `first_seq` then lands one past `attack_seq`, so the replay loop runs zero times.
+
+The 11 real gaps were all the same kind of thing -- a test that pinned a value only where the
+mutation happened not to change it. Four are worth naming because they would recur: asserting
+the flame damage only for the attack that spawns its flames a different way; testing the meteor
+blast radius at 600 units, which is outside both 580 and the mutant's 480; setting the arena
+index to 0 explicitly, so the `or 0` **default** was never exercised; and asserting only that
+hunter fire aimed *differently* at two opposite positions, which the reversed-aim mutant
+satisfies just as well as the real code.
+
+The sweep itself took 14 minutes: 97 mutations x a full 456-test run, four at a time on a
+four-core machine, where four concurrent runs contend and each takes ~33s rather than ~23s.
+**Run the targeted suites first and re-run the full suite only for the survivors** -- the
+re-check of the 16 took 30 seconds that way. The sweep script also wrote its results only at
+the end, so nothing was readable while it ran; write each result as it lands.
+
+`DEVELOPMENT_CHECKLIST.md`'s code map now puts Boss entirely in `modules/boss.lua` and
+`modules/round.lua`, and the do-not-undo row for the attack queue names a test that actually
+proves a client replays more than one attack. The row had pointed at
+`test/suite/boss.lua`, which only pins the queue's size and the existence of its eight
+synchronized fields.
+
 ### 2026-09-14 — R-002, fourth part: the load-time self-check moves to `modules/modifiers.lua`
 
 `MODIFIER_KINDS` and `run_static_modifier_checks` left `main.lua` for `modifiers.lua`, which is
