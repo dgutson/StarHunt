@@ -27,7 +27,6 @@ local is_round_active = core.is_round_active
 local selected_mode = core.selected_mode
 local is_boss_mode = core.is_boss_mode
 local player_record_key = core.player_record_key
-local is_local_player_on_floor = core.is_local_player_on_floor
 local save = require("modules/save")
 local remove_starhunt_save_flag = save.remove_starhunt_save_flag
 local flush_starhunt_save_removals = save.flush_starhunt_save_removals
@@ -66,6 +65,7 @@ local boss_has_modifier = boss.boss_has_modifier
 local boss_is_desperate = boss.boss_is_desperate
 local boss_modifier_text = boss.boss_modifier_text
 local host_read_boss_health_report = boss.host_read_boss_health_report
+local apply_boss_hazards = boss.apply_boss_hazards
 local local_modifiers = require("modules/modifiers")
 local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
 local capped_horizontal_velocity = local_modifiers.capped_horizontal_velocity
@@ -446,179 +446,6 @@ local function local_boss_warp_update(m)
         local_runtime.death_lock = false
         local_runtime.death_warp_pending = false
     end
-end
-
-local function spawn_violet_split_fire(bowser)
-    if bowser == nil then return end
-    local function spawn_flame(model, yaw, scale, speed)
-        spawn_non_sync_object(id_bhvFlameMovingForwardGrowing, model,
-            bowser.oPosX, bowser.oPosY + 180, bowser.oPosZ, function(flame)
-                flame.oMoveAngleYaw = yaw
-                flame.oFaceAngleYaw = yaw
-                flame.oForwardVel = speed
-                flame.oVelY = 8
-                flame.oDamageOrCoinValue = 4
-                obj_scale(flame, scale)
-            end)
-    end
-
-    -- Red and blue overlap for the violet-looking core. Three branches keep
-    -- the attack readable without flooding every client with short-lived
-    -- objects.
-    spawn_flame(E_MODEL_RED_FLAME, 0, 2.2, 0)
-    spawn_flame(E_MODEL_BLUE_FLAME, 0, 1.9, 0)
-    for branch = 0, 2 do
-        local base = branch * 0x5555
-        spawn_flame(E_MODEL_BLUE_FLAME, base, 1.15, 34)
-    end
-end
-
-local function spawn_boss_flame(bowser, model, yaw, scale, speed)
-    if bowser == nil then return end
-    spawn_non_sync_object(id_bhvFlameMovingForwardGrowing, model,
-        bowser.oPosX, bowser.oPosY + 160, bowser.oPosZ, function(flame)
-            flame.oMoveAngleYaw = yaw
-            flame.oFaceAngleYaw = yaw
-            flame.oForwardVel = speed
-            flame.oVelY = 5
-            flame.oDamageOrCoinValue = 4
-            obj_scale(flame, scale)
-        end)
-end
-
-local function trigger_boss_wave(m, bowser, stun_frames)
-    if bowser == nil then return end
-    spawn_non_sync_object(id_bhvBowserShockWave, E_MODEL_BOWSER_WAVE,
-        bowser.oPosX, bowser.oFloorHeight, bowser.oPosZ, nil)
-    local distance = m.marioObj ~= nil and dist_between_objects(bowser, m.marioObj) or nil
-    if distance ~= nil and distance < 4800 and is_local_player_on_floor(m) then
-        local_runtime.boss_stun_frames = math.max(local_runtime.boss_stun_frames, stun_frames)
-    end
-end
-
-local function resolve_meteor_rain(m, pending)
-    for meteor = 0, 3 do
-        local angle = pending.seed + meteor * (math.pi * 2 / 4)
-        local x = pending.x + math.sin(angle) * 1250
-        local z = pending.z + math.cos(angle) * 1250
-        spawn_non_sync_object(id_bhvExplosion, E_MODEL_EXPLOSION, x, pending.y, z, nil)
-        local dx, dz = m.pos.x - x, m.pos.z - z
-        if dx * dx + dz * dz < 580 * 580 then m.health = 0 end
-    end
-end
-
-local function execute_boss_attack(m, bowser, attack, attack_seq)
-    if attack == 2 then
-        trigger_boss_wave(m, bowser, 30)
-    elseif attack == 3 then
-        spawn_violet_split_fire(bowser)
-    elseif attack == 5 then
-        table.insert(local_runtime.pending_meteors, {
-            at = get_global_timer() + 45,
-            x = bowser.oPosX,
-            y = bowser.oFloorHeight,
-            z = bowser.oPosZ,
-            seed = (attack_seq * 1.71) % (math.pi * 2),
-        })
-    elseif attack == 6 then
-        for flame = 0, 7 do
-            spawn_boss_flame(bowser, E_MODEL_BLUE_FLAME, flame * 0x2000, 0.9, 38)
-        end
-    elseif attack == 7 then
-        -- The five real bombs in the final arena remain the only throwable
-        -- bombs. This attack is a safe fire volley, not a spawned bomb.
-        for flame = 0, 4 do
-            spawn_boss_flame(bowser, E_MODEL_RED_FLAME, flame * 0x3333, 1.05, 45)
-        end
-    elseif attack == 8 then
-        local angle = attack_seq * 1.37
-        m.vel.x = m.vel.x + math.sin(angle) * 55
-        m.vel.z = m.vel.z + math.cos(angle) * 55
-        local_runtime.boss_stun_frames = math.max(local_runtime.boss_stun_frames, 12)
-    elseif attack == 9 then
-        -- A distortion wave replaces the old physical teleport. Moving a
-        -- held or network-owned Bowser could make his tail impossible to grab.
-        trigger_boss_wave(m, bowser, 16)
-    elseif attack == 10 then
-        trigger_boss_wave(m, bowser, 24)
-        table.insert(local_runtime.pending_double_waves, get_global_timer() + 24)
-    elseif attack == 11 and m.marioObj ~= nil then
-        local yaw = atan2s(m.pos.x - bowser.oPosX, m.pos.z - bowser.oPosZ)
-        spawn_boss_flame(bowser, E_MODEL_RED_FLAME, yaw, 1.25, 50)
-        spawn_boss_flame(bowser, E_MODEL_BLUE_FLAME, yaw + 0x0800, 0.8, 44)
-        spawn_boss_flame(bowser, E_MODEL_BLUE_FLAME, yaw - 0x0800, 0.8, 44)
-    end
-end
-
-local function apply_boss_hazards(m)
-    if m.playerIndex ~= 0 or not is_round_active() or not is_boss_mode() then return end
-    local level = BOSS_LEVELS[gGlobalSyncTable.sh5_boss_level_index or 0]
-    if level == nil or gNetworkPlayers[0].currLevelNum ~= level then return end
-
-    if boss_has_modifier(1) then
-        if m.hurtCounter > 0 and local_runtime.boss_damage_lock == 0 then
-            local_runtime.boss_damage_lock = 1
-            m.health = 0
-        elseif m.hurtCounter == 0 then
-            local_runtime.boss_damage_lock = 0
-        end
-    end
-
-    if local_runtime.boss_stun_frames > 0 then
-        local_runtime.boss_stun_frames = local_runtime.boss_stun_frames - 1
-        if not local_runtime.config_open then
-            m.controller.buttonDown = 0
-            m.controller.buttonPressed = 0
-            m.controller.stickX = 0
-            m.controller.stickY = 0
-            m.controller.rawStickX = 0
-            m.controller.rawStickY = 0
-            m.intendedMag = 0
-            m.forwardVel = 0
-        end
-    end
-
-    local bowser = obj_get_first_with_behavior_id(id_bhvBowser)
-    -- A brief ownership transfer can temporarily remove Bowser locally. Keep
-    -- queued attacks intact until the object returns instead of silently
-    -- consuming them.
-    if bowser == nil then return end
-    -- During Bowser's intro, consume the current sequence without executing
-    -- it. This also protects players who joined after an attack was sent.
-    if bowser.oAction == 5 or bowser.oAction == 6 or bowser.oAction == 20 then
-        local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-        local_runtime.pending_double_waves = {}
-        local_runtime.pending_meteors = {}
-        return
-    end
-    for index = #local_runtime.pending_double_waves, 1, -1 do
-        if get_global_timer() >= local_runtime.pending_double_waves[index] then
-            table.remove(local_runtime.pending_double_waves, index)
-            trigger_boss_wave(m, bowser, 24)
-        end
-    end
-    for index = #local_runtime.pending_meteors, 1, -1 do
-        local meteor = local_runtime.pending_meteors[index]
-        if get_global_timer() >= meteor.at then
-            table.remove(local_runtime.pending_meteors, index)
-            resolve_meteor_rain(m, meteor)
-        end
-    end
-
-    local attack_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-    if attack_seq == local_runtime.boss_hazard_seq then return end
-    -- Global sync updates can coalesce during lag. Replay every attack still
-    -- present in the ring instead of applying only the newest sequence.
-    local first_seq = math.max(local_runtime.boss_hazard_seq + 1, attack_seq - BOSS_ATTACK_QUEUE_SIZE + 1)
-    for sequence = first_seq, attack_seq do
-        local queue_slot = ((sequence - 1) % BOSS_ATTACK_QUEUE_SIZE) + 1
-        local attack = gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(queue_slot)] or 0
-        if sequence == attack_seq and attack == 0 then
-            attack = gGlobalSyncTable.sh5_boss_attack_kind or 0
-        end
-        execute_boss_attack(m, bowser, attack, sequence)
-    end
-    local_runtime.boss_hazard_seq = attack_seq
 end
 
 -- Remove the camera Lakitu itself on the castle grounds.  This prevents the

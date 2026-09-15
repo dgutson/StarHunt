@@ -279,7 +279,33 @@ local function install_engine()
         --- @diagnostic disable-next-line: return-type-mismatch
         return nil
     end
-    function dist_between_objects() return 0 end
+    -- The generated stub returns nil and the first hand-written replacement
+    -- returned 0 for every pair, so `distance < 4800` in Bowser's shockwave was
+    -- true whatever the two objects' positions were and the range that decides
+    -- whether a wave stuns the local player could not be tested at all.
+    function dist_between_objects(a, b)
+        if a == nil or b == nil then return 0 end
+        local dx = (a.oPosX or 0) - (b.oPosX or 0)
+        local dy = (a.oPosY or 0) - (b.oPosY or 0)
+        local dz = (a.oPosZ or 0) - (b.oPosZ or 0)
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    end
+
+    -- The generated stub returns nil, which does not merely disable Bowser's
+    -- hunter fire but crashes it: the attack reads the yaw towards Mario and
+    -- then adds and subtracts 0x0800 from it. sm64coopdx declares
+    -- `s16 atan2s(f32 y, f32 x)` and its callers read the result as a yaw, so
+    -- the stub answers with the same angle on the same 0x10000-unit circle.
+    function atan2s(y, x)
+        return math.floor(math.atan(y, x) * 0x8000 / math.pi) % 0x10000
+    end
+
+    -- The generated stub discards its arguments, so every flame Bowser spawns
+    -- had an unobservable size and the three attacks that scale their flames
+    -- differently were indistinguishable.
+    function obj_scale(object, scale)
+        if object ~= nil then object.scale = scale end
+    end
 
     --- Put the mod into an active round of `mode` at `difficulty`.
     -- Round state is synchronized, so tests that exercise host logic have to

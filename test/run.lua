@@ -33,6 +33,7 @@ end
 local suites = {
     "core", "catalog", "audit", "selfcheck", "difficulty", "pairing", "i18n",
     "save", "team", "world", "caps", "interact", "hud", "mechanics", "modifiers", "boss", "boss_readers",
+    "boss_hazards",
     "chaos",
     "round", "round_host", "round_client",
 }
