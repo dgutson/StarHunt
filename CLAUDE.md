@@ -66,7 +66,7 @@ Tags `v1.1-monolithic` and `v1.1-modular` mark the commit before and after the s
 # parse them. This checks main.lua only; the modules are checked by the test run below.
 lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 
-# Tests (772 of them, ~45s). Needs lua5.4 for the same reason.
+# Tests (775 of them, ~45s). Needs lua5.4 for the same reason.
 lua5.4 test/run.lua
 lua5.4 test/run.lua audit difficulty     # only matching suites
 
@@ -117,7 +117,7 @@ The whole mod is clean. **These are the baselines; a rise in either is a regress
 
 | check | expected |
 |---|---|
-| `lua5.4 test/run.lua` | 772 passed, 0 failed |
+| `lua5.4 test/run.lua` | 775 passed, 0 failed |
 | `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 46 files |
 | `lua-language-server --check` | Found 10 problems in 2 files |
 

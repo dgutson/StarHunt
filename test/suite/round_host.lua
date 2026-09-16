@@ -1135,6 +1135,20 @@ return function(t, harness)
             "a held Bowser did not push the next attack a second out")
     end)
 
+    s.test("Bowser queues nothing while the throw is still in the air", function()
+        -- Action 1 is the vanilla thrown update, the flight to the mine. The
+        -- player who threw him cannot act until he lands, so an attack aimed
+        -- at them now cannot be dodged.
+        local api, ctl = bowser_fight()
+        ctl.objects[id_bhvBowser].oAction = 1
+        gGlobalSyncTable.sh5_boss_modifier_1 = 2
+        ctl.timer = gGlobalSyncTable.sh5_boss_attack_frame
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_boss_attack_kind, 0, "a Bowser in mid-throw attacked")
+        t.eq(gGlobalSyncTable.sh5_boss_attack_frame, ctl.timer + 30,
+            "the throw did not push the next attack a second out")
+    end)
+
     s.test("Bowser attacks again once he is put down", function()
         local api, ctl = bowser_fight()
         ctl.objects[id_bhvBowser].oHeldState = HELD_HELD

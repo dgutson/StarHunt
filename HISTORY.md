@@ -13,6 +13,31 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-016: the throw is part of the grab
+
+R-015 stopped Bowser's attacks while a player holds him and stopped at the release, which
+left the other half of the grab uncovered: the throw is Bowser's vanilla action 1, roughly a
+second of flight at a mine, and an attack queued in that window fired from a tumbling Bowser
+at a player stuck in `ACT_RELEASING_BOWSER` with no way to dodge. R-015 named the gap and
+left it alone because it was not what had been reported; the user asked for it on reviewing
+the pull request.
+
+`boss_is_held` became `boss_is_grabbed` and now reads
+`oHeldState == HELD_HELD or oAction == 1`. The rename is the point: one predicate for both
+halves of a grab, used unchanged at the two call sites R-015 had already prepared.
+
+`HELD_THROWN` and `HELD_DROPPED` are still not tested, and the comment in `boss.lua` now says
+why — the same thrown update that sets action 1 puts the held state back to `HELD_FREE` on
+the next frame, so neither value lasts long enough to observe. **Action 1 is a single action
+and not the start of a range**: actions 0 and 2 are Bowser acting on his own, and a test in
+`boss_hazards` pins both, because widening the check to a range would silence the fight's own
+attacks.
+
+Three tests were added, two in `test/suite/boss_hazards.lua` and one in
+`test/suite/round_host.lua`; the suite is 775. Both mutation sweeps were clean first time —
+28 of 28 on `boss.lua` against `boss_hazards` alone, 17 of 17 on `round.lua` against
+`round_host`.
+
 ### 2026-09-16 — R-015: Bowser stops attacking while a player is holding him
 
 Reported from play: in Boss mode, grabbing Bowser by the tail and spinning him did not stop

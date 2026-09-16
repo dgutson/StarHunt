@@ -29,7 +29,7 @@ cerradas, las verificaciones antiguas y los cambios ya implementados están en
 6. Ejecutar la comprobación de sintaxis y la prueba completa:
    `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` y `lua5.4 test/run.lua`.
    Las tres líneas de referencia, y **cualquier subida es una regresión**:
-   772 pruebas sin fallos, `luacheck StarHunt/ test/` con 2 avisos y 0 errores,
+   775 pruebas sin fallos, `luacheck StarHunt/ test/` con 2 avisos y 0 errores,
    y `lua-language-server --check` con 10 problemas en 2 archivos.
 7. Mutar el código cambiado y comprobar que la prueba lo detecta
    (`tools/gen_mutations.py` y `tools/sweep_mutations.py`). Estar publicado en
@@ -94,7 +94,7 @@ motivo está en el apéndice de `REFACTOR_PLAN.md`.
 | Vidas quedaban en 99 | No se restauraba el valor previo | Guardar vidas al empezar y restaurar al terminar | Prueba de vidas |
 | HUD de otro mod se mostraba de nuevo | StarHunt siempre llamaba a `hud_show()` | Recordar si estaba oculto antes de la ronda | Prueba de HUD oculto |
 | Ataques de Bowser se perdían con lag | Solo existía el último ataque sincronizado | Cola circular de 8 ataques, reproducida entera por cada cliente | `test/suite/boss_hazards.lua`: varios ataques llegados en una sola actualización se reproducen todos, la cola da la vuelta en el noveno, y un hueco en la ranura más nueva recurre al campo único |
-| Bowser atacaba mientras un jugador lo sujetaba | Ni el host ni el cliente miraban `oHeldState` | `boss_is_held` detiene los ataques mientras `oHeldState` es `HELD_HELD`: el host no encola y adelanta un segundo el siguiente, y cada cliente consume la secuencia y descarta las olas y meteoritos pendientes | `test/suite/boss_hazards.lua` y `test/suite/round_host.lua`: sujetado no ataca y no deja nada en vuelo, soltado vuelve a atacar, y un `oHeldState` que el motor no responde deja la pelea como estaba |
+| Bowser atacaba mientras un jugador lo agarraba | Ni el host ni el cliente miraban `oHeldState` ni la accion 1 | `boss_is_grabbed` detiene los ataques en las dos mitades del agarre, el giro (`oHeldState` es `HELD_HELD`) y el lanzamiento (accion 1): el host no encola y adelanta un segundo el siguiente, y cada cliente consume la secuencia y descarta las olas y meteoritos pendientes. **La accion 1 no es un rango**: las acciones 0 y 2 son Bowser actuando por su cuenta | `test/suite/boss_hazards.lua` y `test/suite/round_host.lua`: agarrado y lanzado no atacan y no dejan nada en vuelo, soltado vuelve a atacar, las acciones vecinas a la 1 si atacan, y un `oHeldState` que el motor no responde deja la pelea como estaba |
 | Ráfagas/congelación se omitían | Dependían de un frame exacto | Usar número de ciclo, no igualdad exacta | Pruebas de salto de temporizador |
 | Jugadores se veían entre subzonas | Solo se comparaba el nivel | Comparar también `currAreaIndex` | Prueba de áreas distintas |
 | Retos imposibles | B o Z necesarios, rutas precisas o espera | Auditoría de cuatro etapas y ajustes por estrella | Matriz de 2.976 pares (2.222 aprobados, 754 rechazados); `test/suite/selfcheck.lua` comprueba que no falte ninguna. **2.232 era el tamaño de la matriz en v0.8, con 24 modificadores; esta fila lo citaba todavía** |

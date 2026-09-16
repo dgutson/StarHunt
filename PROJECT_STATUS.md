@@ -38,7 +38,7 @@ El identificador es el SHA-256 de la lista ordenada de hashes de todos los
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-`9E38682B40258027C96D23D3F12F3F48D193291FF0540BD8ECB9B873631651F4`, tras la correccion
+`235A6D29EF8134016A29A2F493BEB91DF5B03F7ABC569DC23A5F8ACCE7803283`, tras las correcciones
 del 16 de septiembre. El valor de la division en modulos era
 `27BEDAA820964202EABAAFB96633B8F4A9C4812BA7866C3F97E463CC5D3DD0C7`.
 
@@ -84,7 +84,7 @@ El cierre se basa en pruebas automatizadas y las verificaciones visuales ya
 registradas. No afirma que todas las combinaciones multijugador, de resolución
 y de mods externos hayan sido probadas dentro de SM64CoopDX.
 
-**La version en modulos todavia no se jugo dentro de SM64CoopDX.** Las 772
+**La version en modulos todavia no se jugo dentro de SM64CoopDX.** Las 775
 pruebas corren fuera del juego contra un doble del motor, asi que no alcanzan el
 renderizado, la red, los warps ni la interaccion con otros mods -- y tampoco el
 `require` relativo a la carpeta, que es justamente lo que cambio la division. Es
