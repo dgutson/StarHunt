@@ -58,22 +58,22 @@ Team.build_balanced = function()
     for _, player in ipairs(players) do
         local team
         if red_count >= red_cap then
-            team = Team.BLUE
+            team = Team.TeamColor.BLUE
         elseif blue_count >= blue_cap then
-            team = Team.RED
+            team = Team.TeamColor.RED
         elseif red_skill < blue_skill then
-            team = Team.RED
+            team = Team.TeamColor.RED
         elseif blue_skill < red_skill then
-            team = Team.BLUE
+            team = Team.TeamColor.BLUE
         elseif red_count < blue_count then
-            team = Team.RED
+            team = Team.TeamColor.RED
         elseif blue_count < red_count then
-            team = Team.BLUE
+            team = Team.TeamColor.BLUE
         else
-            team = math.random(2) == 1 and Team.RED or Team.BLUE
+            team = math.random(2) == 1 and Team.TeamColor.RED or Team.TeamColor.BLUE
         end
         Team.initial[player.index] = team
-        if team == Team.RED then
+        if team == Team.TeamColor.RED then
             red_count = red_count + 1
             red_skill = red_skill + player.skill
         else
@@ -85,14 +85,14 @@ end
 
 Team.participant_stats = function()
     local stats = {
-        [Team.RED] = { count = 0, skill = 0, score = 0 },
-        [Team.BLUE] = { count = 0, skill = 0, score = 0 },
+        [Team.TeamColor.RED] = { count = 0, skill = 0, score = 0 },
+        [Team.TeamColor.BLUE] = { count = 0, skill = 0, score = 0 },
     }
     local connected_keys = {}
     for i = 0, MAX_PLAYERS - 1 do
         local sync = gPlayerSyncTable[i]
         if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1 then
-            local team = sync.sh5_team or Team.NONE
+            local team = sync.sh5_team or Team.TeamColor.NONE
             if stats[team] ~= nil then
                 stats[team].count = stats[team].count + 1
                 stats[team].skill = stats[team].skill + math.max(0, sync.sh5_lifetime_stars or 0)
@@ -103,7 +103,7 @@ Team.participant_stats = function()
         end
     end
     for key, record in pairs(Team.host_player_records) do
-        local team = record.team or Team.NONE
+        local team = record.team or Team.TeamColor.NONE
         if not connected_keys[key] and record.enrolled == 1 and stats[team] ~= nil then
             -- Preserve disconnected players' earned points, but do not count
             -- them as active roster slots when assigning a new participant.
@@ -117,38 +117,38 @@ Team.pick_late = function(preferred_team)
     local stats = Team.participant_stats()
     -- Player count is the hard constraint. A new or returning participant
     -- always fills the smaller active roster before any other consideration.
-    if stats[Team.RED].count < stats[Team.BLUE].count then return Team.RED end
-    if stats[Team.BLUE].count < stats[Team.RED].count then return Team.BLUE end
+    if stats[Team.TeamColor.RED].count < stats[Team.TeamColor.BLUE].count then return Team.TeamColor.RED end
+    if stats[Team.TeamColor.BLUE].count < stats[Team.TeamColor.RED].count then return Team.TeamColor.BLUE end
 
     -- With equal rosters, help a team that trails by at least two points.
     -- A one-point gap is intentionally too small to override reconnection or
     -- experience balance, preventing constant team changes around a tie.
-    if stats[Team.RED].score - stats[Team.BLUE].score >= TEAM_SCORE_PRIORITY_GAP then
-        return Team.BLUE
+    if stats[Team.TeamColor.RED].score - stats[Team.TeamColor.BLUE].score >= TEAM_SCORE_PRIORITY_GAP then
+        return Team.TeamColor.BLUE
     end
-    if stats[Team.BLUE].score - stats[Team.RED].score >= TEAM_SCORE_PRIORITY_GAP then
-        return Team.RED
+    if stats[Team.TeamColor.BLUE].score - stats[Team.TeamColor.RED].score >= TEAM_SCORE_PRIORITY_GAP then
+        return Team.TeamColor.RED
     end
 
     -- Preserve a reconnect's previous team whenever the two stronger rules
     -- above do not require a different assignment.
-    if preferred_team == Team.RED or preferred_team == Team.BLUE then return preferred_team end
+    if preferred_team == Team.TeamColor.RED or preferred_team == Team.TeamColor.BLUE then return preferred_team end
 
-    if stats[Team.RED].skill < stats[Team.BLUE].skill then return Team.RED end
-    if stats[Team.BLUE].skill < stats[Team.RED].skill then return Team.BLUE end
-    return math.random(2) == 1 and Team.RED or Team.BLUE
+    if stats[Team.TeamColor.RED].skill < stats[Team.TeamColor.BLUE].skill then return Team.TeamColor.RED end
+    if stats[Team.TeamColor.BLUE].skill < stats[Team.TeamColor.RED].skill then return Team.TeamColor.BLUE end
+    return math.random(2) == 1 and Team.TeamColor.RED or Team.TeamColor.BLUE
 end
 
 Team.update_scores = function()
     if not network_is_server() or not Team.is_mode() then return end
     local stats = Team.participant_stats()
-    gGlobalSyncTable.sh5_red_score = stats[Team.RED].score
-    gGlobalSyncTable.sh5_blue_score = stats[Team.BLUE].score
+    gGlobalSyncTable.sh5_red_score = stats[Team.TeamColor.RED].score
+    gGlobalSyncTable.sh5_blue_score = stats[Team.TeamColor.BLUE].score
 end
 
 Team.colors = {
-    [Team.RED] = { r = 225, g = 42, b = 48 },
-    [Team.BLUE] = { r = 45, g = 104, b = 235 },
+    [Team.TeamColor.RED] = { r = 225, g = 42, b = 48 },
+    [Team.TeamColor.BLUE] = { r = 45, g = 104, b = 235 },
 }
 
 Team.palette_key = function(player, index)
@@ -220,7 +220,7 @@ Team.update_palettes = function()
     Team.paletteRefreshAt = get_global_timer() + 15
     for i = 0, MAX_PLAYERS - 1 do
         local player = gNetworkPlayers[i]
-        local team = gPlayerSyncTable[i].sh5_team or Team.NONE
+        local team = gPlayerSyncTable[i].sh5_team or Team.TeamColor.NONE
         local color = Team.colors[team]
         if player ~= nil and player.connected and color ~= nil then
             Team.capture_palette(player, i, color)
@@ -257,9 +257,9 @@ local function on_allow_pvp_attack(attacker, victim, _)
     end
     if not players_can_share_world(attacker_index, victim_index) then return false end
     if Team.is_mode() then
-        local attacker_team = gPlayerSyncTable[attacker_index].sh5_team or Team.NONE
-        local victim_team = gPlayerSyncTable[victim_index].sh5_team or Team.NONE
-        return attacker_team ~= Team.NONE and victim_team ~= Team.NONE
+        local attacker_team = gPlayerSyncTable[attacker_index].sh5_team or Team.TeamColor.NONE
+        local victim_team = gPlayerSyncTable[victim_index].sh5_team or Team.TeamColor.NONE
+        return attacker_team ~= Team.TeamColor.NONE and victim_team ~= Team.TeamColor.NONE
             and attacker_team ~= victim_team
     end
     return not is_boss_mode()

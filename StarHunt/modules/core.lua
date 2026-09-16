@@ -20,12 +20,51 @@ local FRAMES_PER_SECOND = 30
 -- in any one of chaos.lua, round.lua or boss.lua.
 local NEXT_GOAL_DELAY = 90
 
-local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
-    EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3,
-    NONE = 0, RED = 1, BLUE = 2, initial = {},
+local Team = { initial = {},
     palettes = {}, paletteActive = false, paletteRefreshAt = 0,
     manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
+
+-- The mod has three unrelated axes -- which mode is being played, how hard it
+-- is, and which team a player is on -- and all three are small integers that
+-- start at 0. They used to be eleven flat fields on the table above, so the
+-- mode, the difficulty and the team colour each had a member equal to 0, and
+-- the mode and the difficulty each had one equal to 3. Handing one axis to code
+-- that expected another was therefore not an error anywhere: it matched a real
+-- member of the wrong axis, and no test, luacheck run or lua-language-server
+-- run in this project can see that. The three are adjacent in the code most
+-- likely to make the mistake -- configured_time_range dispatches on the mode,
+-- effective_modifier scales on the difficulty, and host_update_round reads
+-- both.
+--
+-- The split below is by name only. Every number is exactly what v1.1 shipped,
+-- because sh5_mode and sh5_difficulty are synchronized: renumbering would make
+-- a released client and a patched one disagree about what mode a lobby is in.
+-- The values are also used arithmetically -- `% 4` when the menu cycles, `+ 1`
+-- as a table index, `clamp(..., 0, 3)` -- which the same numbers keep working.
+--
+-- `axis` is what makes this more than a rename. A plain table would answer nil
+-- for a name off the wrong axis, so the branch that read it would simply never
+-- fire: still silent, only differently. Erroring on an unknown read names the
+-- offending key where it is read, and refusing assignment stops the collision
+-- being restored one field at a time. Neither metamethod runs for a correct
+-- read, so this costs nothing per frame.
+local function axis(name, members)
+    return setmetatable(members, {
+        __index = function(_, key)
+            error(name .. " has no member '" .. tostring(key)
+                .. "' -- that name belongs to another axis", 2)
+        end,
+        __newindex = function(_, key)
+            error(name .. " is fixed; it cannot gain '" .. tostring(key) .. "'", 2)
+        end,
+    })
+end
+
+Team.Mode = axis("Team.Mode", { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 })
+Team.Difficulty =
+    axis("Team.Difficulty", { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 })
+Team.TeamColor = axis("Team.TeamColor", { NONE = 0, RED = 1, BLUE = 2 })
 
 -- The host's record of every player it has seen this round, keyed by a stable
 -- player key so a reconnecting player finds their own entry again.
@@ -154,20 +193,20 @@ end
 -- behaviour all three inherit.
 local function selected_mode()
     local mode = gGlobalSyncTable.sh5_mode
-    if mode == Team.BOSS or mode == Team.MODE or mode == Team.CHAOS then return mode end
-    return Team.NORMAL
+    if mode == Team.Mode.BOSS or mode == Team.Mode.TEAM or mode == Team.Mode.CHAOS then return mode end
+    return Team.Mode.NORMAL
 end
 
 local function is_boss_mode()
-    return selected_mode() == Team.BOSS
+    return selected_mode() == Team.Mode.BOSS
 end
 
 Team.is_mode = function()
-    return selected_mode() == Team.MODE
+    return selected_mode() == Team.Mode.TEAM
 end
 
 Team.is_chaos_mode = function()
-    return selected_mode() == Team.CHAOS
+    return selected_mode() == Team.Mode.CHAOS
 end
 
 -- Whether a StarHunt round is running. This is a read of synchronized state, so

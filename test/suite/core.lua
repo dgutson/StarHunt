@@ -116,4 +116,109 @@ return function(t, harness)
             t.eq(rt[field], false, field)
         end
     end)
+
+    -- The mode, the difficulty and the team colour used to be eleven flat
+    -- fields on one table, so Team.NORMAL, Team.EASY and Team.NONE were all 0
+    -- and Team.CHAOS, Team.NIGHTMARE were both 3. Passing one axis where
+    -- another was meant matched a real value instead of failing, and no test,
+    -- lint or type check in this project could see it. The numbers are
+    -- unchanged -- two of them are on the wire -- but the names now live on
+    -- three separate tables, each of which rejects a name from another axis.
+
+    s.test("the three axes are three separate name spaces", function()
+        local axes = {
+            mode = api.mode_axis,
+            difficulty = api.difficulty_axis,
+            team_color = api.team_color_axis,
+        }
+        for name, axis in pairs(axes) do
+            t.eq(type(axis), "table", name .. " axis is not a table")
+        end
+        t.ne(axes.mode, axes.difficulty, "mode and difficulty share one table")
+        t.ne(axes.mode, axes.team_color, "mode and team colour share one table")
+        t.ne(axes.difficulty, axes.team_color,
+            "difficulty and team colour share one table")
+
+        local owner = {}
+        for name, axis in pairs(axes) do
+            for key in pairs(axis) do
+                t.is_nil(owner[key], key .. " is on the " .. name
+                    .. " axis and on the " .. tostring(owner[key]) .. " axis")
+                owner[key] = name
+            end
+        end
+    end)
+
+    s.test("a name from another axis is an error, not a usable number", function()
+        -- This is the whole point of the split. Before it, Team.NIGHTMARE read
+        -- where a mode was expected gave 3, which IS Chaos mode: a valid and
+        -- completely wrong answer. Now it raises instead of answering.
+        for _, case in ipairs({
+            { "mode_axis", "NIGHTMARE" }, { "mode_axis", "RED" },
+            { "difficulty_axis", "CHAOS" }, { "difficulty_axis", "BLUE" },
+            { "team_color_axis", "BOSS" }, { "team_color_axis", "HARD" },
+        }) do
+            local axis, key = api[case[1]], case[2]
+            t.eq(type(axis), "table", case[1] .. " is not a table")
+            local readable, err = pcall(function() return axis[key] end)
+            t.eq(readable, false,
+                case[1] .. "." .. key .. " answered instead of raising")
+            t.ok(tostring(err):find(key, 1, true) ~= nil,
+                "the error does not name the key that was wrong: "
+                    .. tostring(err))
+            -- error(..., 2) is what sends the reader to the line that made the
+            -- mistake. At level 0 or 3 the message carries no position at all,
+            -- and at level 1 it points inside core.lua, which is the one file
+            -- that is not at fault. The mutation sweep reaches every one of
+            -- those, so the level is pinned here rather than left to taste.
+            t.ok(tostring(err):find(".lua:", 1, true) ~= nil,
+                "the error carries no source position: " .. tostring(err))
+            t.ok(tostring(err):find("modules/core.lua", 1, true) == nil,
+                "the error blames core.lua instead of the caller: "
+                    .. tostring(err))
+        end
+    end)
+
+    s.test("an axis cannot gain a member at runtime", function()
+        -- Assignment is how the collision would come back: one
+        -- Team.Mode.NIGHTMARE = 3 somewhere and the axes overlap again.
+        t.eq(type(api.mode_axis), "table", "mode_axis is not a table")
+        local written, err = pcall(function() api.mode_axis.NIGHTMARE = 3 end)
+        t.eq(written, false, "the mode axis accepted a difficulty name")
+        t.ok(tostring(err):find("NIGHTMARE", 1, true) ~= nil,
+            "the error does not name the key: " .. tostring(err))
+        t.ok(tostring(err):find(".lua:", 1, true) ~= nil,
+            "the error carries no source position: " .. tostring(err))
+        t.ok(tostring(err):find("modules/core.lua", 1, true) == nil,
+            "the error blames core.lua instead of the caller: " .. tostring(err))
+    end)
+
+    s.test("the axis numbers are the ones v1.1 put on the wire", function()
+        -- sh5_mode and sh5_difficulty are synchronized, so renumbering makes a
+        -- released client and a patched one disagree about what mode a lobby
+        -- is in. Splitting the name spaces deliberately changed no number.
+        for axis, expected in pairs({
+            mode_axis = { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 },
+            difficulty_axis = { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 },
+            team_color_axis = { NONE = 0, RED = 1, BLUE = 2 },
+        }) do
+            for key, value in pairs(expected) do
+                t.eq(api[axis][key], value, axis .. "." .. key)
+            end
+        end
+    end)
+
+    s.test("the flat axis names are gone from the shared table", function()
+        -- Putting any of them back restores the collision, and nothing else in
+        -- the suite would notice, because the value would simply be right
+        -- again. Only this test stands between the fix and its own undoing.
+        for _, name in ipairs({
+            "NORMAL", "BOSS", "MODE", "CHAOS",
+            "EASY", "MEDIUM", "HARD", "NIGHTMARE",
+            "NONE", "RED", "BLUE",
+        }) do
+            t.is_nil(rawget(api.shared_namespace, name),
+                "Team." .. name .. " is back on the shared table")
+        end
+    end)
 end

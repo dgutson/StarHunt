@@ -385,8 +385,8 @@ local local_boss_health_report_at = 0
 
 Team.boss_reserve_bomb_count = function()
     local difficulty = Team.selected_difficulty()
-    if difficulty == Team.HARD then return 2 end
-    if difficulty == Team.NIGHTMARE then return 4 end
+    if difficulty == Team.Difficulty.HARD then return 2 end
+    if difficulty == Team.Difficulty.NIGHTMARE then return 4 end
     return 0
 end
 

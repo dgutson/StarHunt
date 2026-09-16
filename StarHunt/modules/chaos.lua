@@ -69,7 +69,7 @@ Team.pick_chaos_pair = function(previous_first)
     end
     if #first_choices == 0 then return 0, 0 end
     local first_index = first_choices[math.random(#first_choices)]
-    if Team.selected_difficulty() ~= Team.NIGHTMARE then return first_index, 0 end
+    if Team.selected_difficulty() ~= Team.Difficulty.NIGHTMARE then return first_index, 0 end
     local second_choices = {}
     for index, candidate in ipairs(NORMAL_MODIFIER_CATALOG) do
         if Team.chaos_modifier_allowed(candidate)

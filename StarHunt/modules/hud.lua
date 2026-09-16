@@ -314,15 +314,15 @@ Team.draw_round_status_panels = function(remaining, score)
     local health_y = 42
 
     if Team.is_mode() then
-        local local_team = gPlayerSyncTable[0].sh5_team or Team.NONE
+        local local_team = gPlayerSyncTable[0].sh5_team or Team.TeamColor.NONE
         Team.draw_hud_panel(10, 8, 101, 38,
-            local_team == Team.BLUE and 64 or 232,
-            local_team == Team.BLUE and 132 or 68,
-            local_team == Team.BLUE and 255 or 72)
-        draw_hud_text((local_team == Team.RED and "> " or "  ")
+            local_team == Team.TeamColor.BLUE and 64 or 232,
+            local_team == Team.TeamColor.BLUE and 132 or 68,
+            local_team == Team.TeamColor.BLUE and 255 or 72)
+        draw_hud_text((local_team == Team.TeamColor.RED and "> " or "  ")
                 .. "RED  x " .. tostring(gGlobalSyncTable.sh5_red_score or 0),
             17, 14, 0.48, 255, 78, 78)
-        draw_hud_text((local_team == Team.BLUE and "> " or "  ")
+        draw_hud_text((local_team == Team.TeamColor.BLUE and "> " or "  ")
                 .. "BLUE x " .. tostring(gGlobalSyncTable.sh5_blue_score or 0),
             17, 28, 0.48, 92, 154, 255)
         health_y = 51
@@ -551,16 +551,16 @@ local function draw_config_menu()
             text = translated("LANGUAGE", "IDIOMA") .. " - " .. language_value
         elseif option == "mode" then
             local mode_value
-            if selected_mode() == Team.BOSS then
+            if selected_mode() == Team.Mode.BOSS then
                 mode_value = translated("BOSS", "JEFE")
-            elseif selected_mode() == Team.MODE then
+            elseif selected_mode() == Team.Mode.TEAM then
                 mode_value = translated("TEAM", "EQUIPOS")
-            elseif selected_mode() == Team.CHAOS then
+            elseif selected_mode() == Team.Mode.CHAOS then
                 mode_value = translated("CHAOS", "CAOS")
             else
                 mode_value = "NORMAL"
             end
-            if (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
+            if (selected_mode() == Team.Mode.TEAM or selected_mode() == Team.Mode.CHAOS)
                 and connected_player_count() < 2 then
                 mode_value = mode_value .. " - " .. translated("NEEDS 2 PLAYERS", "NECESITA 2 JUGADORES")
             end
@@ -587,7 +587,7 @@ local function draw_config_menu()
             djui_hud_set_color(255, 255, 255, 45)
             djui_hud_render_rect(x + 10, line_y - 2, box_w - 20, 16)
         end
-        local disabled = (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
+        local disabled = (selected_mode() == Team.Mode.TEAM or selected_mode() == Team.Mode.CHAOS)
             and connected_player_count() < 2
             and (option == "mode" or option == "start")
         draw_hud_text((local_runtime.config_selection == index and "> " or "  ") .. text,
@@ -647,8 +647,8 @@ local function local_round_notifications()
         local winner = gGlobalSyncTable.sh5_result_winner or "Nobody"
         local score = gGlobalSyncTable.sh5_result_score or 0
         local winner_message
-        local result_mode = gGlobalSyncTable.sh5_result_mode or Team.NORMAL
-        if result_mode == Team.BOSS then
+        local result_mode = gGlobalSyncTable.sh5_result_mode or Team.Mode.NORMAL
+        if result_mode == Team.Mode.BOSS then
             local reason = gGlobalSyncTable.sh5_result_reason or ""
             if reason == "boss defeated" then
                 winner_message = translated("BOWSER DEFEATED! TEAM STARHUNT WINS!", "BOWSER DERROTADO! EL EQUIPO STARHUNT GANA!")
@@ -657,7 +657,7 @@ local function local_round_notifications()
             else
                 winner_message = translated("TIME UP! BOWSER WINS!", "TIEMPO AGOTADO! BOWSER GANA!")
             end
-        elseif result_mode == Team.MODE then
+        elseif result_mode == Team.Mode.TEAM then
             local red_score = gGlobalSyncTable.sh5_result_red_score or 0
             local blue_score = gGlobalSyncTable.sh5_result_blue_score or 0
             if winner == "RED TEAM" then
@@ -669,7 +669,7 @@ local function local_round_notifications()
             end
             winner_message = winner_message .. "RED " .. tostring(red_score)
                 .. " - BLUE " .. tostring(blue_score)
-        elseif result_mode == Team.CHAOS then
+        elseif result_mode == Team.Mode.CHAOS then
             if (gGlobalSyncTable.sh5_result_reason or "") == "chaos last standing" then
                 winner_message = translated("CHAOS WINNER: ", "GANADOR DE CAOS: ") .. winner
             else

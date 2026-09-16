@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-019
+Next ID: R-026
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -82,9 +82,64 @@ session fills the context window and invites mistakes.
 - **Why:** Every check in this project currently runs only when someone remembers to run it on this one machine, and the refactor is 28 unpushed commits deep on `refactor/modularize` with the test suite as its only safety net. A mutation was once left applied to `modules/modifiers.lua` and a full green run did not notice, which is exactly the class of mistake a pipeline catches at push time rather than three sessions later.
 - **Outcome:** Every push to the repository runs the load check and the full test suite, and a red build is visible without anyone running anything locally.
 - **Blocked-by:** —
-- **Enables:** R-009
+- **Enables:** R-009, R-020
+
+### R-020 — Add the Teal compiler to the pipeline and decide what it compiles
+
+- **Category:** CI
+- **What:** With a pipeline in place, add a stage that installs the Teal compiler (`luarocks install tl`; `tl` is not on this machine, luarocks 3.8.0 is, and the current release is 0.24.8 from October 2025), add a `tlconfig.lua` that points `global_env_def` at the engine declaration file, compile the `.tl` sources, and **fail the build if the committed `.lua` differs from what the compiler produces**. No module is migrated by this item.
+- **Why:** Everything Teal-shaped below depends on a build step, and this project's defining property is that it has none. The mod folder is a strict boundary — sm64coopdx loads every `.lua` under `StarHunt/` recursively — so compiler output has to land exactly there while the `.tl` sources live outside it. A release is identified by the SHA-256 of the shipped `.lua` files, which would then be a hash of generated code, and the only thing keeping that honest is a job proving the committed output matches the sources. Without it, a hand-edit to a generated file is invisible.
+- **Also to settle here, before any module moves:** whether `tools/gen_mutations.py` mutates the `.tl` sources and recompiles, or mutates the shipped `.lua`. Every line range in `DEVELOPMENT_CHECKLIST.md`'s process refers to a file that would no longer be the one the tests load.
+- **Outcome:** CI installs `tl`, compiles the sources, and diffs the result against what is committed. The mutation question is answered in writing. No `.tl` file exists yet beyond whatever the stage needs to prove itself.
+- **Blocked-by:** R-007
+- **Enables:** R-021, R-022, R-023, R-024, R-025
 
 ## Later
+
+### R-021 — Migrate `modules/core.lua` to Teal, starting with the three enums
+
+- **Category:** Refactor
+- **What:** `core.lua` requires nothing, so it is the one module that can move on its own. Convert it to `core.tl` and declare the mode, difficulty and team axes as three Teal enums, which are nominal and mutually unassignable. `Team.Mode`, `Team.Difficulty` and `Team.TeamColor` already split the names apart and reject a name off the wrong axis, but they are still three sets of plain integers: nothing stops a difficulty *value* being passed where a mode is expected. That last step is what the compiler adds.
+- **Why:** This is the largest single win the language offers this codebase, and `core.lua` is where it lives. It is also the smallest possible first migration, which is what makes it the right one to learn the build on.
+- **The catch, which this item must resolve rather than discover:** Teal enums are **string** values only — confirmed against the current documentation, not recalled. The mod's modes and difficulties are integers that are synchronized between players and used arithmetically (`% 4` when cycling, `+ 1` as a table index, `clamp(..., 0, 3)`). So either the wire format changes to strings, which breaks a mixed-version lobby, or the sync tables keep carrying integers and the enum is converted at the boundary, which means two representations and a conversion that can itself be wrong. Decide this before writing any `.tl`.
+- **Outcome:** `core.tl` compiles to a `core.lua` byte-identical in behaviour, the three axes are distinct enum types, the 775 tests pass against the compiled output, and the wire format question is answered in writing.
+- **Blocked-by:** R-020
+- **Enables:** R-023, R-024, R-025
+
+### R-022 — Declare the two sync tables in a `.d.tl`
+
+- **Category:** Refactor
+- **What:** Write a declaration file giving `gGlobalSyncTable` and `gPlayerSyncTable` record types covering the 60 distinct `sh5_` fields, and load it with `global_env_def` in `tlconfig.lua` — the mechanism LÖVE uses for its predefined globals.
+- **Why:** This is the largest class of mistake the language could catch here. Those 60 fields are read and written at 355 places by name, and a typo creates a new field, writes to it, and reads back `nil` for the rest of the round. Neither luacheck nor lua-language-server can see it, because the tables are engine-provided and open to any key, so nothing in the current toolchain covers this at all.
+- **Known hole, worth recording rather than rediscovering:** the Boss attack queue is read as `gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(slot)]` in `boss.lua:368` and seeded the same way in `main.lua:406`. A constructed key cannot be checked by a record type, so the eight queue slots stay unprotected whatever this item does.
+- **Outcome:** Both sync tables have record types, the declaration is generated or checked against the fields the mod actually uses, and a deliberately misspelled field fails the build.
+- **Blocked-by:** R-020
+- **Enables:** —
+
+### R-023 — Migrate `modules/i18n.lua` and make the complete dictionaries `<total>`
+
+- **Category:** Refactor
+- **What:** Convert `i18n.lua` and mark `Team.boss_modifier_translations` and `Team.modifier_translations` as `<total>` maps keyed by an enum of the twelve Boss modifier kinds and the six language codes, so a missing translation fails the build.
+- **Why:** Adding a modifier today means remembering to add its twelve translations by hand, and a forgotten one shows up as English at runtime, in a language the author probably does not read. `<total>` is a Teal-specific attribute that forces every key of an enum-keyed map to be present.
+- **Careful:** this is right for the modifier and Boss dictionaries, which are meant to be complete, and **wrong** for star titles, which fall back to English deliberately — only text with a safe translation is localized. Do not make that one total.
+- **Blocked-by:** R-020, R-021
+- **Enables:** —
+
+### R-024 — Migrate the difficulty-keyed lookup tables in `boss.lua` and `round.lua`
+
+- **Category:** Refactor
+- **What:** Convert the tables that hold one value per difficulty or per attack — `attack_intervals` and `difficulty_factors` in `round.lua:684` and `:690`, Bowser's `{ 3, 5, 7, 9 }` health in `boss.lua:113`, the difficulty names in `hud.lua:574` — into `<total>` maps keyed by the enums from R-021.
+- **Why:** Each of these currently ends in `or <default>`, so a difficulty with no entry is indistinguishable from one that deliberately takes the default. A `<total>` map makes a missing case a compile error instead.
+- **Blocked-by:** R-020, R-021
+- **Enables:** —
+
+### R-025 — Migrate `modules/goals.lua` and `modules/audit.lua` to record types
+
+- **Category:** Refactor
+- **What:** Give the goal and the modifier record types — `goal(level, act, title, title_es, mods, power)` at `goals.lua:61` and `modifier(kind, value, label)` at `core.lua:143` — and let the 93 goals and 32 modifiers be checked against them.
+- **Why:** It is the last place in the mod with a repeated hand-built shape, 93 times over. Expect a smaller gain than the others: lua-language-server already infers part of this from the constructors, and `rebuild_audited_modifiers` replaces every goal's `mods` wholesale at load time, which is a runtime rewrite no type system observes.
+- **Blocked-by:** R-020, R-021
+- **Enables:** —
 
 ### R-008 — Randomize suite order to prove the suites are independent
 

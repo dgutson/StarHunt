@@ -272,16 +272,24 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         effective_modifier = Team.effective_modifier,
         effective_modifier_for_goal = Team.effective_modifier_for_goal,
         periodic_window = Team.periodic_window,
-        normal_mode = Team.NORMAL,
-        boss_mode = Team.BOSS,
-        team_mode = Team.MODE,
-        chaos_mode = Team.CHAOS,
-        easy = Team.EASY,
-        medium = Team.MEDIUM,
-        hard = Team.HARD,
-        nightmare = Team.NIGHTMARE,
-        team_red = Team.RED,
-        team_blue = Team.BLUE,
+        normal_mode = Team.Mode.NORMAL,
+        boss_mode = Team.Mode.BOSS,
+        team_mode = Team.Mode.TEAM,
+        chaos_mode = Team.Mode.CHAOS,
+        easy = Team.Difficulty.EASY,
+        medium = Team.Difficulty.MEDIUM,
+        hard = Team.Difficulty.HARD,
+        nightmare = Team.Difficulty.NIGHTMARE,
+        team_red = Team.TeamColor.RED,
+        team_blue = Team.TeamColor.BLUE,
+        -- The axis tables themselves, and the namespace they hang on, so
+        -- test/suite/core.lua can assert that the three sets stay separate.
+        -- The ten flat keys above are the same numbers read through the axes;
+        -- they stay because four hundred test references use them.
+        mode_axis = Team.Mode,
+        difficulty_axis = Team.Difficulty,
+        team_color_axis = Team.TeamColor,
+        shared_namespace = Team,
         team_participant_stats = Team.participant_stats,
         team_update_scores = Team.update_scores,
         team_pick_late = Team.pick_late,
@@ -383,8 +391,8 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_round = 0
     gGlobalSyncTable.sh5_result_seq = 0
     gGlobalSyncTable.sh5_return_seq = 0
-    gGlobalSyncTable.sh5_mode = Team.NORMAL
-    gGlobalSyncTable.sh5_difficulty = Team.MEDIUM
+    gGlobalSyncTable.sh5_mode = Team.Mode.NORMAL
+    gGlobalSyncTable.sh5_difficulty = Team.Difficulty.MEDIUM
     gGlobalSyncTable.sh5_chaos_next_reroll = 0
     gGlobalSyncTable.sh5_chaos_level = 0
     gGlobalSyncTable.sh5_chaos_act = 1

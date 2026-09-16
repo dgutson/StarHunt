@@ -102,7 +102,7 @@ local function time_range_for_players(count)
 end
 
 local function configured_time_range(count)
-    if gGlobalSyncTable.sh5_mode == Team.BOSS then return boss_time_range_for_players(count) end
+    if gGlobalSyncTable.sh5_mode == Team.Mode.BOSS then return boss_time_range_for_players(count) end
     return time_range_for_players(count)
 end
 
@@ -168,7 +168,7 @@ local function host_assign_goal(player_index, avoid_modifier_kind, avoid_level)
     local sync = gPlayerSyncTable[player_index]
     sync.sh5_goal = goal_id
     sync.sh5_modifier = modifier_index
-    sync.sh5_modifier_2 = Team.selected_difficulty() == Team.NIGHTMARE
+    sync.sh5_modifier_2 = Team.selected_difficulty() == Team.Difficulty.NIGHTMARE
         and Team.pick_second_modifier(goal, modifier_index) or 0
     local second = goal.mods[sync.sh5_modifier_2 or 0]
     local jump_modifier = modifier_data.kind == "jump_limit" and modifier_data
@@ -219,16 +219,16 @@ local function host_end_round(reason)
     if not is_round_active() then return end
 
     local result_mode = selected_mode()
-    local boss_round = result_mode == Team.BOSS
+    local boss_round = result_mode == Team.Mode.BOSS
     local winner, score = winner_text_and_score()
     if boss_round then
         winner = reason == "boss defeated" and "TEAM STARHUNT" or "BOWSER"
         score = reason == "boss defeated" and 1 or 0
-    elseif result_mode == Team.CHAOS then
+    elseif result_mode == Team.Mode.CHAOS then
         winner = reason == "chaos last standing"
             and (gGlobalSyncTable.sh5_chaos_winner or "Nobody") or "Nobody"
         score = reason == "chaos last standing" and 1 or 0
-    elseif result_mode == Team.MODE then
+    elseif result_mode == Team.Mode.TEAM then
         Team.update_scores()
         local red_score = gGlobalSyncTable.sh5_red_score or 0
         local blue_score = gGlobalSyncTable.sh5_blue_score or 0
@@ -273,7 +273,7 @@ local function host_end_round(reason)
             sync.sh5_manual_reroll_ack = 0
             sync.sh5_manual_reroll_ready_frame = 0
             sync.sh5_enrolled = 0
-            sync.sh5_team = Team.NONE
+            sync.sh5_team = Team.TeamColor.NONE
             sync.sh5_chaos_eliminated = 0
             sync.sh5_return_seq = gGlobalSyncTable.sh5_return_seq
         end
@@ -341,7 +341,7 @@ local function host_prepare_player(player_index)
         if candidate ~= false then record = candidate end
     end
     if record ~= nil then
-        local restored_team = Team.is_mode() and Team.pick_late(record.team) or Team.NONE
+        local restored_team = Team.is_mode() and Team.pick_late(record.team) or Team.TeamColor.NONE
         sync.sh5_score = record.score
         sync.sh5_goal = record.goal
         sync.sh5_modifier = record.modifier
@@ -386,7 +386,7 @@ local function host_prepare_player(player_index)
     local initial_team = Team.initial[player_index]
     Team.initial[player_index] = nil
     sync.sh5_team = Team.is_mode()
-        and (initial_team or Team.pick_late()) or Team.NONE
+        and (initial_team or Team.pick_late()) or Team.TeamColor.NONE
     host_seen_done[player_index] = 0
     host_seen_forfeit[player_index] = 0
     if Team.is_chaos_mode() then
@@ -457,7 +457,7 @@ local function host_start_round(minutes)
         gServerSettings.playerInteractions = PLAYER_INTERACTIONS_SOLID
         gGlobalSyncTable.sh5_boss_level_index = math.random(#BOSS_LEVELS)
         gGlobalSyncTable.sh5_boss_player_modifier = math.random(#BOSS_PLAYER_MODIFIERS)
-        if Team.selected_difficulty() == Team.NIGHTMARE then
+        if Team.selected_difficulty() == Team.Difficulty.NIGHTMARE then
             local second_choices = {}
             local first_modifier = BOSS_PLAYER_MODIFIERS[
                 gGlobalSyncTable.sh5_boss_player_modifier]
@@ -572,7 +572,7 @@ local function remember_player_index(index)
         jump_count = sync.sh5_jump_count or -1,
         boss_victory = sync.sh5_boss_victory or 0,
         chaos_eliminated = sync.sh5_chaos_eliminated or 0,
-        team = sync.sh5_team or Team.NONE,
+        team = sync.sh5_team or Team.TeamColor.NONE,
         lifetime_stars = sync.sh5_lifetime_stars or 0,
     }
 end
@@ -688,7 +688,7 @@ local function host_update_boss_round()
         if boss_has_modifier(4) then interval = math.max(4, math.floor(interval * 0.8)) end
         if boss_is_desperate() then interval = math.max(4, math.floor(interval * 0.65)) end
         local difficulty_factors = { 1.35, 1.0, 0.78, 0.55 }
-        interval = math.max(Team.selected_difficulty() == Team.NIGHTMARE and 2 or 3,
+        interval = math.max(Team.selected_difficulty() == Team.Difficulty.NIGHTMARE and 2 or 3,
             math.floor(interval * difficulty_factors[Team.selected_difficulty() + 1] + 0.5))
         gGlobalSyncTable.sh5_boss_attack_frame = get_global_timer() + interval * FRAMES_PER_SECOND
     end

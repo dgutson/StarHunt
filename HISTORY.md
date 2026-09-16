@@ -13,6 +13,47 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-019: the mode, the difficulty and the team colour stop sharing numbers
+
+`Team` held eleven flat constants in one table: `NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
+EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3, NONE = 0, RED = 1, BLUE = 2`. Three unrelated
+axes, the same small integers, so `Team.NORMAL`, `Team.EASY` and `Team.NONE` were all 0 and
+`Team.CHAOS` and `Team.NIGHTMARE` were both 3. Handing one axis to code that expected another
+was not an error anywhere — it matched a real member of the wrong axis — and no check this
+project runs could see it. All 104 uses were audited first and every one was on its right
+axis, so nothing had shipped broken; this was a latent bug, fixed while the area was fresh.
+
+The names now live on `Team.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `Team.Difficulty`
+(`EASY`, `MEDIUM`, `HARD`, `NIGHTMARE`) and `Team.TeamColor` (`NONE`, `RED`, `BLUE`). Every
+number is exactly what v1.1 shipped, because `sh5_mode` and `sh5_difficulty` are synchronized
+and the values are used arithmetically (`% 4` when the menu cycles, `+ 1` as a table index,
+`clamp(..., 0, 3)`). Disjoint ranges would have made the mistake impossible but would have
+broken a lobby holding both a released and a patched client, so the numbers were left alone.
+
+A plain rename would not have been worth much on its own: a name off the wrong axis would
+read as `nil` and the branch would simply never fire, silent in a new way. So each axis is a
+table with a metatable that raises on an unknown read, naming the key, and refuses assignment
+so the collision cannot be restored one field at a time. Neither metamethod runs for a
+correct read, so it costs nothing per frame. The cost is that a future typo on one of these
+lines now stops the round instead of misplaying it — acceptable, because it cannot reach a
+player without passing 780 tests first.
+
+`Team.MODE` became `Team.Mode.TEAM` on the way through, which is a plain reading of what it
+always meant.
+
+`test/suite/core.lua` gained five tests: the three axes are three distinct tables with no
+name in common, a name from another axis raises rather than answering, an axis cannot gain a
+member at runtime, every number is the one that went on the wire, and the eleven flat names
+are gone from the shared table. The last one is the only thing standing between the fix and
+its own quiet undoing. The mutation sweep over the new code caught 42 of 48 first time; the
+six survivors were all the `error(..., 2)` level argument, so the tests now also assert that
+the message names the offending key and points at the caller rather than at `core.lua`, and
+the sweep catches 48 of 48.
+
+Checks: 780 passed / 0 failed (775 before, plus the five new), luacheck 2 warnings / 0 errors
+in 46 files, lua-language-server 10 problems in 2 files. The shipped-file hash is now
+`2B5F13532F48F7C21BF3A4CD34DB254794F8065CBB12D97EED264C71035DBBBD`.
+
 ### 2026-09-16 — R-018: the predicate is `boss_is_held` again, and tests only that
 
 `boss_is_grabbed` returned true both when a player had Bowser in their hands and when he was

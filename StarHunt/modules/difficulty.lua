@@ -23,8 +23,8 @@ local clamp = core.clamp
 local audit_modifier = require("audit").audit_modifier
 
 Team.selected_difficulty = function()
-    return clamp(math.floor(gGlobalSyncTable.sh5_difficulty or Team.MEDIUM),
-        Team.EASY, Team.NIGHTMARE)
+    return clamp(math.floor(gGlobalSyncTable.sh5_difficulty or Team.Difficulty.MEDIUM),
+        Team.Difficulty.EASY, Team.Difficulty.NIGHTMARE)
 end
 
 Team.lower_is_harder = {
@@ -38,10 +38,10 @@ Team.effective_modifier = function(base)
     local result = {}
     for key, value in pairs(base) do result[key] = value end
     local difficulty = Team.selected_difficulty()
-    if difficulty == Team.MEDIUM then return result end
+    if difficulty == Team.Difficulty.MEDIUM then return result end
 
     local kind, value = result.kind, result.value
-    if difficulty == Team.EASY then
+    if difficulty == Team.Difficulty.EASY then
         if kind == "no_b" or kind == "no_z" or kind == "reverse_controls"
             or kind == "swap_ab" or kind == "mirrored_steering" then
             result.pulse_period, result.pulse_frames = 10, 3 * FRAMES_PER_SECOND
@@ -56,7 +56,7 @@ Team.effective_modifier = function(base)
         end
         result.freeze_frames = 15
         result.damage_amount = 0x80
-    elseif difficulty == Team.HARD then
+    elseif difficulty == Team.Difficulty.HARD then
         if kind == "fragile" then
             result.health_cap = 0x300
         elseif Team.lower_is_harder[kind] then

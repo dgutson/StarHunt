@@ -79,7 +79,7 @@ Team.get_local_modifiers = function()
             or Team.effective_modifier_for_goal(goal, first)
         if effective ~= nil then table.insert(result, effective) end
     end
-    if Team.is_chaos_mode() or Team.selected_difficulty() == Team.NIGHTMARE then
+    if Team.is_chaos_mode() or Team.selected_difficulty() == Team.Difficulty.NIGHTMARE then
         local second = Team.get_local_modifier_base(2)
         if second ~= nil and (first == nil or second.kind ~= first.kind) then
             local effective = (is_boss_mode() or Team.is_chaos_mode())
@@ -640,7 +640,7 @@ local function keep_moat_lowered()
 end
 
 Team.manual_reroll_remaining = function()
-    if not is_round_active() or (selected_mode() ~= Team.NORMAL and not Team.is_mode())
+    if not is_round_active() or (selected_mode() ~= Team.Mode.NORMAL and not Team.is_mode())
         or get_local_goal() == nil then
         return nil
     end

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 420 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 428 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -66,7 +66,7 @@ Tags `v1.1-monolithic` and `v1.1-modular` mark the commit before and after the s
 # parse them. This checks main.lua only; the modules are checked by the test run below.
 lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 
-# Tests (775 of them, ~45s). Needs lua5.4 for the same reason.
+# Tests (780 of them, ~45s). Needs lua5.4 for the same reason.
 lua5.4 test/run.lua
 lua5.4 test/run.lua audit difficulty     # only matching suites
 
@@ -117,7 +117,7 @@ The whole mod is clean. **These are the baselines; a rise in either is a regress
 
 | check | expected |
 |---|---|
-| `lua5.4 test/run.lua` | 775 passed, 0 failed |
+| `lua5.4 test/run.lua` | 780 passed, 0 failed |
 | `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 46 files |
 | `lua-language-server --check` | Found 10 problems in 2 files |
 
@@ -169,16 +169,16 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,079 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
+| `round.lua` | 1,090 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 890 | the 93-star catalog, its readers, star interaction and visibility |
 | `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
 | `hud.lua` | 708 | text layer, picture layer and frame; nothing requires it |
-| `boss.lua` | 493 | Bowser's data, health pool, attack queue and hazards |
+| `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
 | `menu.lua` | 321 | the `/starhunt` config menu and its input |
 | `team.lua` | 271 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
 | `i18n.lua` | 246 | six languages and their persistence |
-| `core.lua` | 193 | `Team`, `local_runtime` and the cross-cutting helpers |
+| `core.lua` | 232 | `Team`, `local_runtime` and the cross-cutting helpers |
 | `chaos.lua` | 154 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
@@ -215,10 +215,18 @@ cycle numbers rather than testing for one exact frame, for the same reason.
 
 ### `Team` — the shared namespace
 
-`Team` is one table declared in `core.lua` that holds mode/difficulty/team constants
-(`Team.NORMAL`, `Team.BOSS`, `Team.MODE`, `Team.CHAOS`; `Team.EASY`…`Team.NIGHTMARE`;
-`Team.RED`/`Team.BLUE`) alongside most cross-cutting functions and mutable state. Its name is
-historical: it is not limited to Team mode. **It is also how modules reach each other without a
+`Team` is one table declared in `core.lua` that holds the mode, difficulty and team-colour
+constants alongside most cross-cutting functions and mutable state. Its name is
+historical: it is not limited to Team mode.
+
+The constants sit on **three separate tables**, because until R-019 they were eleven flat
+fields and the three axes shared their numbers — `Team.NORMAL`, `Team.EASY` and `Team.NONE`
+were all 0. They are now `Team.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `Team.Difficulty`
+(`EASY`, `MEDIUM`, `HARD`, `NIGHTMARE`) and `Team.TeamColor` (`NONE`, `RED`, `BLUE`), and each
+raises rather than answering when read for a name that belongs to another axis, or assigned
+to at all. The numbers are unchanged and must stay so: `sh5_mode` and `sh5_difficulty` are
+synchronized, and the menu cycles them with `% 4`, indexes tables with `+ 1` and clamps to
+`0, 3`. **It is also how modules reach each other without a
 `require` edge** — a function hung on `Team` in one module is callable from any module that has
 `core`, which is how several moves avoided creating a cycle. Local `function` definitions and
 `Team.x = function` definitions are used interchangeably; the difference is only whether
