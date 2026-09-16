@@ -18,7 +18,7 @@
 -- value only while their own "a round was active" flag is set, so a second
 -- call inside one round cannot overwrite the saved value with StarHunt's own.
 --
--- draw_darkness_behind is on the shared Team table because it runs from the
+-- draw_darkness_behind is on the shared SH table because it runs from the
 -- behind-HUD hook and writes local_runtime.darkness_draw_frame, which
 -- draw_gun_mod_hud_compatibility reads to decide whether Gun Mod's own HUD
 -- has to be repainted above the darkness rectangle.
@@ -36,6 +36,7 @@
 -- what the engine's HUD hook calls.
 
 local core = require("core")
+local SH = core.SH
 local Team = core.Team
 local local_runtime = core.local_runtime
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
@@ -117,18 +118,18 @@ local function draw_centered_hud_text(text, y, scale, r, g, b)
     draw_hud_text(text, x, y, scale, r, g, b)
 end
 
-Team.objective_text_max_width = function()
+SH.objective_text_max_width = function()
     local width = djui_hud_get_screen_width()
     local center = width * 0.5
     -- Keep the centered objective between the left score/health card and the
     -- right timer card. Widescreen gains space naturally without turning the
     -- objective into a screen-wide banner.
-    local left_guard = (Team.is_mode() or is_boss_mode()) and 119 or 90
+    local left_guard = (SH.is_team_mode() or is_boss_mode()) and 119 or 90
     local right_guard = width - 112
     return math.max(24, 2 * math.min(center - left_guard, right_guard - center))
 end
 
-Team.draw_scaled_centered_text = function(text, y, desired_scale, maximum_width, r, g, b)
+SH.draw_scaled_centered_text = function(text, y, desired_scale, maximum_width, r, g, b)
     local text_width = measure_hud_text(text)
     local scale = desired_scale
     if text_width > 0 and text_width * scale > maximum_width then
@@ -182,9 +183,9 @@ end
 
 -- DARKNESS PULSE belongs behind every HUD. Drawing it from the regular HUD
 -- hook covered clocks, chat and weapon information from compatible mods.
-Team.draw_darkness_behind = function()
+SH.draw_darkness_behind = function()
     if not is_round_active()
-        or not Team.darkness_active(Team.local_modifier_of_kind("darkness_pulse")) then return false end
+        or not SH.darkness_active(SH.local_modifier_of_kind("darkness_pulse")) then return false end
     local frame = get_global_timer()
     if local_runtime.darkness_draw_frame == frame then return true end
     djui_hud_set_resolution(RESOLUTION_N64)
@@ -195,11 +196,11 @@ Team.draw_darkness_behind = function()
 end
 
 local function hide_native_hud_before_render()
-    Team.draw_darkness_behind()
+    SH.draw_darkness_behind()
     if is_round_active() then hud_hide() end
 end
 
-Team.darkness_active = function(modifier_data)
+SH.darkness_active = function(modifier_data)
     if modifier_data == nil or modifier_data.kind ~= "darkness_pulse" then return false end
     local elapsed = math.max(0, get_global_timer() - local_runtime.modifier_start_frame)
     local phase = elapsed % (10 * FRAMES_PER_SECOND)
@@ -207,10 +208,10 @@ Team.darkness_active = function(modifier_data)
 end
 
 local function modifier_text(modifier_data)
-    if Team.language == 0 then return modifier_data.label end
-    if Team.language >= 2 then
-        local code = Team.language_codes[Team.language + 1]
-        local label = Team.modifier_translations[code] and Team.modifier_translations[code][modifier_data.kind]
+    if SH.language == 0 then return modifier_data.label end
+    if SH.language >= 2 then
+        local code = SH.language_codes[SH.language + 1]
+        local label = SH.modifier_translations[code] and SH.modifier_translations[code][modifier_data.kind]
         if label == nil then return modifier_data.label end
         if modifier_data.kind == "floor_doom" or modifier_data.kind == "periodic_freeze"
             or modifier_data.kind == "lava_clock" or modifier_data.kind == "keep_moving"
@@ -266,7 +267,7 @@ local function modifier_text(modifier_data)
     return modifier_data.label
 end
 
-Team.draw_hud_panel = function(x, y, width, height, r, g, b)
+SH.draw_hud_panel = function(x, y, width, height, r, g, b)
     djui_hud_set_color(5, 11, 24, 205)
     djui_hud_render_rect(x, y, width, height)
     djui_hud_set_color(r, g, b, 235)
@@ -275,11 +276,11 @@ Team.draw_hud_panel = function(x, y, width, height, r, g, b)
     djui_hud_render_rect(x + 3, y, width - 3, 1)
 end
 
-Team.health_wedges = function(health)
+SH.health_wedges = function(health)
     return clamp(math.floor(clamp(health or 0x880, 0, 0x880) / 0x100), 0, 8)
 end
 
-Team.health_color = function(wedges)
+SH.health_color = function(wedges)
     if wedges >= 6 then return 74, 218, 128 end
     if wedges >= 3 then return 255, 190, 54 end
     return 255, 76, 82
@@ -288,11 +289,11 @@ end
 local function draw_player_health_bar(y)
     local mario = gMarioStates[0]
     if mario == nil then return end
-    local wedges = Team.health_wedges(mario.health)
-    local r, g, b = Team.health_color(wedges)
+    local wedges = SH.health_wedges(mario.health)
+    local r, g, b = SH.health_color(wedges)
     local x = 10
     y = y or 42
-    Team.draw_hud_panel(x, y, 101, 19, r, g, b)
+    SH.draw_hud_panel(x, y, 101, 19, r, g, b)
     draw_hud_text(translated("HP", "VIDA"), x + 7, y + 5, 0.38, r, g, b)
 
     local segment_x = x + 29
@@ -309,33 +310,33 @@ local function draw_player_health_bar(y)
     end
 end
 
-Team.draw_round_status_panels = function(remaining, score)
+SH.draw_round_status_panels = function(remaining, score)
     local width = djui_hud_get_screen_width()
     local health_y = 42
 
-    if Team.is_mode() then
-        local local_team = gPlayerSyncTable[0].sh5_team or Team.NONE
-        Team.draw_hud_panel(10, 8, 101, 38,
-            local_team == Team.BLUE and 64 or 232,
-            local_team == Team.BLUE and 132 or 68,
-            local_team == Team.BLUE and 255 or 72)
-        draw_hud_text((local_team == Team.RED and "> " or "  ")
+    if SH.is_team_mode() then
+        local local_team = gPlayerSyncTable[0].sh5_team or Team.Color.NONE
+        SH.draw_hud_panel(10, 8, 101, 38,
+            local_team == Team.Color.BLUE and 64 or 232,
+            local_team == Team.Color.BLUE and 132 or 68,
+            local_team == Team.Color.BLUE and 255 or 72)
+        draw_hud_text((local_team == Team.Color.RED and "> " or "  ")
                 .. "RED  x " .. tostring(gGlobalSyncTable.sh5_red_score or 0),
             17, 14, 0.48, 255, 78, 78)
-        draw_hud_text((local_team == Team.BLUE and "> " or "  ")
+        draw_hud_text((local_team == Team.Color.BLUE and "> " or "  ")
                 .. "BLUE x " .. tostring(gGlobalSyncTable.sh5_blue_score or 0),
             17, 28, 0.48, 92, 154, 255)
         health_y = 51
-    elseif Team.is_chaos_mode() then
-        Team.draw_hud_panel(10, 8, 101, 29, 196, 78, 255)
+    elseif SH.is_chaos_mode() then
+        SH.draw_hud_panel(10, 8, 101, 29, 196, 78, 255)
         draw_hud_text(translated("ALIVE ", "VIVOS ")
                 .. tostring(gGlobalSyncTable.sh5_chaos_alive or 0),
             17, 15, 0.58, 235, 165, 255)
     elseif is_boss_mode() then
-        local boss_health = clamp(gGlobalSyncTable.sh5_boss_health or Team.boss_max_health(), 0, Team.boss_max_health())
-        Team.draw_hud_panel(10, 8, 101, 29, 236, 66, 82)
+        local boss_health = clamp(gGlobalSyncTable.sh5_boss_health or SH.boss_max_health(), 0, SH.boss_max_health())
+        SH.draw_hud_panel(10, 8, 101, 29, 236, 66, 82)
         draw_hud_text("BOWSER", 17, 13, 0.42, 255, 112, 94)
-        for slot = 1, Team.boss_max_health() do
+        for slot = 1, SH.boss_max_health() do
             local sx = 61 + (slot - 1) * 9
             djui_hud_set_color(48, 38, 49, 255)
             djui_hud_render_rect(sx, 14, 7, 12)
@@ -347,7 +348,7 @@ Team.draw_round_status_panels = function(remaining, score)
             end
         end
     else
-        Team.draw_hud_panel(10, 8, 72, 29, 255, 210, 72)
+        SH.draw_hud_panel(10, 8, 72, 29, 255, 210, 72)
         if gTextures.star ~= nil then
             djui_hud_set_color(255, 255, 255, 255)
             djui_hud_render_texture(gTextures.star, 18, 14, 0.72, 0.72)
@@ -356,7 +357,7 @@ Team.draw_round_status_panels = function(remaining, score)
     end
 
     local timer_x = width - 104
-    Team.draw_hud_panel(timer_x, 8, 94, 43, 255, 210, 72)
+    SH.draw_hud_panel(timer_x, 8, 94, 43, 255, 210, 72)
     draw_hud_text(translated("TIME ", "TIEMPO ") .. format_remaining_time(remaining),
         timer_x + 8, 14, 0.48, 255, 220, 96)
     local coins = hud_get_value(HUD_DISPLAY_COINS) or 0
@@ -368,11 +369,11 @@ Team.draw_round_status_panels = function(remaining, score)
     draw_player_health_bar(health_y)
 end
 
-Team.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
-    local maximum_width = Team.objective_text_max_width()
+SH.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
+    local maximum_width = SH.objective_text_max_width()
 
     if is_boss_mode() then
-        Team.draw_scaled_centered_text(
+        SH.draw_scaled_centered_text(
             translated("BOWSER MODIFIERS", "MODIFICADORES DE BOWSER"),
             3, 0.30, maximum_width, 200, 210, 230)
         local colors = {
@@ -382,42 +383,42 @@ Team.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
         }
         for slot = 1, #BOSS_MODIFIER_FIELDS do
             local color = colors[slot]
-            Team.draw_scaled_centered_text(boss_modifier_text(slot),
+            SH.draw_scaled_centered_text(boss_modifier_text(slot),
                 14 + (slot - 1) * 11,
                 0.38, maximum_width, color[1], color[2], color[3])
         end
         if modifier_data ~= nil then
-            Team.draw_scaled_centered_text(modifier_text(modifier_data),
+            SH.draw_scaled_centered_text(modifier_text(modifier_data),
                 48, 0.38, maximum_width, 104, 218, 255)
         end
         if modifier_data_2 ~= nil then
-            Team.draw_scaled_centered_text(modifier_text(modifier_data_2),
+            SH.draw_scaled_centered_text(modifier_text(modifier_data_2),
                 59, 0.36, maximum_width, 255, 145, 80)
         end
         return
     end
 
-    if Team.is_chaos_mode() then
-        Team.draw_scaled_centered_text(
+    if SH.is_chaos_mode() then
+        SH.draw_scaled_centered_text(
             translated("LAST PLAYER STANDING", "ULTIMO JUGADOR EN PIE"),
             3, 0.64, maximum_width, 255, 255, 255)
         if (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1 then
-            Team.draw_scaled_centered_text(
+            SH.draw_scaled_centered_text(
                 translated("ELIMINATED - SPECTATING", "ELIMINADO - OBSERVANDO"),
                 17, 0.50, maximum_width, 255, 100, 110)
             return
         end
         if modifier_data ~= nil then
-            Team.draw_scaled_centered_text(modifier_text(modifier_data),
+            SH.draw_scaled_centered_text(modifier_text(modifier_data),
                 17, 0.52, maximum_width, 255, 215, 73)
         end
         if modifier_data_2 ~= nil then
-            Team.draw_scaled_centered_text(modifier_text(modifier_data_2),
+            SH.draw_scaled_centered_text(modifier_text(modifier_data_2),
                 29, 0.48, maximum_width, 255, 145, 80)
         end
         local reroll = math.max(0,
             (gGlobalSyncTable.sh5_chaos_next_reroll or 0) - get_global_timer())
-        Team.draw_scaled_centered_text(
+        SH.draw_scaled_centered_text(
             translated("NEW MODIFIERS IN: ", "NUEVOS MODIFICADORES EN: ")
                 .. tostring(math.ceil(reroll / FRAMES_PER_SECOND)),
             41, 0.40, maximum_width, 200, 210, 230)
@@ -425,15 +426,15 @@ Team.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
     end
 
     if goal ~= nil and modifier_data ~= nil then
-        Team.draw_scaled_centered_text(goal_world_text(goal),
+        SH.draw_scaled_centered_text(goal_world_text(goal),
             3, 0.56, maximum_width, 104, 218, 255)
-        Team.draw_scaled_centered_text(goal_title_text(goal),
+        SH.draw_scaled_centered_text(goal_title_text(goal),
             15, 0.70, maximum_width, 255, 255, 255)
-        Team.draw_scaled_centered_text(modifier_text(modifier_data),
+        SH.draw_scaled_centered_text(modifier_text(modifier_data),
             28, 0.55, maximum_width, 255, 215, 73)
         local counter_y = 40
         if modifier_data_2 ~= nil then
-            Team.draw_scaled_centered_text(modifier_text(modifier_data_2),
+            SH.draw_scaled_centered_text(modifier_text(modifier_data_2),
                 39, 0.50, maximum_width, 255, 145, 80)
             counter_y = 50
         end
@@ -444,18 +445,18 @@ Team.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
         if jump_data ~= nil then
             local left = gPlayerSyncTable[0].sh5_jump_count
             if left == nil then left = jump_data.value end
-            Team.draw_scaled_centered_text(
+            SH.draw_scaled_centered_text(
                 translated("JUMPS: ", "SALTOS: ") .. tostring(left),
                 counter_y, 0.48, maximum_width, 255, 145, 80)
         elseif toll_data ~= nil then
-            Team.draw_scaled_centered_text(
+            SH.draw_scaled_centered_text(
                 translated("COINS: ", "MONEDAS: ")
-                .. tostring(math.min(toll_data.value, Team.coin_count(gMarioStates[0])))
+                .. tostring(math.min(toll_data.value, SH.coin_count(gMarioStates[0])))
                 .. "/" .. tostring(toll_data.value),
                 counter_y, 0.48, maximum_width, 255, 145, 80)
         end
     else
-        Team.draw_scaled_centered_text(
+        SH.draw_scaled_centered_text(
             translated("CHOOSING YOUR NEXT GOAL...", "ELIGIENDO TU PROXIMO RETO..."),
             15, 0.66, maximum_width, 255, 255, 255)
     end
@@ -464,7 +465,7 @@ end
 -- Gun Mod normally renders in the same behind-HUD layer as the darkness
 -- rectangle. Repeat its compact public-API HUD above the pulse so ammo and
 -- crosshair remain usable. Outside a pulse StarHunt leaves Gun Mod untouched.
-Team.draw_gun_mod_hud_compatibility = function()
+SH.draw_gun_mod_hud_compatibility = function()
     if local_runtime.darkness_draw_frame ~= get_global_timer() then return end
     local api = rawget(_G, "gunModApi")
     if type(api) ~= "table" or type(api.cur_weapon) ~= "function"
@@ -537,7 +538,7 @@ local function draw_config_menu()
     djui_hud_render_rect(x, y, box_w, 3)
 
     draw_centered_hud_text("STARHUNT", y + 10, 0.82, 255, 215, 73)
-    local language_value = Team.language_names[Team.language + 1] or "ENGLISH"
+    local language_value = SH.language_names[SH.language + 1] or "ENGLISH"
     local line_y = y + 34
 
     for index = 1, config_option_count() do
@@ -551,16 +552,16 @@ local function draw_config_menu()
             text = translated("LANGUAGE", "IDIOMA") .. " - " .. language_value
         elseif option == "mode" then
             local mode_value
-            if selected_mode() == Team.BOSS then
+            if selected_mode() == SH.Mode.BOSS then
                 mode_value = translated("BOSS", "JEFE")
-            elseif selected_mode() == Team.MODE then
+            elseif selected_mode() == SH.Mode.TEAM then
                 mode_value = translated("TEAM", "EQUIPOS")
-            elseif selected_mode() == Team.CHAOS then
+            elseif selected_mode() == SH.Mode.CHAOS then
                 mode_value = translated("CHAOS", "CAOS")
             else
                 mode_value = "NORMAL"
             end
-            if (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
+            if (selected_mode() == SH.Mode.TEAM or selected_mode() == SH.Mode.CHAOS)
                 and connected_player_count() < 2 then
                 mode_value = mode_value .. " - " .. translated("NEEDS 2 PLAYERS", "NECESITA 2 JUGADORES")
             end
@@ -571,7 +572,7 @@ local function draw_config_menu()
                 translated("EASY", "FACIL"), translated("NORMAL", "NORMAL"),
                 translated("HARD", "DIFICIL"), translated("NIGHTMARE", "PESADILLA"),
             }
-            local difficulty_value = names[Team.selected_difficulty() + 1]
+            local difficulty_value = names[SH.selected_difficulty() + 1]
             if is_round_active() then difficulty_value = difficulty_value .. " " .. translated("(LOCKED)", "(BLOQUEADO)") end
             text = translated("DIFFICULTY", "DIFICULTAD") .. " - " .. difficulty_value
         elseif option == "time" then
@@ -587,7 +588,7 @@ local function draw_config_menu()
             djui_hud_set_color(255, 255, 255, 45)
             djui_hud_render_rect(x + 10, line_y - 2, box_w - 20, 16)
         end
-        local disabled = (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
+        local disabled = (selected_mode() == SH.Mode.TEAM or selected_mode() == SH.Mode.CHAOS)
             and connected_player_count() < 2
             and (option == "mode" or option == "start")
         draw_hud_text((local_runtime.config_selection == index and "> " or "  ") .. text,
@@ -597,7 +598,7 @@ local function draw_config_menu()
 
     local controls
     if not is_round_active() then
-        controls = Team.menu_lock_labels[Team.language + 1] or Team.menu_lock_labels[1]
+        controls = SH.menu_lock_labels[SH.language + 1] or SH.menu_lock_labels[1]
     else
         controls = translated("UP/DOWN SELECT  A USE  LEFT/RIGHT CHANGE  B CLOSE",
             "ARRIBA/ABAJO ELEGIR  A USAR  IZQ/DER CAMBIAR  B CERRAR")
@@ -619,13 +620,13 @@ local function draw_hud()
         return
     end
     local goal = get_local_goal()
-    local modifiers = Team.get_local_modifiers()
+    local modifiers = SH.get_local_modifiers()
     local modifier_data = modifiers[1]
     local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or get_global_timer()) - get_global_timer())
     local score = gPlayerSyncTable[0].sh5_score or 0
-    Team.draw_gun_mod_hud_compatibility()
-    Team.draw_round_status_panels(remaining, score)
-    Team.draw_objective_panel(goal, modifier_data, modifiers[2])
+    SH.draw_gun_mod_hud_compatibility()
+    SH.draw_round_status_panels(remaining, score)
+    SH.draw_objective_panel(goal, modifier_data, modifiers[2])
     draw_start_banner()
     draw_config_menu()
 end
@@ -647,8 +648,8 @@ local function local_round_notifications()
         local winner = gGlobalSyncTable.sh5_result_winner or "Nobody"
         local score = gGlobalSyncTable.sh5_result_score or 0
         local winner_message
-        local result_mode = gGlobalSyncTable.sh5_result_mode or Team.NORMAL
-        if result_mode == Team.BOSS then
+        local result_mode = gGlobalSyncTable.sh5_result_mode or SH.Mode.NORMAL
+        if result_mode == SH.Mode.BOSS then
             local reason = gGlobalSyncTable.sh5_result_reason or ""
             if reason == "boss defeated" then
                 winner_message = translated("BOWSER DEFEATED! TEAM STARHUNT WINS!", "BOWSER DERROTADO! EL EQUIPO STARHUNT GANA!")
@@ -657,7 +658,7 @@ local function local_round_notifications()
             else
                 winner_message = translated("TIME UP! BOWSER WINS!", "TIEMPO AGOTADO! BOWSER GANA!")
             end
-        elseif result_mode == Team.MODE then
+        elseif result_mode == SH.Mode.TEAM then
             local red_score = gGlobalSyncTable.sh5_result_red_score or 0
             local blue_score = gGlobalSyncTable.sh5_result_blue_score or 0
             if winner == "RED TEAM" then
@@ -669,7 +670,7 @@ local function local_round_notifications()
             end
             winner_message = winner_message .. "RED " .. tostring(red_score)
                 .. " - BLUE " .. tostring(blue_score)
-        elseif result_mode == Team.CHAOS then
+        elseif result_mode == SH.Mode.CHAOS then
             if (gGlobalSyncTable.sh5_result_reason or "") == "chaos last standing" then
                 winner_message = translated("CHAOS WINNER: ", "GANADOR DE CAOS: ") .. winner
             else
@@ -685,8 +686,8 @@ local function local_round_notifications()
     end
 end
 
--- Team.objective_text_max_width, Team.draw_scaled_centered_text,
--- Team.draw_darkness_behind and the panels that attach to the shared Team
+-- SH.objective_text_max_width, SH.draw_scaled_centered_text,
+-- SH.draw_darkness_behind and the panels that attach to the shared SH
 -- table need no export.  measure_hud_text, draw_player_health_bar,
 -- modifier_text and draw_start_banner are exported for the test suite
 -- only; the drawing code that calls them is in this file.  The rest are

@@ -29,7 +29,7 @@
 -- that only accelerate or amplify attacks that never come.
 
 local core = require("core")
-local Team = core.Team
+local SH = core.SH
 local local_runtime = core.local_runtime
 local modifier = core.modifier
 local clamp = core.clamp
@@ -58,7 +58,7 @@ local BOWSER_ACT = {
 -- Nightmare can request one synchronized reserve wave after all five native
 -- bombs are gone.
 local BOSS_LEVELS = { LEVEL_BOWSER_3 }
-Team.bossBombPositions = {
+SH.bossBombPositions = {
     { x = -2122, y = 512, z = -2912 },
     { x = -3362, y = 512, z = 1121 },
     { x = 0, y = 512, z = 3584 },
@@ -108,13 +108,13 @@ for _, index in ipairs(BOSS_ACTIVE_ATTACK_MODIFIERS) do
     BOSS_ACTIVE_ATTACK_LOOKUP[index] = true
 end
 
-Team.boss_health_for_difficulty = function()
+SH.boss_health_for_difficulty = function()
     local values = { 3, BOSS_HEALTH, 7, 9 }
-    return values[Team.selected_difficulty() + 1] or BOSS_HEALTH
+    return values[SH.selected_difficulty() + 1] or BOSS_HEALTH
 end
 
-Team.boss_max_health = function()
-    return math.max(1, gGlobalSyncTable.sh5_boss_max_health or Team.boss_health_for_difficulty())
+SH.boss_max_health = function()
+    return math.max(1, gGlobalSyncTable.sh5_boss_max_health or SH.boss_health_for_difficulty())
 end
 
 local function boss_time_range_for_players(count)
@@ -137,7 +137,7 @@ local function boss_has_modifier(index)
 end
 
 local function boss_is_desperate()
-    return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or Team.boss_max_health()) <= 2
+    return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or SH.boss_max_health()) <= 2
 end
 
 -- Whether a player has Bowser in their hands right now, which is the state a
@@ -155,10 +155,10 @@ end
 local function boss_modifier_text(slot)
     local data = boss_modifier_at(slot)
     if data == nil then return "" end
-    if Team.language == 1 then return data.label_es end
-    if Team.language >= 2 then
-        local code = Team.language_codes[Team.language + 1]
-        local dictionary = Team.boss_modifier_translations[code]
+    if SH.language == 1 then return data.label_es end
+    if SH.language >= 2 then
+        local code = SH.language_codes[SH.language + 1]
+        local dictionary = SH.boss_modifier_translations[code]
         if dictionary ~= nil and dictionary[data.kind] ~= nil then return dictionary[data.kind] end
     end
     return data.label
@@ -170,7 +170,7 @@ local function host_read_boss_health_report()
     for i = 0, MAX_PLAYERS - 1 do
         local sync = gPlayerSyncTable[i]
         if (sync.sh5_boss_health_ready_round or 0) == round then
-            local health = clamp(sync.sh5_boss_health_value or Team.boss_max_health(), 0, Team.boss_max_health())
+            local health = clamp(sync.sh5_boss_health_value or SH.boss_max_health(), 0, SH.boss_max_health())
             -- Bowser's health can only decrease inside one round. Keeping the
             -- lowest valid report prevents a newer, stale owner packet from
             -- healing him during lag or an ownership transfer.
@@ -383,29 +383,29 @@ local local_boss_health_initialized = false
 local local_boss_health_last_value = nil
 local local_boss_health_report_at = 0
 
-Team.boss_reserve_bomb_count = function()
-    local difficulty = Team.selected_difficulty()
-    if difficulty == Team.HARD then return 2 end
-    if difficulty == Team.NIGHTMARE then return 4 end
+SH.boss_reserve_bomb_count = function()
+    local difficulty = SH.selected_difficulty()
+    if difficulty == SH.Difficulty.HARD then return 2 end
+    if difficulty == SH.Difficulty.NIGHTMARE then return 4 end
     return 0
 end
 
 -- Only the current host observes the native bomb supply and creates the
 -- reserve. The synchronized flags make this one-shot survive a host change:
 -- a replacement host cannot mistake its own level load for a new wave.
-Team.host_update_boss_bomb_supply = function()
+SH.host_update_boss_bomb_supply = function()
     if not network_is_server() or not is_round_active() or not is_boss_mode()
         or gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then
         return
     end
 
     local round = gGlobalSyncTable.sh5_round or 0
-    if Team.bossBombSupplyRound ~= round then
-        Team.bossBombSupplyRound = round
-        Team.bossBombZeroSince = nil
+    if SH.bossBombSupplyRound ~= round then
+        SH.bossBombSupplyRound = round
+        SH.bossBombZeroSince = nil
     end
 
-    local reserve_count = Team.boss_reserve_bomb_count()
+    local reserve_count = SH.boss_reserve_bomb_count()
     local already_spawned = gGlobalSyncTable.sh5_boss_extra_bombs_spawned or 0
     if reserve_count == 0 or already_spawned >= reserve_count then return end
 
@@ -414,32 +414,32 @@ Team.host_update_boss_bomb_supply = function()
     if (gGlobalSyncTable.sh5_boss_original_bombs_seen or 0) == 0 then
         -- A zero during the level-loading frames is not an exhausted arena.
         -- Arm the reserve only after this host has observed the native set.
-        if active_bombs >= #Team.bossBombPositions then
+        if active_bombs >= #SH.bossBombPositions then
             gGlobalSyncTable.sh5_boss_original_bombs_seen = 1
-            Team.bossBombZeroSince = nil
+            SH.bossBombZeroSince = nil
         end
         return
     end
     if active_bombs > 0 then
-        Team.bossBombZeroSince = nil
+        SH.bossBombZeroSince = nil
         return
     end
 
     -- Require one continuous second at zero. Besides filtering the native
     -- explosion transition, this gives a newly promoted host time to receive
     -- synchronized objects before it decides that the arena is empty.
-    if Team.bossBombZeroSince == nil then
-        Team.bossBombZeroSince = get_global_timer()
+    if SH.bossBombZeroSince == nil then
+        SH.bossBombZeroSince = get_global_timer()
         return
     end
-    if get_global_timer() - Team.bossBombZeroSince < FRAMES_PER_SECOND then return end
+    if get_global_timer() - SH.bossBombZeroSince < FRAMES_PER_SECOND then return end
 
     local available = {}
-    for index = 1, #Team.bossBombPositions do available[index] = index end
+    for index = 1, #SH.bossBombPositions do available[index] = index end
     local spawned = 0
     for _ = 1, reserve_count - already_spawned do
         local choice = math.random(#available)
-        local position = Team.bossBombPositions[available[choice]]
+        local position = SH.bossBombPositions[available[choice]]
         table.remove(available, choice)
         local bomb = spawn_sync_object(
             id_bhvBowserBomb, E_MODEL_BOWSER_BOMB,
@@ -455,7 +455,7 @@ Team.host_update_boss_bomb_supply = function()
     -- one fails, the host may supply only the missing amount after the arena
     -- is empty again instead of duplicating the successful objects.
     gGlobalSyncTable.sh5_boss_extra_bombs_spawned = already_spawned + spawned
-    Team.bossBombZeroSince = nil
+    SH.bossBombZeroSince = nil
 end
 
 -- Bowser uses dynamic object ownership. Only the client that currently owns
@@ -492,12 +492,12 @@ local function ensure_boss_health_owner()
     if sync_id == nil or sync_id == 0 or not sync_object_is_owned_locally(sync_id) then return end
 
     if not local_boss_health_initialized then
-        local authoritative = clamp(gGlobalSyncTable.sh5_boss_health or Team.boss_max_health(), 0, Team.boss_max_health())
+        local authoritative = clamp(gGlobalSyncTable.sh5_boss_health or SH.boss_max_health(), 0, SH.boss_max_health())
         if health_was_initialized then
             -- Never increase a synchronized object's already lower value.
-            bowser.oHealth = math.min(clamp(bowser.oHealth or authoritative, 0, Team.boss_max_health()), authoritative)
+            bowser.oHealth = math.min(clamp(bowser.oHealth or authoritative, 0, SH.boss_max_health()), authoritative)
         else
-            bowser.oHealth = Team.boss_max_health()
+            bowser.oHealth = SH.boss_max_health()
         end
         network_send_object(bowser, true)
         gPlayerSyncTable[0].sh5_boss_health_ready_round = round
@@ -512,7 +512,7 @@ local function ensure_boss_health_owner()
         local_boss_health_last_value = bowser.oHealth
         local_boss_health_report_at = get_global_timer() + 5
         gPlayerSyncTable[0].sh5_boss_health_ready_round = round
-        gPlayerSyncTable[0].sh5_boss_health_value = clamp(bowser.oHealth, 0, Team.boss_max_health())
+        gPlayerSyncTable[0].sh5_boss_health_value = clamp(bowser.oHealth, 0, SH.boss_max_health())
         gPlayerSyncTable[0].sh5_boss_health_tick = get_global_timer()
     end
 end

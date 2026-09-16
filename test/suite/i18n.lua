@@ -6,7 +6,7 @@
 -- extraction was verified byte-for-byte, but making translated() always return
 -- English still left the whole run green, which is exactly the gap this closes.
 --
--- Team.language is an INDEX into Team.language_codes, not a code: 0 is English
+-- SH.language is an INDEX into SH.language_codes, not a code: 0 is English
 -- and 1 is Spanish, and those two are special. English is the identity (the key
 -- is already English) and Spanish comes from translated()'s second argument
 -- rather than from a dictionary, so neither has a ui_translations entry.
@@ -23,7 +23,7 @@ return function(t, harness)
     end)
 
     s.test("the stored language is restored, and defaults to Spanish", function()
-        -- Team.language is clamped to 0..5 so a corrupt or out-of-range stored
+        -- SH.language is clamped to 0..5 so a corrupt or out-of-range stored
         -- value cannot put the mod into a language that does not exist.
         local cases = {
             { stored = nil, want = 1, why = "no stored value falls back to Spanish" },

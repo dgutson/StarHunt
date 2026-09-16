@@ -4,7 +4,7 @@
 -- reaches it. Before this file, all 17 mutations tried against modules/chaos.lua
 -- survived a full green run -- including deleting a level from the map pool,
 -- handing every player the same modifier forever, and warping eliminated
--- players into the arena they were just knocked out of. Team.update_chaos_warp
+-- players into the arena they were just knocked out of. SH.update_chaos_warp
 -- was even published in STARHUNT_TEST_API and called by no test at all.
 --
 -- The numbers here (15 courses, a 15-second reroll, a 90-frame warp delay) are

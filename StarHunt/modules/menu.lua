@@ -31,7 +31,7 @@
 -- because order within a hook type matters.  This module exports what they name.
 
 local core = require("core")
-local Team = core.Team
+local SH = core.SH
 local local_runtime = core.local_runtime
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local clamp = core.clamp
@@ -73,7 +73,7 @@ local function config_status_text()
     return translated("ACTIVE ", "ACTIVA ") .. string.format("%d:%02d", minutes, seconds)
 end
 
-Team.close_widdlepets_menu = function()
+SH.close_widdlepets_menu = function()
     local pets = rawget(_G, "wpets")
     if type(pets) == "table" and type(pets.is_menu_opened) == "function"
         and type(pets.close_menu) == "function" and pets.is_menu_opened() then
@@ -81,10 +81,10 @@ Team.close_widdlepets_menu = function()
     end
 end
 
-Team.set_config_menu_open = function(opening)
+SH.set_config_menu_open = function(opening)
     opening = opening and true or false
     local changed = local_runtime.config_open ~= opening
-    if opening and changed then Team.close_widdlepets_menu() end
+    if opening and changed then SH.close_widdlepets_menu() end
     local_runtime.config_open = opening
     if opening and changed then
         local_runtime.config_selection = clamp(local_runtime.config_selection, 1, config_option_count())
@@ -98,25 +98,25 @@ end
 
 local function open_config_menu()
     if local_runtime.config_open and not is_round_active() then
-        Team.close_widdlepets_menu()
+        SH.close_widdlepets_menu()
         return
     end
-    Team.set_config_menu_open(not local_runtime.config_open)
+    SH.set_config_menu_open(not local_runtime.config_open)
 end
 
-Team.update_config_menu_lock = function()
+SH.update_config_menu_lock = function()
     local active = is_round_active()
     if local_runtime.config_round_was_active == nil then
-        Team.set_config_menu_open(not active)
+        SH.set_config_menu_open(not active)
     elseif not active then
-        Team.set_config_menu_open(true)
+        SH.set_config_menu_open(true)
     elseif not local_runtime.config_round_was_active then
-        Team.set_config_menu_open(false)
+        SH.set_config_menu_open(false)
     end
     local_runtime.config_round_was_active = active
 end
 
-Team.cycle_mode = function(delta)
+SH.cycle_mode = function(delta)
     local next_mode = (selected_mode() + delta) % 4
     if next_mode < 0 then next_mode = next_mode + 4 end
     gGlobalSyncTable.sh5_mode = next_mode
@@ -125,13 +125,13 @@ Team.cycle_mode = function(delta)
         clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)
 end
 
-Team.cycle_difficulty = function(delta)
-    local next_difficulty = (Team.selected_difficulty() + delta) % 4
+SH.cycle_difficulty = function(delta)
+    local next_difficulty = (SH.selected_difficulty() + delta) % 4
     if next_difficulty < 0 then next_difficulty = next_difficulty + 4 end
     gGlobalSyncTable.sh5_difficulty = next_difficulty
 end
 
-Team.freeze_menu_mario = function(m)
+SH.freeze_menu_mario = function(m)
     if m.playerIndex ~= 0 then return end
     if not local_runtime.config_open then
         local_runtime.menu_freeze_x = nil
@@ -188,7 +188,7 @@ local function update_config_input(m)
     end
 
     if (pressed & (B_BUTTON | START_BUTTON)) ~= 0 then
-        if is_round_active() then Team.set_config_menu_open(false) end
+        if is_round_active() then SH.set_config_menu_open(false) end
     elseif (pressed & U_JPAD) ~= 0 or stick_up then
         local_runtime.config_selection = local_runtime.config_selection - 1
         if local_runtime.config_selection < 1 then local_runtime.config_selection = count end
@@ -199,15 +199,15 @@ local function update_config_input(m)
         local option = config_option_kind(local_runtime.config_selection)
         if option == "language" then
             local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-            Team.language = (Team.language + delta) % #Team.language_codes
-            if Team.language < 0 then Team.language = Team.language + #Team.language_codes end
-            mod_storage_save("starhunt_v11_language", tostring(Team.language))
+            SH.language = (SH.language + delta) % #SH.language_codes
+            if SH.language < 0 then SH.language = SH.language + #SH.language_codes end
+            mod_storage_save("starhunt_v11_language", tostring(SH.language))
         elseif option == "mode" and network_is_server() then
             if is_round_active() then
                 djui_popup_create(translated("MODE IS LOCKED DURING A ROUND", "EL MODO ESTA BLOQUEADO DURANTE LA RONDA"), 1)
             else
                 local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-                Team.cycle_mode(delta)
+                SH.cycle_mode(delta)
             end
         elseif option == "difficulty" and network_is_server() then
             if is_round_active() then
@@ -215,7 +215,7 @@ local function update_config_input(m)
                     "LA DIFICULTAD ESTA BLOQUEADA DURANTE LA RONDA"), 1)
             else
                 local delta = ((pressed & L_JPAD) ~= 0 or stick_left) and -1 or 1
-                Team.cycle_difficulty(delta)
+                SH.cycle_difficulty(delta)
             end
         elseif option == "time" and network_is_server() then
             if is_round_active() then
@@ -232,20 +232,20 @@ local function update_config_input(m)
         if option == "start" then
             local minimum, maximum = configured_time_range(connected_player_count())
             if host_start_round(clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)) then
-                Team.set_config_menu_open(false)
+                SH.set_config_menu_open(false)
             end
         elseif option == "stop" then
             host_end_round("stopped by host")
-            Team.set_config_menu_open(true)
+            SH.set_config_menu_open(true)
         elseif option == "language" then
-            Team.language = (Team.language + 1) % #Team.language_codes
-            mod_storage_save("starhunt_v11_language", tostring(Team.language))
+            SH.language = (SH.language + 1) % #SH.language_codes
+            mod_storage_save("starhunt_v11_language", tostring(SH.language))
         elseif option == "mode" and network_is_server() then
             if not is_round_active() then
-                Team.cycle_mode(1)
+                SH.cycle_mode(1)
             end
         elseif option == "difficulty" and network_is_server() then
-            if not is_round_active() then Team.cycle_difficulty(1) end
+            if not is_round_active() then SH.cycle_difficulty(1) end
         elseif option == "status" then
             djui_popup_create(config_status_text(), 1)
         end
@@ -267,7 +267,7 @@ local function update_config_input(m)
     m.vel.y = 0
     m.vel.z = 0
     if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
-    if local_runtime.config_open then Team.freeze_menu_mario(m) end
+    if local_runtime.config_open then SH.freeze_menu_mario(m) end
 end
 
 local function show_help()
@@ -276,8 +276,8 @@ local function show_help()
         .. translated("show what StarHunt is and what changed", "muestra de que trata StarHunt y que cambio"))
 end
 
-Team.show_updates = function()
-    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1")
+SH.show_updates = function()
+    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1.1")
     djui_chat_message_create(translated(
         "ABOUT: A multiplayer challenge mod with four game modes.",
         "DE QUE TRATA: Un mod multijugador de desafios con cuatro modos."))
@@ -300,14 +300,14 @@ local function starhunt_command(message)
     end
     if text == "updates" or text == "update" or text == "actualizaciones"
         or text == "cambios" then
-        Team.show_updates()
+        SH.show_updates()
         return true
     end
     show_help()
     return true
 end
 
--- The Team.* functions above attach to the shared Team table and need no
+-- The SH.* functions above attach to the shared SH table and need no
 -- export.  These six do: the three option readers are called by
 -- draw_config_menu, which lives with the drawing code, and the other three are
 -- named by main.lua's hook block and by STARHUNT_TEST_API.

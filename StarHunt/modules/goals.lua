@@ -17,7 +17,7 @@
 local modifier = require("core").modifier
 local translated = require("i18n").translated
 local core = require("core")
-local Team = core.Team
+local SH = core.SH
 local is_round_active = core.is_round_active
 local is_boss_mode = core.is_boss_mode
 local local_runtime = core.local_runtime
@@ -29,12 +29,12 @@ local boss_has_modifier = require("boss").boss_has_modifier
 -- it.  update_lifetime_sync publishes it for modules/team.lua, which balances
 -- the rosters by reading sh5_lifetime_stars rather than this total directly,
 -- and main.lua both calls it at load and hooks it to HOOK_UPDATE.
-Team.lifetime = math.max(0, math.floor(tonumber(
+SH.lifetime = math.max(0, math.floor(tonumber(
     mod_storage_load("starhunt_lifetime_stars")) or 0))
 
 
-Team.update_lifetime_sync = function()
-    gPlayerSyncTable[0].sh5_lifetime_stars = Team.lifetime
+SH.update_lifetime_sync = function()
+    gPlayerSyncTable[0].sh5_lifetime_stars = SH.lifetime
 end
 
 local WORLD_NAMES = {
@@ -593,7 +593,7 @@ local function players_have_private_variant(a, b)
     -- loaded level and area, keep both models and nametags visible even when
     -- their assigned star acts differ. Normal mode keeps the conservative
     -- geometry isolation below.
-    if Team.is_mode() or Team.is_chaos_mode() then return false end
+    if SH.is_team_mode() or SH.is_chaos_mode() then return false end
     -- TTC Act 6 deliberately stops the clock while the other acts run slowly.
     -- Those object states cannot share one visible/PvP simulation.
     if first.level == LEVEL_TTC and second.level == LEVEL_TTC
@@ -630,7 +630,7 @@ end
 
 local function players_can_share_world(a, b)
     if not is_round_active() or a == b then return false end
-    if Team.is_mode() or Team.is_chaos_mode() then
+    if SH.is_team_mode() or SH.is_chaos_mode() then
         local first_network = gNetworkPlayers[a]
         local second_network = gNetworkPlayers[b]
         return first_network ~= nil and second_network ~= nil
@@ -772,7 +772,7 @@ local function on_allow_interact(m, object, interaction)
 
     if not is_round_active() then return true end
     if is_boss_mode() then return true end
-    if Team.is_chaos_mode() then
+    if SH.is_chaos_mode() then
         return not has_interaction(interaction, INTERACT_STAR_OR_KEY)
     end
     if not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return true end
@@ -800,12 +800,12 @@ local function on_allow_interact(m, object, interaction)
         return false
     end
     if not goal_matches_player_area(goal_data, m.playerIndex) then return false end
-    if m.playerIndex == 0 then return Team.all_coin_tolls_paid(m) end
-    local first = Team.effective_modifier_for_goal(goal_data,
+    if m.playerIndex == 0 then return SH.all_coin_tolls_paid(m) end
+    local first = SH.effective_modifier_for_goal(goal_data,
         goal_data.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier or 0])
-    local second = Team.effective_modifier_for_goal(goal_data,
+    local second = SH.effective_modifier_for_goal(goal_data,
         goal_data.mods[gPlayerSyncTable[m.playerIndex].sh5_modifier_2 or 0])
-    return Team.coin_toll_paid(m, first) and Team.coin_toll_paid(m, second)
+    return SH.coin_toll_paid(m, first) and SH.coin_toll_paid(m, second)
 end
 
 local function on_interact(m, object, interaction, did_interact)
@@ -818,18 +818,18 @@ local function on_interact(m, object, interaction, did_interact)
         end
         return
     end
-    if Team.is_chaos_mode() then return end
+    if SH.is_chaos_mode() then return end
     if local_runtime.done_lock then return end
     if not did_interact or not has_interaction(interaction, INTERACT_STAR_OR_KEY) then return end
 
     local goal_data = get_local_goal()
     if goal_data ~= nil and goal_matches_player_area(goal_data, 0) and goal_matches_star_object(goal_data, object) then
-        if not Team.all_coin_tolls_paid(m) then return end
+        if not SH.all_coin_tolls_paid(m) then return end
         remove_starhunt_save_flag(goal_data)
         local_runtime.done_lock = true
-        Team.lifetime = Team.lifetime + 1
-        mod_storage_save("starhunt_lifetime_stars", tostring(Team.lifetime))
-        Team.update_lifetime_sync()
+        SH.lifetime = SH.lifetime + 1
+        mod_storage_save("starhunt_lifetime_stars", tostring(SH.lifetime))
+        SH.update_lifetime_sync()
         gPlayerSyncTable[0].sh5_done = (gPlayerSyncTable[0].sh5_done or 0) + 1
         djui_popup_create(translated("STAR GET! NEXT GOAL INCOMING...", "ESTRELLA CONSEGUIDA! NUEVO RETO..."), 1)
     end
@@ -854,7 +854,7 @@ local function update_star_visibility()
         if has_interaction(object.oInteractType, INTERACT_STAR_OR_KEY) then
             local correct = goal_data ~= nil and goal_matches_player_area(goal_data, 0)
                 and goal_matches_star_object(goal_data, object)
-                and Team.all_coin_tolls_paid(gMarioStates[0])
+                and SH.all_coin_tolls_paid(gMarioStates[0])
             if goal_data ~= nil and not correct then
                 if local_runtime.hidden_stars[object] == nil then
                     local_runtime.hidden_stars[object] =

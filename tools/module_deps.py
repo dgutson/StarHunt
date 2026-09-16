@@ -16,9 +16,9 @@ Read the output like this:
     main.lua and the new module cannot see it.  Either it belongs in the module
     too, or it belongs in core.lua, or the module has to wait for whichever
     module owns it.
-  * `Team.x` fields never appear here and never block anything.  Every module
-    reaches the same `Team` table by reference, so a function assigned onto
-    `Team` in one module is visible from all of them.
+  * `SH.x` and `Team.x` fields never appear here and never block anything.
+    Every module reaches the same two tables by reference, so a function
+    assigned onto either in one module is visible from all of them.
 
 This exists because REFACTOR_PLAN.md's per-symbol appendix is machine-derived
 and has been wrong about real dependencies more than once.  Running the scan

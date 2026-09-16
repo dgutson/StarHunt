@@ -153,7 +153,7 @@ return function(t, harness)
 
     s.test("Nightmare is harder than Medium, in the right direction per kind", function()
         -- Which way "harder" runs is written out here instead of being read
-        -- from Team.lower_is_harder, and that is the whole point of the test.
+        -- from SH.lower_is_harder, and that is the whole point of the test.
         -- The monotonicity check above infers the direction from the values it
         -- happens to see, so if an entry of lower_is_harder were wrong the
         -- entire scale for that modifier would invert and still look perfectly

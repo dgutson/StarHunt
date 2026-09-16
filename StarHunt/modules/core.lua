@@ -1,16 +1,26 @@
--- StarHunt v1.1 - the shared namespace every other module builds on.
+-- StarHunt v1.1 - the two shared name spaces every other module builds on.
 --
--- `Team` is the mod's general namespace, not a Team-mode table. Its name is
--- historical: it carries the mode, difficulty and team constants alongside most
--- cross-cutting functions and mutable state, in every mode.
+-- `SH` is the mod's general name space: the mode and difficulty axes, the
+-- language, the HUD helpers, Bowser's health, the modifier readers, Chaos, the
+-- menu and third-party compatibility. All of it applies in every mode.
 --
--- It lives here so each module can reach the same table with
--- `local Team = require("core")`. That is safe because `Team` is only ever
--- mutated by field assignment and is never rebound: every file gets the same
--- table by reference. A variable that IS rebound cannot be shared this way --
--- Lua copies the value on `local x = other.x`, so a write in one module would
--- be invisible to the rest. That is why the per-player mutable state lives on
--- the `local_runtime` table instead of in top-level locals.
+-- `Team` is what is genuinely about Team mode: the colour axis, the rosters,
+-- the palettes, the per-team scores and the balancing. Until these were split
+-- apart there was one table called `Team` carrying both, and a comment here had
+-- to warn the reader that `Team` was not a Team-mode table.
+--
+-- Both live here so each module can reach the same tables with
+-- `local core = require("core")`. That is safe because neither is ever mutated
+-- except by field assignment, and neither is ever rebound: every file gets the
+-- same table by reference. A variable that IS rebound cannot be shared this way
+-- -- Lua copies the value on `local x = other.x`, so a write in one module
+-- would be invisible to the rest. That is why the per-player mutable state
+-- lives on the `local_runtime` table instead of in top-level locals.
+--
+-- The team side is declared here rather than in team.lua because core requires
+-- nothing, so every module can reach either table without a new require edge.
+-- Declaring it in team.lua would force round.lua and hud.lua to require that
+-- module for the colour axis alone.
 
 local FRAMES_PER_SECOND = 30
 
@@ -20,23 +30,49 @@ local FRAMES_PER_SECOND = 30
 -- in any one of chaos.lua, round.lua or boss.lua.
 local NEXT_GOAL_DELAY = 90
 
-local Team = { NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
-    EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3,
-    NONE = 0, RED = 1, BLUE = 2, initial = {},
-    palettes = {}, paletteActive = false, paletteRefreshAt = 0,
-    manualRerollCooldown = 120 * FRAMES_PER_SECOND,
+local SH = { manualRerollCooldown = 120 * FRAMES_PER_SECOND,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
+
+local Team = { initial = {},
+    palettes = {}, paletteActive = false, paletteRefreshAt = 0 }
+
+-- The mod has three unrelated axes -- which mode is being played, how hard it
+-- is, and which team a player is on -- and all three are small integers that
+-- start at 0. They used to be eleven flat fields on one table, so the mode,
+-- the difficulty and the team colour each had a member equal to 0, and
+-- the mode and the difficulty each had one equal to 3. Handing one axis to code
+-- that expected another was therefore not an error anywhere: it matched a real
+-- member of the wrong axis, and no test, luacheck run or lua-language-server
+-- run in this project can see that. The three are adjacent in the code most
+-- likely to make the mistake -- configured_time_range dispatches on the mode,
+-- effective_modifier scales on the difficulty, and host_update_round reads
+-- both.
+--
+-- Splitting them into three tables is the whole fix. A name off the wrong axis
+-- now reads as nil, so the comparison that reads it is simply false rather than
+-- true for the wrong reason, and `SH.Mode.NIGHTMARE` reads wrong where it is
+-- written. Keep them three tables: putting any of these names back on `SH` or
+-- on `Team` restores the collision, and test/suite/core.lua is what notices.
+--
+-- Every number is exactly what v1.1 shipped, because sh5_mode and
+-- sh5_difficulty are synchronized: renumbering would make a released client and
+-- a patched one disagree about what mode a lobby is in. The values are also
+-- used arithmetically -- `% 4` when the menu cycles, `+ 1` as a table index,
+-- `clamp(..., 0, 3)` -- which the same numbers keep working.
+SH.Mode = { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 }
+SH.Difficulty = { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 }
+Team.Color = { NONE = 0, RED = 1, BLUE = 2 }
 
 -- The host's record of every player it has seen this round, keyed by a stable
 -- player key so a reconnecting player finds their own entry again.
 --
--- It sits on `Team` rather than in a top-level local because `host_start_round`
+-- It sits on `SH` rather than in a top-level local because `host_start_round`
 -- REPLACES the whole table at the start of every round. Lua copies a value on
 -- `local x = other.x`, so a module that re-localized it would go on reading the
--- previous round's table forever. As a field on the shared `Team` table the
+-- previous round's table forever. As a field on the shared `SH` table the
 -- replacement is visible to everyone. Round mode writes it; Team mode reads it
 -- to total the scores of players who have disconnected.
-Team.host_player_records = {}
+SH.host_player_records = {}
 
 -- The stable key that names a player's entry in the table above. The global
 -- index survives a reconnect and a slot change, so it is preferred; the slot
@@ -154,20 +190,20 @@ end
 -- behaviour all three inherit.
 local function selected_mode()
     local mode = gGlobalSyncTable.sh5_mode
-    if mode == Team.BOSS or mode == Team.MODE or mode == Team.CHAOS then return mode end
-    return Team.NORMAL
+    if mode == SH.Mode.BOSS or mode == SH.Mode.TEAM or mode == SH.Mode.CHAOS then return mode end
+    return SH.Mode.NORMAL
 end
 
 local function is_boss_mode()
-    return selected_mode() == Team.BOSS
+    return selected_mode() == SH.Mode.BOSS
 end
 
-Team.is_mode = function()
-    return selected_mode() == Team.MODE
+SH.is_team_mode = function()
+    return selected_mode() == SH.Mode.TEAM
 end
 
-Team.is_chaos_mode = function()
-    return selected_mode() == Team.CHAOS
+SH.is_chaos_mode = function()
+    return selected_mode() == SH.Mode.CHAOS
 end
 
 -- Whether a StarHunt round is running. This is a read of synchronized state, so
@@ -179,6 +215,7 @@ local function is_round_active()
 end
 
 return {
+    SH = SH,
     Team = Team,
     local_runtime = local_runtime,
     clamp = clamp,

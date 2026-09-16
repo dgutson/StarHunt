@@ -46,7 +46,7 @@ return function(t, harness)
         -- so a module that took a copy of a table would keep writing into its
         -- own -- and nothing would error; the writes would simply never meet.
         --
-        -- Team.periodic_window lives in modules/difficulty.lua and measures
+        -- SH.periodic_window lives in modules/difficulty.lua and measures
         -- from local_runtime.modifier_start_frame. Writing that field here and
         -- watching difficulty.lua change its answer is the proof, because the
         -- two files reached the table by separate require() calls.
@@ -115,5 +115,117 @@ return function(t, harness)
         }) do
             t.eq(rt[field], false, field)
         end
+    end)
+
+    -- The mode, the difficulty and the team colour used to be eleven flat
+    -- fields on one table, so Team.NORMAL, Team.EASY and Team.NONE were all 0
+    -- and Team.CHAOS, Team.NIGHTMARE were both 3. Passing one axis where
+    -- another was meant matched a real value instead of failing, and no test,
+    -- lint or type check in this project could see it. The numbers are
+    -- unchanged -- two of them are on the wire -- but the names now live on
+    -- three separate tables, each of which rejects a name from another axis.
+
+    s.test("the three axes are three separate name spaces", function()
+        local axes = {
+            mode = api.mode_axis,
+            difficulty = api.difficulty_axis,
+            team_color = api.team_color_axis,
+        }
+        for name, axis in pairs(axes) do
+            t.eq(type(axis), "table", name .. " axis is not a table")
+        end
+        t.ne(axes.mode, axes.difficulty, "mode and difficulty share one table")
+        t.ne(axes.mode, axes.team_color, "mode and team colour share one table")
+        t.ne(axes.difficulty, axes.team_color,
+            "difficulty and team colour share one table")
+
+        local owner = {}
+        for name, axis in pairs(axes) do
+            for key in pairs(axis) do
+                t.is_nil(owner[key], key .. " is on the " .. name
+                    .. " axis and on the " .. tostring(owner[key]) .. " axis")
+                owner[key] = name
+            end
+        end
+    end)
+
+    s.test("a name from another axis reads as nil, not as a number", function()
+        -- This is what the split buys. Before it, Team.NIGHTMARE read where a
+        -- mode was expected gave 3, which IS Chaos mode: a valid and completely
+        -- wrong answer that every check in this project accepted. Now the
+        -- comparison that reads it is false, which is the safe direction.
+        for _, case in ipairs({
+            { "mode_axis", "NIGHTMARE" }, { "mode_axis", "RED" },
+            { "difficulty_axis", "CHAOS" }, { "difficulty_axis", "BLUE" },
+            { "team_color_axis", "BOSS" }, { "team_color_axis", "HARD" },
+        }) do
+            local axis, key = api[case[1]], case[2]
+            t.eq(type(axis), "table", case[1] .. " is not a table")
+            t.is_nil(axis[key], case[1] .. "." .. key .. " answered a number")
+        end
+    end)
+
+    s.test("the axis numbers are the ones v1.1 put on the wire", function()
+        -- sh5_mode and sh5_difficulty are synchronized, so renumbering makes a
+        -- released client and a patched one disagree about what mode a lobby
+        -- is in. Splitting the name spaces deliberately changed no number.
+        for axis, expected in pairs({
+            mode_axis = { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 },
+            difficulty_axis = { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 },
+            team_color_axis = { NONE = 0, RED = 1, BLUE = 2 },
+        }) do
+            for key, value in pairs(expected) do
+                t.eq(api[axis][key], value, axis .. "." .. key)
+            end
+        end
+    end)
+
+    s.test("the flat axis names are gone from both name spaces", function()
+        -- Putting any of them back restores the collision, and nothing else in
+        -- the suite would notice, because the value would simply be right
+        -- again. Only this test stands between the fix and its own undoing.
+        -- Both tables are checked: the axes were split apart in the same
+        -- change that split the one `Team` table into `SH` and `Team`, so a
+        -- flat name could come back on either.
+        for _, space in ipairs({
+            { name = "SH", table = api.mod_namespace },
+            { name = "Team", table = api.team_namespace },
+        }) do
+            for _, name in ipairs({
+                "NORMAL", "BOSS", "MODE", "CHAOS",
+                "EASY", "MEDIUM", "HARD", "NIGHTMARE",
+                "NONE", "RED", "BLUE",
+            }) do
+                t.is_nil(rawget(space.table, name),
+                    space.name .. "." .. name .. " is back on the name space")
+            end
+        end
+    end)
+
+    -- The table the axes hang on used to be called `Team` and held both the
+    -- mod-wide members and Team mode's own, so `Team.Difficulty.NIGHTMARE`
+    -- read as "Team mode's difficulty" in a Normal round. The mod-wide members
+    -- moved to `SH` and the fifteen Team-mode ones kept the name.
+
+    s.test("the mod-wide and Team-mode name spaces are two tables", function()
+        t.eq(type(api.mod_namespace), "table", "SH is not a table")
+        t.eq(type(api.team_namespace), "table", "Team is not a table")
+        t.ne(api.mod_namespace, api.team_namespace,
+            "SH and Team are one table again")
+
+        -- Which axis sits on which name space is the point of the split: the
+        -- mode and the difficulty apply in every mode, the colour only in one.
+        t.eq(rawget(api.mod_namespace, "Mode"), api.mode_axis,
+            "the mode axis left SH")
+        t.eq(rawget(api.mod_namespace, "Difficulty"), api.difficulty_axis,
+            "the difficulty axis left SH")
+        t.eq(rawget(api.team_namespace, "Color"), api.team_color_axis,
+            "the colour axis left Team")
+        t.is_nil(rawget(api.team_namespace, "Mode"),
+            "the mode axis is back on Team")
+        t.is_nil(rawget(api.team_namespace, "Difficulty"),
+            "the difficulty axis is back on Team")
+        t.is_nil(rawget(api.mod_namespace, "Color"),
+            "the colour axis moved to SH")
     end)
 end

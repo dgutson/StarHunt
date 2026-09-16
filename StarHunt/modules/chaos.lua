@@ -9,9 +9,9 @@
 -- and on Nightmare a compatible second one alongside it. Because Chaos draws
 -- from the whole catalog rather than from one star's audited list, the pair
 -- rules here are the only thing keeping two modifiers from cancelling each
--- other out or stacking into something unplayable -- see Team.chaos_conflicts.
+-- other out or stacking into something unplayable -- see SH.chaos_conflicts.
 --
--- The host side of the round loop, Team.host_update_chaos_round, lives in
+-- The host side of the round loop, SH.host_update_chaos_round, lives in
 -- round.lua and cannot come here. It counts survivors and ends the round, so it
 -- calls round's host_end_round, host_add_late_joiner and remember_player_index,
 -- and round.lua already requires this module for CHAOS_REROLL_FRAMES -- an edge
@@ -19,7 +19,7 @@
 -- for the same reason.
 
 local core = require("core")
-local Team = core.Team
+local SH = core.SH
 local local_runtime = core.local_runtime
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
@@ -28,13 +28,13 @@ local NORMAL_MODIFIER_CATALOG = require("audit").NORMAL_MODIFIER_CATALOG
 local reset_local_modifier_state = require("modifiers").reset_local_modifier_state
 
 local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
-Team.chaos_maps = {
+SH.chaos_maps = {
     LEVEL_BOB, LEVEL_WF, LEVEL_JRB, LEVEL_CCM, LEVEL_BBH,
     LEVEL_HMC, LEVEL_LLL, LEVEL_SSL, LEVEL_DDD, LEVEL_SL,
     LEVEL_WDW, LEVEL_TTM, LEVEL_THI, LEVEL_TTC, LEVEL_RR,
 }
 
-Team.chaos_conflicts = {
+SH.chaos_conflicts = {
     no_b={ swap_ab=true }, swap_ab={ no_b=true },
     reverse_controls={ mirrored_steering=true, control_pulse=true, air_mirror=true },
     mirrored_steering={ reverse_controls=true, air_mirror=true },
@@ -47,33 +47,33 @@ Team.chaos_conflicts = {
     periodic_freeze={ keep_moving=true, floor_doom=true },
 }
 
-Team.chaos_pair_allowed = function(first, second)
+SH.chaos_pair_allowed = function(first, second)
     if first == nil or second == nil or first.kind == second.kind then return false end
-    local first_conflicts = Team.chaos_conflicts[first.kind]
-    local second_conflicts = Team.chaos_conflicts[second.kind]
+    local first_conflicts = SH.chaos_conflicts[first.kind]
+    local second_conflicts = SH.chaos_conflicts[second.kind]
     return not ((first_conflicts ~= nil and first_conflicts[second.kind])
         or (second_conflicts ~= nil and second_conflicts[first.kind]))
 end
 
-Team.chaos_modifier_allowed = function(candidate)
+SH.chaos_modifier_allowed = function(candidate)
     -- Coin Toll only gates a target star, and Chaos deliberately has none.
     return candidate ~= nil and candidate.kind ~= "coin_toll"
 end
 
-Team.pick_chaos_pair = function(previous_first)
+SH.pick_chaos_pair = function(previous_first)
     local first_choices = {}
     for index, candidate in ipairs(NORMAL_MODIFIER_CATALOG) do
-        if Team.chaos_modifier_allowed(candidate) and index ~= previous_first then
+        if SH.chaos_modifier_allowed(candidate) and index ~= previous_first then
             table.insert(first_choices, index)
         end
     end
     if #first_choices == 0 then return 0, 0 end
     local first_index = first_choices[math.random(#first_choices)]
-    if Team.selected_difficulty() ~= Team.NIGHTMARE then return first_index, 0 end
+    if SH.selected_difficulty() ~= SH.Difficulty.NIGHTMARE then return first_index, 0 end
     local second_choices = {}
     for index, candidate in ipairs(NORMAL_MODIFIER_CATALOG) do
-        if Team.chaos_modifier_allowed(candidate)
-            and Team.chaos_pair_allowed(NORMAL_MODIFIER_CATALOG[first_index], candidate) then
+        if SH.chaos_modifier_allowed(candidate)
+            and SH.chaos_pair_allowed(NORMAL_MODIFIER_CATALOG[first_index], candidate) then
             table.insert(second_choices, index)
         end
     end
@@ -81,8 +81,8 @@ Team.pick_chaos_pair = function(previous_first)
     return first_index, second_choices[math.random(#second_choices)]
 end
 
-Team.host_reroll_chaos_modifiers = function()
-    if not Team.is_chaos_mode() then return end
+SH.host_reroll_chaos_modifiers = function()
+    if not SH.is_chaos_mode() then return end
     local now = get_global_timer()
     if now < (gGlobalSyncTable.sh5_chaos_next_reroll or 0) then return end
     local assigned = false
@@ -91,14 +91,14 @@ Team.host_reroll_chaos_modifiers = function()
         if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1
             and (sync.sh5_chaos_eliminated or 0) == 0 then
             local first, second
-            first, second = Team.pick_chaos_pair(sync.sh5_modifier or 0)
+            first, second = SH.pick_chaos_pair(sync.sh5_modifier or 0)
             if first ~= 0 then
                 sync.sh5_modifier = first
                 sync.sh5_modifier_2 = second
                 assigned = true
             end
-            local first_data = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[first])
-            local second_data = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[second])
+            local first_data = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[first])
+            local second_data = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[second])
             sync.sh5_jump_count = first_data ~= nil and first_data.kind == "jump_limit" and first_data.value
                 or (second_data ~= nil and second_data.kind == "jump_limit" and second_data.value or -1)
         end
@@ -110,9 +110,9 @@ Team.host_reroll_chaos_modifiers = function()
     gGlobalSyncTable.sh5_chaos_next_reroll = now + CHAOS_REROLL_FRAMES
 end
 
-Team.update_chaos_warp = function(m)
+SH.update_chaos_warp = function(m)
     if m.playerIndex ~= 0 then return end
-    if not is_round_active() or not Team.is_chaos_mode() then
+    if not is_round_active() or not SH.is_chaos_mode() then
         local_runtime.chaos_round_seen = -1
         local_runtime.chaos_warp_at = -1
         local_runtime.chaos_spectator_warped = false
@@ -146,7 +146,7 @@ Team.update_chaos_warp = function(m)
     end
 end
 
--- The Team.* functions above attach to the shared Team table and need no
+-- The SH.* functions above attach to the shared SH table and need no
 -- export. CHAOS_REROLL_FRAMES does: main.lua's host_start_round arms the first
 -- reroll deadline when the round begins.
 return {

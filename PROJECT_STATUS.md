@@ -38,9 +38,18 @@ El identificador es el SHA-256 de la lista ordenada de hashes de todos los
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-`B3EF2F454A7ED46CD6B21B379C92D21D7B1206E0A0A9CC292E47EA39F4CF0CA3`, tras las correcciones
-del 16 de septiembre. El valor de la division en modulos era
-`27BEDAA820964202EABAAFB96633B8F4A9C4812BA7866C3F97E463CC5D3DD0C7`.
+`7EECC98AEA857B872A084837E715589CCB77DA3D633F757D19EA27F2A5DAAFF0`, publicado como **v1.1.1**
+el 16 de septiembre.
+
+Los valores anteriores, del mas nuevo al mas viejo:
+`E71D18CF8DB7F488AED0586AC6C4D496325EF87A935FABAC418E940CA3BA8336`, el mismo arbol antes de
+escribir 1.1.1 en la cabecera del mod y en el banner de `/starhunt updates`;
+`AFF4D8047593D4265F78045CA5C94C1727BF0318EC19C8C8D995374BF563DDFA`, con los tres ejes ya
+separados y la tabla compartida todavia unica;
+`B3EF2F454A7ED46CD6B21B379C92D21D7B1206E0A0A9CC292E47EA39F4CF0CA3`, antes de esa separacion y
+tras las correcciones del Boss del mismo dia; y
+`27BEDAA820964202EABAAFB96633B8F4A9C4812BA7866C3F97E463CC5D3DD0C7`, el de la division en
+modulos.
 
 La actualizacion de mantenimiento del 31 de julio abre y bloquea el menu de
 configuracion durante la espera. El estado sincronizado de la ronda lo cierra
@@ -84,7 +93,7 @@ El cierre se basa en pruebas automatizadas y las verificaciones visuales ya
 registradas. No afirma que todas las combinaciones multijugador, de resolución
 y de mods externos hayan sido probadas dentro de SM64CoopDX.
 
-**La version en modulos todavia no se jugo dentro de SM64CoopDX.** Las 775
+**La version en modulos todavia no se jugo dentro de SM64CoopDX.** Las 780
 pruebas corren fuera del juego contra un doble del motor, asi que no alcanzan el
 renderizado, la red, los warps ni la interaccion con otros mods -- y tampoco el
 `require` relativo a la carpeta, que es justamente lo que cambio la division. Es

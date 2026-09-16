@@ -2,7 +2,7 @@
 --
 -- Everything here runs locally every frame: what is synchronized is only WHICH
 -- modifier a player has, never how it feels. Extracting modules/modifiers.lua
--- found the entry points untested -- Team.apply_local_modifier was published to
+-- found the entry points untested -- SH.apply_local_modifier was published to
 -- STARHUNT_TEST_API and never called, so an early return that switched every
 -- modifier in the mod off left the suite green.
 

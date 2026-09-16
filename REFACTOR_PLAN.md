@@ -27,18 +27,18 @@ shared helper had to move before a module could follow it.
 
 Every module being finished was **not** the same as `main.lua` being empty of them. R-004's
 audit found eight declarations that the `boss` and `goals` passes were meant to take and left
-behind, and they were R-013. **All eight have now moved** -- `Team.boss_reserve_bomb_count`,
-`Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
-`local_boss_health_*` locals into `boss.lua`; `Team.lifetime` and `Team.update_lifetime_sync`
-into `goals.lua`; `Team.pick_second_modifier` into `modifiers.lua`; and
+behind, and they were R-013. **All eight have now moved** -- `SH.boss_reserve_bomb_count`,
+`SH.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
+`local_boss_health_*` locals into `boss.lua`; `SH.lifetime` and `SH.update_lifetime_sync`
+into `goals.lua`; `SH.pick_second_modifier` into `modifiers.lua`; and
 `on_before_boss_cutscene` with `local_goal_warp_update` and `local_boss_warp_update` into
 `round.lua`. The appendix at the end of this document records each one alongside the five that
 were never assigned to a module at all. What stays in `main.lua` permanently is
 the header, the require wiring, the hook block, the synchronized-table seed and
 `STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains --
-420 lines, and the grep in the appendix now returns nothing else.
+431 lines, and the grep in the appendix now returns nothing else.
 
-**R-002 is finished.** Its last function, `Team.host_update_chaos_round`, went into
+**R-002 is finished.** Its last function, `SH.host_update_chaos_round`, went into
 `round.lua`, and the reason is the one `host_update_boss_round` had before it: a mode's round
 loop cannot live in that mode's own module, because `round.lua` requires `boss.lua` and
 `chaos.lua` and an edge back the other way would be a cycle. The first of the two options --
@@ -50,8 +50,8 @@ through `host_prepare_player`, which reads three more. Moving those into `core.l
 one caller would have put the round's own decisions outside the round. So the rule this pass
 establishes is the narrow one: **a shared helper moves into `core.lua`; a module's own
 machinery does not.** The move needed no new `require` edge at all -- all three names were
-already file-local in `round.lua`, and `Team.host_reroll_chaos_modifiers` is reached through
-the shared `Team` table.
+already file-local in `round.lua`, and `SH.host_reroll_chaos_modifiers` is reached through
+the shared `SH` table.
 
 **`menu.lua` came out before `hud.lua`, and the planned order was backwards.** `ROADMAP.md`
 had `hud` first with `menu` blocked behind it. The scan said the opposite: the HUD block's only
@@ -75,9 +75,9 @@ not every rebound local in the block.
 
 **`hud.lua` came out in two ranges and needs only `core`.** The first pass took the text
 layer -- `format_remaining_time`, `measure_hud_text`, `draw_hud_text`,
-`draw_centered_hud_text`, `Team.objective_text_max_width` and
-`Team.draw_scaled_centered_text` -- together with `apply_counter_visibility`,
-`update_native_hud_visibility`, `Team.draw_darkness_behind` and
+`draw_centered_hud_text`, `SH.objective_text_max_width` and
+`SH.draw_scaled_centered_text` -- together with `apply_counter_visibility`,
+`update_native_hud_visibility`, `SH.draw_darkness_behind` and
 `hide_native_hud_before_render` -- eleven declarations in one contiguous block -- plus the two state locals
 `local_hud_flags_before_round` and `local_counter_round_active`, which sat with the other
 `local_*` declarations at the top of the file and are read nowhere but
@@ -86,10 +86,10 @@ the new file's only import is `core` -- no `i18n`, no `menu`, no `round`. Nothin
 `hud`, so it can import anything later.
 
 **The second pass took the picture layer and gave `hud.lua` its first imports.**
-`Team.darkness_active` and `modifier_text` came out together, and the panels --
-`Team.draw_hud_panel`, `Team.health_wedges`, `Team.health_color`, `draw_player_health_bar`,
-`Team.draw_round_status_panels`, `Team.draw_objective_panel` and
-`Team.draw_gun_mod_hud_compatibility` -- as one contiguous block below them. The scan named
+`SH.darkness_active` and `modifier_text` came out together, and the panels --
+`SH.draw_hud_panel`, `SH.health_wedges`, `SH.health_color`, `draw_player_health_bar`,
+`SH.draw_round_status_panels`, `SH.draw_objective_panel` and
+`SH.draw_gun_mod_hud_compatibility` -- as one contiguous block below them. The scan named
 ten dependencies and every one was already imported by `main.lua` from a module that exists,
 so the file gained `i18n`, `goals` and `boss` alongside `core`, and no cycle: nothing
 requires `hud`. `main.lua`'s `local BOSS_MODIFIER_FIELDS` had no reader left afterwards and
@@ -117,9 +117,11 @@ Lua copies a value on `local x = other.x`. So a top-level variable that gets **r
 another, silently. A variable that is only **field-mutated** (`x.f = ...`) is shared safely by
 reference and needs nothing.
 
-Two tables are field-only and never rebound, so `local Team = require("core")` works unchanged
-in every module: **`Team`** (the mod's general namespace, not a Team-mode table) and
-**`local_runtime`** (the local player's per-frame state). Both live in `modules/core.lua`.
+Three tables are field-only and never rebound, so a `local` bound from `core` works unchanged
+in every module: **`SH`** (the mod's general namespace), **`Team`** (what is genuinely about
+Team mode) and **`local_runtime`** (the local player's per-frame state). All three live in
+`modules/core.lua`. While this refactor ran, `SH` and `Team` were one table called `Team`;
+R-019 split them, and the names below have been rewritten to match.
 
 A rebound top-level local that several modules need gets **migrated onto `local_runtime`**
 rather than shared some other way. This was done for 23 variables before any file moved, and
@@ -134,7 +136,7 @@ that are entirely self-contained into a shared module they do not need.
 functions read `host_player_records`, which `host_start_round` **rebinds**
 (`host_player_records = {}`). Waiting for round to be extracted would not have helped: a
 rebound local cannot be shared with `team.lua` from `round.lua` either. The table was migrated
-onto `Team` instead.
+onto the shared namespace instead, where it is now `SH.host_player_records`.
 
 That was necessary and not sufficient, which is the second half of the lesson. The same three
 functions also call `player_record_key`, a plain helper that `round.lua` owned and exported --
@@ -233,7 +235,7 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    721-test run: the mod could have failed to warp anyone to their star, replayed a whole
    fight's worth of Bowser attacks at a late joiner, or revived a dead player with no health,
    and nothing would have gone red.
-   Before it, the lifetime star count: `Team.update_lifetime_sync` was published in `STARHUNT_TEST_API` and
+   Before it, the lifetime star count: `SH.update_lifetime_sync` was published in `STARHUNT_TEST_API` and
    called by no test at all, so its whole body could be deleted with 709 tests still passing,
    and so could writing the total into the wrong player's slot or letting a negative stored
    total through the clamp. Before it, the HUD's frame: a ten-mutation spot check caught nothing at all, because `test/suite/hud.lua` reached
@@ -299,9 +301,9 @@ python3 tools/module_deps.py 1200,1219
 reference, marked DEP or SELF, and flags the ones that are already `require()` imports. Any
 other DEP is a real blocker.
 
-`Team.x` fields never appear and never block anything: every module reaches the same `Team`
-table by reference, so a function assigned onto `Team` in one module is visible from all of
-them. Only top-level `local`s block.
+`SH.x` and `Team.x` fields never appear and never block anything: every module reaches the
+same two tables by reference, so a function assigned onto either in one module is visible from
+all of them. Only top-level `local`s block.
 
 **Do not guess from the appendix below.** It is machine-derived and has been wrong about real
 dependencies more than once. The scan showed `modifiers` was blocked on three names rather
@@ -337,7 +339,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
 - **Pin values as literals in tests, never read them back from the mod.** A test that asks the
   code what it does agrees with the code whatever the code says. Two tests were already
   written that way and proved nothing: the difficulty-monotonicity test derived the direction
-  from the values it observed, so a wrong entry in `Team.lower_is_harder` would invert the
+  from the values it observed, so a wrong entry in `SH.lower_is_harder` would invert the
   whole scale and still look monotonic; and a `local_runtime` liveness test drove a function
   that had not moved yet, so it passed whether or not core's table was the shared one. **A
   liveness test has to cross a module boundary that actually exists.**
@@ -395,16 +397,16 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `if attack_seq == local_runtime.boss_hazard_seq then return end` is equivalent, because
   `first_seq` then lands one past `attack_seq` and the replay loop runs zero times.
   The config menu produced four more out of 67, and three of them are clauses that a second,
-  outer check has already settled. `if Team.language < 0 then ... end` after
-  `(Team.language + delta) % #Team.language_codes` is unreachable, because Lua's `%` follows
+  outer check has already settled. `if SH.language < 0 then ... end` after
+  `(SH.language + delta) % #SH.language_codes` is unreachable, because Lua's `%` follows
   the sign of the divisor and never returns a negative for a positive one -- the same is true
-  of the identical guards in `Team.cycle_mode` and `Team.cycle_difficulty`. The
+  of the identical guards in `SH.cycle_mode` and `SH.cycle_difficulty`. The
   `and network_is_server()` on the mode, difficulty and time branches cannot change the
   outcome, because `config_option_kind` only ever names those three rows inside its own
   `network_is_server()` branch, so a client's `option` is never one of them. And the `clamp`
   the menu applies before calling `host_start_round` is redundant, because `host_start_round`
   clamps its own argument against the same range on its second line. The fourth,
-  `Team.set_config_menu_open(true)` after `host_end_round`, is a no-op: nothing outside
+  `SH.set_config_menu_open(true)` after `host_end_round`, is a no-op: nothing outside
   menu.lua writes `config_open`, and the branch it sits in only runs while the menu is open.
   **Leave all four exactly as they are.** A redundant clause found during a move is still not
   a move's business to delete, and three of these are the cheap outer half of a
@@ -419,7 +421,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `sh5_chaos_roster_locked` is unreachable because `host_start_round` writes it before any
   round can be active, and the loop runs only inside an active round.
   The HUD's picture layer produced four more out of 507, and all four are in one line:
-  `Team.health_wedges` is `clamp(math.floor(clamp(health or 0x880, 0, 0x880) / 0x100), 0, 8)`,
+  `SH.health_wedges` is `clamp(math.floor(clamp(health or 0x880, 0, 0x880) / 0x100), 0, 8)`,
   and the outer clamp, the inner clamp's own bounds and the `or 0x880` default overlap so
   completely that raising any one of them changes nothing. Checked exhaustively rather than
   argued: each of the four mutants agrees with the original on `nil` and on every integer
@@ -431,9 +433,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `local_round_notifications`. Deleting one turns the name into a global, but every branch of
   the chain beneath it assigns the variable before anything reads it (each chain ends in an
   `else`), so no reachable state can tell the difference. The fifth is the fallback index in
-  `Team.menu_lock_labels[Team.language + 1] or Team.menu_lock_labels[1]`: all three writers of
-  `Team.language` keep it inside 0 to 5 -- `i18n.lua` clamps with `math.max`/`math.min`, the
-  menu uses `% #Team.language_codes`, and the test API's `set_language` clamps -- and
+  `SH.menu_lock_labels[SH.language + 1] or SH.menu_lock_labels[1]`: all three writers of
+  `SH.language` keep it inside 0 to 5 -- `i18n.lua` clamps with `math.max`/`math.min`, the
+  menu uses `% #SH.language_codes`, and the test API's `set_language` clamps -- and
   `menu_lock_labels` has six entries, so the lookup never misses and the fallback is
   unreachable. The sixth is the floor of `math.max(0, ...)` on the frames remaining in
   `draw_hud`: the value reaches nothing but `format_remaining_time`, and that returns `"0:00"`
@@ -445,9 +447,9 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `local_hud_flags_before_round or flags`, runs inside the `elseif local_counter_round_active`
   branch -- and `local_counter_round_active` is only ever set true on the line straight after
   the save, so neither the initial value nor the released one can be read. The `text_width > 0`
-  guard in `Team.draw_scaled_centered_text` protects a division by zero that needs a negative
+  guard in `SH.draw_scaled_centered_text` protects a division by zero that needs a negative
   `maximum_width` to reach, and every caller passes either a positive literal or
-  `Team.objective_text_max_width()`, which has a floor of 24. **Leave all three as they are**,
+  `SH.objective_text_max_width()`, which has a floor of 24. **Leave all three as they are**,
   and note that the two `nil`s are the kind of clause worth keeping: they are cheap, and they
   are what makes the read at the bottom safe if a later pass ever reorders those branches.
   The Boss reserve wave and Bowser's health ownership produced nineteen more out of 136, in
@@ -555,7 +557,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
 - **`STARHUNT_TEST_API` must keep its existing keys** or the suite stops compiling, and
   duplicate keys are reported by lua-language-server as `duplicate-index`. It already contains
   a `set_language` that clamps to the valid range; do not add a second one. Being in that
-  table is **not** evidence of coverage: `Team.update_chaos_warp` was published there and
+  table is **not** evidence of coverage: `SH.update_chaos_warp` was published there and
   called by no test at all.
 
 ## What the boundaries were derived from
@@ -587,7 +589,7 @@ hud   -> modifiers  22
 ```
 
 `team` and `modifiers` never became require edges at all: everything the HUD reads from them
-is a field on the shared `Team` table, which every module reaches by reference.
+is a field on one of the two shared tables, which every module reaches by reference.
 
 ## Appendix: what is left in `main.lua`
 
@@ -603,13 +605,13 @@ for every top-level declaration still in `main.lua`.
 Two things to know when reading it:
 
 - **High-fan-in predicates look misplaced and are not.** `translated`, `is_round_active`,
-  `is_boss_mode`, `Team.is_chaos_mode`, `Team.selected_difficulty` and `Team.periodic_window`
+  `is_boss_mode`, `SH.is_chaos_mode`, `SH.selected_difficulty` and `SH.periodic_window`
   each have most of their graph neighbours outside their own module, because they are used
   everywhere. They belong where they are semantically. 46 declarations show this pattern.
 - **The seed artifacts are all settled now.** `on_joined_game` landed in `i18n` because it
   calls `translated`, but it is a hook callback and stayed with the hook block in `main.lua`.
   `draw_config_menu` stayed in `hud`, because the HUD's own text helpers and its `draw_hud`
-  are on both sides of it. And `Team.freeze_menu_mario`, which the appendix suggested
+  are on both sides of it. And `SH.freeze_menu_mario`, which the appendix suggested
   reconsidering against `modifiers`, went to `menu` -- it pins Mario only while the config
   menu is open, reads nothing from `modifiers`, and has no caller but the menu and the hook
   block.
@@ -639,17 +641,17 @@ every mutation caught.
 **Group two: eight declarations the `boss` and `goals` passes were meant to take and left
 behind.** These are *not* a decision to stay — they are an oversight the audit found, and they
 are R-013 in `ROADMAP.md`. Each was checked against the real require graph, so none of them
-needs a new edge. **Six are done:** `Team.boss_reserve_bomb_count`,
-`Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
+needs a new edge. **Six are done:** `SH.boss_reserve_bomb_count`,
+`SH.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
 `local_boss_health_*` locals are now in `boss.lua`, which gained one import,
 `core.FRAMES_PER_SECOND`, and nothing else. `main.lua`'s own `FRAMES_PER_SECOND` binding had
-no reader left afterwards and went with the move. `Team.lifetime` and
-`Team.update_lifetime_sync` are now in `goals.lua`, which gained no import at all: both are
-fields of the shared `Team` table, which `goals.lua` already binds from `core`, and `main.lua`
-keeps reaching them the same way it reaches `Team.update_palettes`. `Team.pick_second_modifier`
-is now in `modifiers.lua`, which also gained no import: it reads only `Team` fields and the
+no reader left afterwards and went with the move. `SH.lifetime` and
+`SH.update_lifetime_sync` are now in `goals.lua`, which gained no import at all: both are
+fields of the shared `SH` table, which `goals.lua` already binds from `core`, and `main.lua`
+keeps reaching them the same way it reaches `Team.update_palettes`. `SH.pick_second_modifier`
+is now in `modifiers.lua`, which also gained no import: it reads only `SH` fields and the
 goal's own `mods` list, and its one caller, `host_assign_goal` in `round.lua`, already reached
-it through `Team`. It is the one host-side function in that file, so its header now says so.
+it through `SH`. It is the one host-side function in that file, so its header now says so.
 
 **All eight are now done.** The last three — `on_before_boss_cutscene`,
 `local_goal_warp_update` and `local_boss_warp_update` — are in `round.lua`'s client half.
@@ -670,7 +672,7 @@ nothing else. The grep below returns only those.
 `on_joined_game` (397) is a ninth leftover that was already decided: the note above records
 that the appendix put it in `i18n` because it calls `translated`, and that it stayed in
 `main.lua` as a hook callback. R-004 confirmed that decision rather than reopening it — it
-reaches `Team.update_config_menu_lock` from the menu, `Team.is_chaos_mode` from chaos and
+reaches `SH.update_config_menu_lock` from the menu, `SH.is_chaos_mode` from chaos and
 `is_round_active` from core, and belongs to none of the three.
 
 **The lesson for R-013 and for any pass after it.** "The module is finished" was asserted five

@@ -259,7 +259,7 @@ return function(t, harness)
     end)
 
     s.test("a zero seen in the previous round does not count toward this one", function()
-        -- Team.bossBombSupplyRound is what makes the wait per-round. Without
+        -- SH.bossBombSupplyRound is what makes the wait per-round. Without
         -- it a round that begins with an empty arena inherits the last round's
         -- clock and fires the reserve immediately.
         local api, ctl = harness.load()
