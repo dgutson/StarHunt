@@ -7,7 +7,7 @@
 local stub = {}
 
 -- --------------------------------------------------------------------
--- constants (117)
+-- constants (118)
 -- --------------------------------------------------------------------
 id_bhvBowser = 72 --- @type BehaviorId
 id_bhvBowserBomb = 74 --- @type BehaviorId
@@ -54,6 +54,7 @@ HUD_DISPLAY_FLAG_STAR_COUNT = 0x0004 --- @type HUDDisplayFlag
 PLAYER_INTERACTIONS_SOLID = 1 --- @type PlayerInteractions
 PLAYER_INTERACTIONS_PVP = 2 --- @type PlayerInteractions
 PLAYER_PVP_REVAMPED = 1 --- @type PvpType
+HELD_HELD = 1
 TTC_SPEED_SLOW = 0
 TTC_SPEED_STOPPED = 3
 OBJ_LIST_LEVEL = 6 --- @type ObjectList

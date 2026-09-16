@@ -243,6 +243,81 @@ return function(t, harness)
         end
     end)
 
+    s.test("attacks are consumed, not played, while a player holds Bowser", function()
+        -- A player can grab Bowser by the tail and spin him, and every attack
+        -- spawns at Bowser's own position -- so one played now goes off in the
+        -- face of the player holding him. A shockwave is worse than unfair:
+        -- its stun empties the controller, which releases B and drops Bowser,
+        -- so the mod's own hazard cancels the mechanic the fight is won by.
+        local api, ctl, m, bowser = arena()
+        bowser.oHeldState = HELD_HELD
+        api.runtime.pending_double_waves = { ctl.timer }
+        api.runtime.pending_meteors = { { at = ctl.timer, x = 0, y = 0, z = 0, seed = 0 } }
+        send(api, m, 2, 1)
+        t.eq(#ctl.spawned, 0, "an attack played while a player was holding Bowser")
+        t.eq(api.runtime.boss_hazard_seq, 1, "the attack was saved up for the release")
+        t.eq(#api.runtime.pending_double_waves, 0, "a delayed wave was left to land on the grab")
+        t.eq(#api.runtime.pending_meteors, 0, "a meteor was left to land on the grab")
+    end)
+
+    s.test("attacks are consumed, not played, while the thrown Bowser is in the air", function()
+        -- Action 1 is the vanilla thrown update: the second or so between the
+        -- release and the mine. The player who threw him is stuck in
+        -- ACT_RELEASING_BOWSER and cannot dodge, so the throw is the other
+        -- half of the same grab and stops the attacks for the same reason.
+        local api, ctl, m, bowser = arena()
+        bowser.oAction = 1
+        api.runtime.pending_double_waves = { ctl.timer }
+        api.runtime.pending_meteors = { { at = ctl.timer, x = 0, y = 0, z = 0, seed = 0 } }
+        send(api, m, 2, 1)
+        t.eq(#ctl.spawned, 0, "an attack played from a Bowser in mid-throw")
+        t.eq(api.runtime.boss_hazard_seq, 1, "the attack was saved up for the landing")
+        t.eq(#api.runtime.pending_double_waves, 0, "a delayed wave was left to land on the throw")
+        t.eq(#api.runtime.pending_meteors, 0, "a meteor was left to land on the throw")
+    end)
+
+    s.test("the actions either side of the throw still attack", function()
+        -- Nothing but action 1 is the throw. Action 0 and action 2 are a
+        -- Bowser acting on his own, and widening the check to a range would
+        -- take the fight's own attacks with it.
+        for _, action in ipairs({ 0, 2 }) do
+            local api, ctl, m, bowser = arena()
+            bowser.oAction = action
+            send(api, m, 2, 1)
+            t.eq(#spawned_of(ctl, id_bhvBowserShockWave), 1,
+                "action " .. action .. " was treated as the throw")
+        end
+    end)
+
+    s.test("a grab before any attack has been sent consumes nothing", function()
+        -- The fallback the consume reads when the ring has never been written.
+        -- It has to stay at zero: taking it as sequence one would skip the
+        -- first real attack when it finally arrives.
+        local api, _, m, bowser = arena()
+        bowser.oHeldState = HELD_HELD
+        gGlobalSyncTable.sh5_boss_attack_seq = nil
+        api.runtime.boss_hazard_seq = 0
+        api.boss_hazards(m)
+        t.eq(api.runtime.boss_hazard_seq, 0, "a sequence that never arrived was consumed")
+    end)
+
+    s.test("a Bowser nobody is holding plays the attack", function()
+        -- Both ways the field can say so: the value the game writes when he is
+        -- put down, and an engine that does not answer at all. The second must
+        -- leave the fight as it was rather than silently switching every
+        -- attack off.
+        local api, ctl, m, bowser = arena()
+        bowser.oHeldState = 0        -- HELD_FREE; the stub carries only the
+                                     -- constants the mod itself names
+        send(api, m, 2, 1)
+        t.eq(#spawned_of(ctl, id_bhvBowserShockWave), 1, "a released Bowser did not attack")
+
+        local api2, ctl2, m2 = arena()   -- the helper leaves the field unset
+        send(api2, m2, 2, 1)
+        t.eq(#spawned_of(ctl2, id_bhvBowserShockWave), 1,
+            "an unanswered held state switched the attack off")
+    end)
+
     s.test("a Bowser in any other action plays the attack", function()
         local api, ctl, m, bowser = arena()
         bowser.oAction = 7
