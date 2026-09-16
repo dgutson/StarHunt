@@ -47,6 +47,12 @@ called `Team`, and `STARHUNT_TEST_API` already published it as `is_team_mode`),
 **Entries below this one still say `Team.x` for members that are now `SH.x`** — they were
 written when there was one table, and a log is not rewritten.
 
+**R-026 was folded into this item and no longer exists.** It was filed while the axes were
+being split, to record that the shared table held all three axes in all four modes but was
+named for one of them. That is the second half of what this entry describes, so R-019 absorbed
+it rather than rewriting the same 443 references twice. Anyone who meets `R-026` in the commit
+log — it is the subject of `ad48eb0` — should read this entry.
+
 A rejected alternative, recorded so it is not re-proposed: an erroring metatable on each axis,
 raising on an unknown key and refusing assignment. Review called it nonsensical and it was. It
 guarded a mistake the split already makes hard, it added a new way for a released mod to stop
@@ -65,7 +71,7 @@ second half — dropping the metatable removed a test and the documents were lef
 so the added test restores the count the documents already had.
 
 `PROJECT_STATUS.md` was two hashes behind for the same reason and now records
-`012E0DA9…4E2848E7`, with the intermediate `AFF4D804…F563DDFA` named as the axis-split value.
+`E71D18CF…CA3BA8336`, with the intermediate `AFF4D804…F563DDFA` named as the axis-split value.
 
 ### 2026-09-16 — R-018: the predicate is `boss_is_held` again, and tests only that
 

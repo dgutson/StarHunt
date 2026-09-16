@@ -20,7 +20,7 @@
 return function(t, harness)
     local s = t.suite("hud_frame")
 
-    -- Mode and difficulty numbers, pinned rather than read back from Team.
+    -- Mode and difficulty numbers, pinned rather than read back from SH.
     local NORMAL, BOSS, TEAM_MODE, CHAOS = 0, 1, 2, 3
     local MEDIUM = 1
 

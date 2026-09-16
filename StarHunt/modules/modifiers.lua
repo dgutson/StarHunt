@@ -829,7 +829,7 @@ local function run_static_modifier_checks()
     end
 end
 
--- The Team.* functions above attach to the shared Team table. These are the
+-- The SH.* functions above attach to the shared SH table. These are the
 -- file-local ones main.lua still needs: for its hook block, for its load-time
 -- self-check, and for the test API.
 return {

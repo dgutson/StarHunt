@@ -146,7 +146,7 @@ SH.update_chaos_warp = function(m)
     end
 end
 
--- The Team.* functions above attach to the shared Team table and need no
+-- The SH.* functions above attach to the shared SH table and need no
 -- export. CHAOS_REROLL_FRAMES does: main.lua's host_start_round arms the first
 -- reroll deadline when the round begins.
 return {

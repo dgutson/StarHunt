@@ -38,7 +38,7 @@ El identificador es el SHA-256 de la lista ordenada de hashes de todos los
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-`012E0DA9BBDE7EABD383077C2749919FD72FA4EB8A57600849B544E74E2848E7`, tras separar los tres
+`E71D18CF8DB7F488AED0586AC6C4D496325EF87A935FABAC418E940CA3BA8336`, tras separar los tres
 ejes y dividir la tabla compartida en `SH` (lo que vale en los cuatro modos) y `Team` (lo que
 solo vale en Team) el 16 de septiembre. El valor intermedio, con los ejes ya separados y la
 tabla todavia unica, era

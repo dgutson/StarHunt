@@ -36,7 +36,7 @@ into `goals.lua`; `SH.pick_second_modifier` into `modifiers.lua`; and
 were never assigned to a module at all. What stays in `main.lua` permanently is
 the header, the require wiring, the hook block, the synchronized-table seed and
 `STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains --
-420 lines, and the grep in the appendix now returns nothing else.
+431 lines, and the grep in the appendix now returns nothing else.
 
 **R-002 is finished.** Its last function, `SH.host_update_chaos_round`, went into
 `round.lua`, and the reason is the one `host_update_boss_round` had before it: a mode's round

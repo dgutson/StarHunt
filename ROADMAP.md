@@ -111,7 +111,7 @@ session fills the context window and invites mistakes.
 - **Category:** Refactor
 - **What:** Write a declaration file giving `gGlobalSyncTable` and `gPlayerSyncTable` record types covering the 60 distinct `sh5_` fields, and load it with `global_env_def` in `tlconfig.lua` — the mechanism LÖVE uses for its predefined globals.
 - **Why:** This is the largest class of mistake the language could catch here. Those 60 fields are read and written at 355 places by name, and a typo creates a new field, writes to it, and reads back `nil` for the rest of the round. Neither luacheck nor lua-language-server can see it, because the tables are engine-provided and open to any key, so nothing in the current toolchain covers this at all.
-- **Known hole, worth recording rather than rediscovering:** the Boss attack queue is read as `gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(slot)]` in `boss.lua:368` and seeded the same way in `main.lua:406`. A constructed key cannot be checked by a record type, so the eight queue slots stay unprotected whatever this item does.
+- **Known hole, worth recording rather than rediscovering:** the Boss attack queue is read as `gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(slot)]` in `boss.lua:368` and seeded the same way in `main.lua:417`. A constructed key cannot be checked by a record type, so the eight queue slots stay unprotected whatever this item does.
 - **Outcome:** Both sync tables have record types, the declaration is generated or checked against the fields the mod actually uses, and a deliberately misspelled field fails the build.
 - **Blocked-by:** R-020
 - **Enables:** —
@@ -128,7 +128,7 @@ session fills the context window and invites mistakes.
 ### R-024 — Migrate the difficulty-keyed lookup tables in `boss.lua` and `round.lua`
 
 - **Category:** Refactor
-- **What:** Convert the tables that hold one value per difficulty or per attack — `attack_intervals` and `difficulty_factors` in `round.lua:684` and `:690`, Bowser's `{ 3, 5, 7, 9 }` health in `boss.lua:113`, the difficulty names in `hud.lua:574` — into `<total>` maps keyed by the enums from R-021.
+- **What:** Convert the tables that hold one value per difficulty or per attack — `attack_intervals` and `difficulty_factors` in `round.lua:685` and `:691`, Bowser's `{ 3, 5, 7, 9 }` health in `boss.lua:113`, the difficulty names in `hud.lua:574` — into `<total>` maps keyed by the enums from R-021.
 - **Why:** Each of these currently ends in `or <default>`, so a difficulty with no entry is indistinguishable from one that deliberately takes the default. A `<total>` map makes a missing case a compile error instead.
 - **Blocked-by:** R-020, R-021
 - **Enables:** —
@@ -136,7 +136,7 @@ session fills the context window and invites mistakes.
 ### R-025 — Migrate `modules/goals.lua` and `modules/audit.lua` to record types
 
 - **Category:** Refactor
-- **What:** Give the goal and the modifier record types — `goal(level, act, title, title_es, mods, power)` at `goals.lua:61` and `modifier(kind, value, label)` at `core.lua:143` — and let the 93 goals and 32 modifiers be checked against them.
+- **What:** Give the goal and the modifier record types — `goal(level, act, title, title_es, mods, power)` at `goals.lua:61` and `modifier(kind, value, label)` at `core.lua:179` — and let the 93 goals and 32 modifiers be checked against them.
 - **Why:** It is the last place in the mod with a repeated hand-built shape, 93 times over. Expect a smaller gain than the others: lua-language-server already infers part of this from the constructors, and `rebuild_audited_modifiers` replaces every goal's `mods` wholesale at load time, which is a runtime rewrite no type system observes.
 - **Blocked-by:** R-020, R-021
 - **Enables:** —

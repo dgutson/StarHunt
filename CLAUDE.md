@@ -240,7 +240,7 @@ are now `SH.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `SH.Difficulty` (`EASY`, 
 off the wrong axis reads as `nil`, so the comparison that reads it is false rather than true
 for the wrong reason. **The numbers are unchanged and must stay so:** `sh5_mode` and
 `sh5_difficulty` are synchronized, and the menu cycles them with `% 4`, indexes tables with
-`+ 1` and clamps to `0, 3`. Two tests in `test/suite/core.lua` are all that keeps the axes
+`+ 1` and clamps to `0, 3`. Five tests in `test/suite/core.lua` are all that keeps the axes
 apart and the namespaces from merging back.
 
 ### Goals and the modifier audit

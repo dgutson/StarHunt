@@ -307,7 +307,7 @@ local function starhunt_command(message)
     return true
 end
 
--- The Team.* functions above attach to the shared Team table and need no
+-- The SH.* functions above attach to the shared SH table and need no
 -- export.  These six do: the three option readers are called by
 -- draw_config_menu, which lives with the drawing code, and the other three are
 -- named by main.lua's hook block and by STARHUNT_TEST_API.
