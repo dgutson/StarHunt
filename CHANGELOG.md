@@ -22,6 +22,24 @@ Easy, Normal, Hard y Nightmare son una configuración independiente del modo.
 Nightmare añade un modificador compatible adicional a cada modo y Boss conserva
 su configuración especial de vida.
 
+## v1.1.1 - 16 de septiembre de 2026
+
+Primer paquete publicado desde que el mod dejo de ser un solo archivo. **Para
+instalarlo hay que descomprimir el zip dentro de `sm64coopdx/mods/`**, de modo
+que quede la carpeta completa `mods/StarHunt/`: el juego recorre la carpeta del
+mod y `main.lua` resuelve `modules/...` con un `require` relativo a ella, asi
+que copiar `main.lua` solo no alcanza.
+
+- En Boss, agarrar a Bowser de la cola detiene sus ataques mientras se lo
+  sujeta, y el lanzamiento cuenta como parte del agarre. El detalle esta abajo,
+  en el primer punto de los cambios de v1.1.
+- **Nada mas cambia para el jugador.** Los modos, los objetivos, los
+  modificadores, las dificultades y los puntajes son los mismos que en v1.1, y
+  los numeros que viajan por la red no se tocaron, asi que una partida entre
+  esta version y v1.1 sigue entendiendose. El resto del trabajo de esta version
+  es interno: el mod paso de un archivo a catorce, y las constantes de modo,
+  dificultad y color de equipo dejaron de compartir los mismos numeros.
+
 ## Cambios de v1.1
 
 - Mantenimiento del 16 de septiembre: en Boss, agarrar a Bowser de la cola

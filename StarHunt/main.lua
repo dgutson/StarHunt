@@ -1,8 +1,8 @@
--- name: \\#FFE05A\\Star\\#58D6FF\\Hunt \\#FFFFFF\\v1.1\\#DCDCDC\\
--- description: \\#FFE05A\\STARHUNT v1.1\\#FFFFFF\\ - Normal, Team, Boss and Chaos!\n\\#58D6FF\\93 goals, 32 audited modifiers and four difficulty levels.\n\\#FF7792\\Six languages, balanced teams, OMM and Character Select support.\n\\#C78CFF\\Menu: /starhunt | Updates: /starhunt updates
+-- name: \\#FFE05A\\Star\\#58D6FF\\Hunt \\#FFFFFF\\v1.1.1\\#DCDCDC\\
+-- description: \\#FFE05A\\STARHUNT v1.1.1\\#FFFFFF\\ - Normal, Team, Boss and Chaos!\n\\#58D6FF\\93 goals, 32 audited modifiers and four difficulty levels.\n\\#FF7792\\Six languages, balanced teams, OMM and Character Select support.\n\\#C78CFF\\Menu: /starhunt | Updates: /starhunt updates
 -- incompatible: romhack
 --
--- StarHunt v1.1
+-- StarHunt v1.1.1
 -- Normal: all fifteen main worlds plus Wing, Metal and Vanish Cap courses.
 -- Team: the same star race split into balanced Red and Blue teams.
 -- Boss: every player fights Bowser in the Sky under three global modifiers.

@@ -277,7 +277,7 @@ local function show_help()
 end
 
 SH.show_updates = function()
-    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1")
+    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1.1")
     djui_chat_message_create(translated(
         "ABOUT: A multiplayer challenge mod with four game modes.",
         "DE QUE TRATA: Un mod multijugador de desafios con cuatro modos."))
