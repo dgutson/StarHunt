@@ -38,10 +38,13 @@ El identificador es el SHA-256 de la lista ordenada de hashes de todos los
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-`7EECC98AEA857B872A084837E715589CCB77DA3D633F757D19EA27F2A5DAAFF0`, publicado como **v1.1.1**
+`E4677DF5C91F14519C50D41AB4E548B89F1B1430ADCC5534121DC68C21024F53`, publicado como **v1.1.1**
 el 16 de septiembre.
 
 Los valores anteriores, del mas nuevo al mas viejo:
+`7EECC98AEA857B872A084837E715589CCB77DA3D633F757D19EA27F2A5DAAFF0`, el mismo arbol con la version 1.1.1 escrita solo en la cabecera del mod y en el banner
+de `/starhunt updates`, antes de llevarla tambien a los avisos de consola, a las cabeceras de
+los modulos y a la lista de novedades;
 `E71D18CF8DB7F488AED0586AC6C4D496325EF87A935FABAC418E940CA3BA8336`, el mismo arbol antes de
 escribir 1.1.1 en la cabecera del mod y en el banner de `/starhunt updates`;
 `AFF4D8047593D4265F78045CA5C94C1727BF0318EC19C8C8D995374BF563DDFA`, con los tres ejes ya

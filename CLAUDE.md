@@ -17,9 +17,25 @@ StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no p
 walks a mod's folder and `main.lua` resolves `modules/...` through a folder-relative
 `require`.
 
-The mod folder is a strict boundary: sm64coopdx scans a mod's root **recursively** for `.lua`
-and loads every file it finds, so anything with a `.lua` extension placed inside `StarHunt/`
-becomes part of the shipped mod. Tests and tooling must stay outside it.
+The mod folder is a strict boundary. Verified against the engine's own source, not its
+documentation (`src/pc/mods/mod.c` and `src/pc/lua/smlua.c` in `coop-deluxe/sm64coopdx`):
+
+- `mod_load_files_dir(..., recursive = true)` registers **every** `.lua` and `.luac` under the
+  mod's root, at any depth, as a file of that mod.
+- The load loop in `smlua.c` then **runs only the root-level ones**: it skips any file whose
+  relative path contains a path separator, with the comment "skip loading scripts in
+  subdirectories". So `modules/*.lua` are never executed on their own.
+- They run only when `require` reaches them. `require` is the game's own implementation
+  (`smlua_require.c`), not Lua's: it resolves the name relative to the folder of the file
+  doing the requiring, matches it against that mod's registered files, caches the result per
+  mod, and refuses to require a directory. A cycle is caught by a sentinel and reported as
+  "loop or previous error loading module", which is why the no-cycles rule below is real.
+- `main.lua` at the root is mandatory: `mod_extract_fields` looks for exactly that name to
+  read the `-- name:` / `-- description:` header.
+
+So a stray `.lua` **at the root of `StarHunt/`** would be executed as part of the mod; one
+inside `modules/` would be registered but not run unless something required it. Tests and
+tooling stay outside the folder either way.
 
 The project is closed. `PROJECT_STATUS.md` declares v1.1 final (2026-07-30) and says only
 corrective maintenance is accepted — no new features, modes, goals, modifiers or scoring

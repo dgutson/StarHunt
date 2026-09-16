@@ -1,4 +1,4 @@
--- StarHunt v1.1 - the /starhunt config menu.
+-- StarHunt v1.1.1 - the /starhunt config menu.
 --
 -- Six options for the host -- language, mode, difficulty, round length, status
 -- and the start/stop action -- and two for everyone else, who may change only
@@ -290,6 +290,9 @@ SH.show_updates = function()
     djui_chat_message_create(translated(
         "V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown.",
         "V1.1: Modificadores personales en Chaos, extras en Pesadilla y boton Otro nivel dentro del juego con espera de dos minutos."))
+    djui_chat_message_create(translated(
+        "V1.1.1: Bowser's attacks stop while a player is holding him, including the throw.",
+        "V1.1.1: Los ataques de Bowser se detienen mientras un jugador lo tiene agarrado, incluido el lanzamiento."))
 end
 
 local function starhunt_command(message)

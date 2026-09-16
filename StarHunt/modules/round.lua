@@ -1,4 +1,4 @@
--- StarHunt v1.1 - the round, both sides of it.
+-- StarHunt v1.1.1 - the round, both sides of it.
 --
 -- The file has two halves, and the split is the mod's authority rule made
 -- visible.  The `host_*` half below runs only on the server: it picks the

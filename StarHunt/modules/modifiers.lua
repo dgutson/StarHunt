@@ -1,4 +1,4 @@
--- StarHunt v1.1 - the modifiers, as the local player actually experiences them.
+-- StarHunt v1.1.1 - the modifiers, as the local player actually experiences them.
 --
 -- Everything here runs on the local player's own machine and is never
 -- synchronized: what is agreed between players is only WHICH modifier each
@@ -765,7 +765,7 @@ local function run_static_modifier_checks()
     for index, goal in ipairs(GOALS) do
         if goal.power ~= nil and goal.power ~= "wing" and goal.power ~= "metal"
             and goal.power ~= "vanish" and goal.power ~= "metal_vanish" then
-            print("[StarHunt v1.1] Invalid required power in slot " .. index .. ".")
+            print("[StarHunt v1.1.1] Invalid required power in slot " .. index .. ".")
             valid = false
         end
         if goal.act == 7 and (goal.level == LEVEL_BOB or goal.level == LEVEL_WF or goal.level == LEVEL_JRB
@@ -773,20 +773,20 @@ local function run_static_modifier_checks()
             or goal.level == LEVEL_SSL or goal.level == LEVEL_DDD or goal.level == LEVEL_SL
             or goal.level == LEVEL_WDW or goal.level == LEVEL_TTM or goal.level == LEVEL_THI
             or goal.level == LEVEL_TTC or goal.level == LEVEL_RR) then
-            print("[StarHunt v1.1] 100-coin goal slipped into slot " .. index .. ".")
+            print("[StarHunt v1.1.1] 100-coin goal slipped into slot " .. index .. ".")
             valid = false
         end
         if goal.mods == nil or #goal.mods == 0 then
-            print("[StarHunt v1.1] Goal " .. index .. " has no modifier choices.")
+            print("[StarHunt v1.1.1] Goal " .. index .. " has no modifier choices.")
             valid = false
         else
             for _, modifier_data in ipairs(goal.mods) do
                 if not MODIFIER_KINDS[modifier_data.kind] or modifier_data.kind == "auto_crouch" then
-                    print("[StarHunt v1.1] Invalid modifier: " .. tostring(modifier_data.kind))
+                    print("[StarHunt v1.1.1] Invalid modifier: " .. tostring(modifier_data.kind))
                     valid = false
                 end
                 if modifier_data.kind == "floor_doom" and (modifier_data.value < 4 or modifier_data.value > 9) then
-                    print("[StarHunt v1.1] Invalid cursed-floor duration: " .. tostring(modifier_data.value))
+                    print("[StarHunt v1.1.1] Invalid cursed-floor duration: " .. tostring(modifier_data.value))
                     valid = false
                 end
             end
@@ -795,35 +795,35 @@ local function run_static_modifier_checks()
     local x1, z1 = capped_horizontal_velocity(80, 60, 20)
     local x2, z2 = capped_horizontal_velocity(x1, z1, 20)
     if math.abs(x1 - x2) > 0.001 or math.abs(z1 - z2) > 0.001 then
-        print("[StarHunt v1.1] Water-cap safety test failed.")
+        print("[StarHunt v1.1.1] Water-cap safety test failed.")
         valid = false
     end
     local expected_audits = #GOALS * #NORMAL_MODIFIER_CATALOG
     if MODIFIER_AUDIT_COUNTS.checked ~= expected_audits
         or MODIFIER_AUDIT_COUNTS.approved + MODIFIER_AUDIT_COUNTS.rejected ~= expected_audits then
-        print("[StarHunt v1.1] Modifier audit matrix is incomplete.")
+        print("[StarHunt v1.1.1] Modifier audit matrix is incomplete.")
         valid = false
     end
     for goal_id = 1, #GOALS do
         for _, template in ipairs(NORMAL_MODIFIER_CATALOG) do
             if MODIFIER_AUDIT[goal_id] == nil or MODIFIER_AUDIT[goal_id][template.kind] == nil then
-                print("[StarHunt v1.1] Missing audit entry at goal " .. goal_id .. ": " .. template.kind)
+                print("[StarHunt v1.1.1] Missing audit entry at goal " .. goal_id .. ": " .. template.kind)
                 valid = false
             end
         end
     end
     local swapped = swap_button_bits(A_BUTTON, A_BUTTON, B_BUTTON)
     if swapped ~= B_BUTTON then
-        print("[StarHunt v1.1] A/B swap safety test failed.")
+        print("[StarHunt v1.1.1] A/B swap safety test failed.")
         valid = false
     end
     local drift_x, drift_y = rotate_stick(32, 0, math.pi * 0.5)
     if math.abs(drift_x) > 0.01 or math.abs(drift_y - 32) > 0.01 then
-        print("[StarHunt v1.1] Control-drift rotation test failed.")
+        print("[StarHunt v1.1.1] Control-drift rotation test failed.")
         valid = false
     end
     if valid then
-        print("[StarHunt v1.1] 93 goals, 32 modifiers, " .. MODIFIER_AUDIT_COUNTS.checked
+        print("[StarHunt v1.1.1] 93 goals, 32 modifiers, " .. MODIFIER_AUDIT_COUNTS.checked
             .. " audited pairs (" .. MODIFIER_AUDIT_COUNTS.approved .. " approved, "
             .. MODIFIER_AUDIT_COUNTS.rejected .. " rejected), and checks passed.")
     end

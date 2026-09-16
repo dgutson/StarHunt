@@ -1,4 +1,4 @@
--- StarHunt v1.1 - the six UI languages.
+-- StarHunt v1.1.1 - the six UI languages.
 --
 -- SH.language is an index into SH.language_codes, persisted under
 -- "starhunt_v11_language" and migrated from the v1.0 down to v0.6 keys on first
@@ -52,6 +52,7 @@ SH.ui_translations = {
         ["MODES: Normal star race, team competition, cooperative Boss and last-player-standing Chaos."] = "MODOS: Corrida Normal, competição em equipes, Boss cooperativo e Chaos de último sobrevivente.",
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFICULDADE: Fácil, Normal, Difícil ou Pesadelo se aplica independentemente a cada modo.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Modificadores pessoais no Chaos, extras no Pesadelo e botão Outro Nível no menu com espera de dois minutos.",
+        ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Os ataques do Bowser param enquanto um jogador o segura, incluindo o arremesso.",
         ["ANOTHER LEVEL"] = "OUTRO NÍVEL", ["READY"] = "PRONTO",
         ["NORMAL/TEAM ONLY"] = "SÓ NORMAL/EQUIPES",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "OUTRO NÍVEL SÓ ESTÁ DISPONÍVEL EM NORMAL OU EQUIPES.",
@@ -81,6 +82,7 @@ SH.ui_translations = {
         ["MODES: Normal star race, team competition, cooperative Boss and last-player-standing Chaos."] = "MODES : Course Normal, compétition en équipes, Boss coopératif et Chaos du dernier survivant.",
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFFICULTÉ : Facile, Normal, Difficile ou Cauchemar s'applique séparément à chaque mode.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1 : Modificateurs personnels en Chaos, extras en Cauchemar et bouton Autre niveau avec attente de deux minutes.",
+        ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1 : Les attaques de Bowser s'arrêtent tant qu'un joueur le tient, y compris pendant le lancer.",
         ["ANOTHER LEVEL"] = "AUTRE NIVEAU", ["READY"] = "PRÊT",
         ["NORMAL/TEAM ONLY"] = "NORMAL/ÉQUIPES SEULEMENT",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "UN AUTRE NIVEAU EST DISPONIBLE UNIQUEMENT EN NORMAL OU ÉQUIPES.",
@@ -110,6 +112,7 @@ SH.ui_translations = {
         ["MODES: Normal star race, team competition, cooperative Boss and last-player-standing Chaos."] = "MODI: Normales Sternrennen, Teamwettkampf, kooperativer Boss und Chaos bis zum letzten Spieler.",
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "SCHWIERIGKEIT: Leicht, Normal, Schwer oder Albtraum gilt unabhängig für jeden Modus.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Persönliche Chaos-Modifikatoren, Albtraum-Extras und Anderes-Level-Knopf mit zwei Minuten Wartezeit.",
+        ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Bowsers Angriffe stoppen, solange ein Spieler ihn hält, auch beim Wurf.",
         ["ANOTHER LEVEL"] = "ANDERES LEVEL", ["READY"] = "BEREIT",
         ["NORMAL/TEAM ONLY"] = "NUR NORMAL/TEAM",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "EIN ANDERES LEVEL IST NUR IN NORMAL ODER TEAM VERFÜGBAR.",
@@ -139,6 +142,7 @@ SH.ui_translations = {
         ["MODES: Normal star race, team competition, cooperative Boss and last-player-standing Chaos."] = "MODALITÀ: Gara Normal, competizione a squadre, Boss cooperativo e Chaos con ultimo giocatore vivo.",
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFFICOLTÀ: Facile, Normale, Difficile o Incubo si applica separatamente a ogni modalità.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Modificatori personali in Chaos, extra in Incubo e pulsante Altro livello con attesa di due minuti.",
+        ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Gli attacchi di Bowser si fermano mentre un giocatore lo tiene, incluso il lancio.",
         ["ANOTHER LEVEL"] = "ALTRO LIVELLO", ["READY"] = "PRONTO",
         ["NORMAL/TEAM ONLY"] = "SOLO NORMAL/SQUADRE",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "UN ALTRO LIVELLO È DISPONIBILE SOLO IN NORMAL O SQUADRE.",
