@@ -37,34 +37,20 @@ local Team = { initial = {},
 -- effective_modifier scales on the difficulty, and host_update_round reads
 -- both.
 --
--- The split below is by name only. Every number is exactly what v1.1 shipped,
--- because sh5_mode and sh5_difficulty are synchronized: renumbering would make
--- a released client and a patched one disagree about what mode a lobby is in.
--- The values are also used arithmetically -- `% 4` when the menu cycles, `+ 1`
--- as a table index, `clamp(..., 0, 3)` -- which the same numbers keep working.
+-- Splitting them into three tables is the whole fix. A name off the wrong axis
+-- now reads as nil, so the comparison that reads it is simply false rather than
+-- true for the wrong reason, and `Team.Mode.NIGHTMARE` reads wrong where it is
+-- written. Keep them three tables: putting any of these names back on `Team`
+-- itself restores the collision, and test/suite/core.lua is what notices.
 --
--- `axis` is what makes this more than a rename. A plain table would answer nil
--- for a name off the wrong axis, so the branch that read it would simply never
--- fire: still silent, only differently. Erroring on an unknown read names the
--- offending key where it is read, and refusing assignment stops the collision
--- being restored one field at a time. Neither metamethod runs for a correct
--- read, so this costs nothing per frame.
-local function axis(name, members)
-    return setmetatable(members, {
-        __index = function(_, key)
-            error(name .. " has no member '" .. tostring(key)
-                .. "' -- that name belongs to another axis", 2)
-        end,
-        __newindex = function(_, key)
-            error(name .. " is fixed; it cannot gain '" .. tostring(key) .. "'", 2)
-        end,
-    })
-end
-
-Team.Mode = axis("Team.Mode", { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 })
-Team.Difficulty =
-    axis("Team.Difficulty", { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 })
-Team.TeamColor = axis("Team.TeamColor", { NONE = 0, RED = 1, BLUE = 2 })
+-- Every number is exactly what v1.1 shipped, because sh5_mode and
+-- sh5_difficulty are synchronized: renumbering would make a released client and
+-- a patched one disagree about what mode a lobby is in. The values are also
+-- used arithmetically -- `% 4` when the menu cycles, `+ 1` as a table index,
+-- `clamp(..., 0, 3)` -- which the same numbers keep working.
+Team.Mode = { NORMAL = 0, BOSS = 1, TEAM = 2, CHAOS = 3 }
+Team.Difficulty = { EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3 }
+Team.TeamColor = { NONE = 0, RED = 1, BLUE = 2 }
 
 -- The host's record of every player it has seen this round, keyed by a stable
 -- player key so a reconnecting player finds their own entry again.

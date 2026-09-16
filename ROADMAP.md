@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-026
+Next ID: R-027
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -27,6 +27,17 @@ session fills the context window and invites mistakes.
 ---
 
 ## Now
+
+### R-026 — `Team` is the mod's namespace, so stop calling it `Team`
+
+- **Category:** Refactor
+- **What:** Rename the shared namespace declared in `modules/core.lua:23`. It carries the mode, the difficulty, the team colour and most cross-cutting functions and state in all four modes, but it is called `Team`, which names one mode. R-019 made this louder rather than quieter: `Team.Difficulty.NIGHTMARE` reads as "Team mode's difficulty" and means "the mod's difficulty", and `Team.Mode.CHAOS` reads as a contradiction. `SH` or `StarHunt` are the obvious candidates.
+- **Why:** The name is historical and `core.lua`'s own header comment already apologises for it: "`Team` is the mod's general namespace, not a Team-mode table. Its name is historical." A comment that has to correct the name every time someone reads the file is the sign that the name is wrong. It costs a moment of doubt on every read, in the one table every module touches.
+- **The reason it is cheap, and the reason it is not free:** `Team` is a **local binding** — eleven files do `local Team = core.Team` and `main.lua` does the same, so each file can be renamed on its own with a one-line change plus a mechanical substitution inside that file. Nothing crosses a file boundary except the field name `core.Team` itself, which is read in those twelve places and nowhere else. But it touches roughly 900 references across every module in the mod, which is the largest diff this project has taken since the split, all of it noise, and `STARHUNT_TEST_API` keys and every document that names `Team` move with it. Do it in one commit that changes nothing else, prove it byte-identical apart from the identifier, and mutation-check nothing, because nothing behavioural changed.
+- **Decide first:** whether the field on `core`'s return table is renamed too (`core.Team` → `core.SH`) or only the local bindings. Renaming only the locals is a two-line diff per file and leaves one confusing name in `core.lua`; renaming both is honest and touches the twelve `require` sites.
+- **Outcome:** The shared namespace's name says what it holds, `core.lua`'s header no longer needs a paragraph explaining that the name is wrong, the 779 tests pass and the three documented checks stay at their baselines.
+- **Blocked-by:** —
+- **Enables:** —
 
 ### R-014 — Take the bug reports and turn them into roadmap items
 
