@@ -7,9 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua
+      main.lua       <- 420 lines: header, requires, hook block, sync-table seed, test API
+      modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
-    tools/           <- generators for the test stub and linter data
+    tools/           <- engine-stub and linter-data generators, the mutation-testing
+                        pair (gen_mutations.py, sweep_mutations.py), and module_deps.py
+
+**Installing means copying the whole `StarHunt/` folder**, not `main.lua` alone: the game
+walks a mod's folder and `main.lua` resolves `modules/...` through a folder-relative
+`require`.
 
 The mod folder is a strict boundary: sm64coopdx scans a mod's root **recursively** for `.lua`
 and loads every file it finds, so anything with a `.lua` extension placed inside `StarHunt/`
@@ -26,6 +32,8 @@ past sessions have followed it. In short:
 
 1. Write the requested change as a `ROADMAP.md` item, with What / Why / Outcome.
 2. Find the affected system in the `Mapa del código` table in `DEVELOPMENT_CHECKLIST.md`.
+   It names the module, so a fix usually means reading one module and one or two test
+   suites rather than the whole mod.
 3. Read `Errores ya encontrados y solución que no se debe deshacer` first — that table lists
    bugs already fixed and the fix that must not be undone. Several look like redundant code and
    are not.
@@ -39,18 +47,26 @@ both directions, a mutation check on the moved code, and a re-diff against the o
 immediately before committing. `DEVELOPMENT_CHECKLIST.md` states them; `REFACTOR_PLAN.md`
 explains how.
 
-`PROJECT_STATUS.md` records the SHA-256 of the released `main.lua`
-(`EBC76DBE…A906B883`). It describes what shipped as v1.1, so it is **not** updated per commit
-on the refactor branch; it is reconciled once, at merge (roadmap item R-011).
+`PROJECT_STATUS.md` keeps the SHA-256 of the released single-file `main.lua`
+(`EBC76DBE…A906B883`) as a historical fact of what shipped as v1.1, and records the modular
+layout separately. **A single file's hash no longer identifies the mod**, so the recorded
+identifier is now the SHA-256 of the sorted list of every shipped file's hash:
+
+```bash
+(cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
+```
+
+Tags `v1.1-monolithic` and `v1.1-modular` mark the commit before and after the split.
 
 ## Commands
 
 ```bash
-# Syntax/load check. MUST be lua5.4: main.lua uses 5.3+ bitwise operators (`|`),
-# and on this machine `lua` is the 5.1 alternative, which fails at main.lua:921.
+# Syntax/load check. MUST be lua5.4: the mod uses 5.3+ bitwise operators (`|`, `&`, `~`)
+# in hud.lua and save.lua, and on this machine `lua` is the 5.1 alternative, which cannot
+# parse them. This checks main.lua only; the modules are checked by the test run below.
 lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 
-# Tests (72 of them). Needs lua5.4 for the same reason.
+# Tests (767 of them, ~45s). Needs lua5.4 for the same reason.
 lua5.4 test/run.lua
 lua5.4 test/run.lua audit difficulty     # only matching suites
 
@@ -63,8 +79,17 @@ luacheck StarHunt/ test/
 lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning \
   --logpath=/tmp/lls-log
 
-# Recompute the recorded hash after any edit
-sha256sum StarHunt/main.lua
+# Recompute the recorded hash after any edit. The mod is fourteen files, so this is
+# the hash of all of them, not of main.lua alone.
+(cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
+
+# Mutation-check a change: generate candidates for a line range, then run the suite
+# against each one in a throwaway copy of the tree. Run the sweep in the FOREGROUND
+# with WORKERS=2 -- background sweeps have been killed here for low memory. Derive the
+# line range AFTER your last edit to the file, or it will be off by the lines you added.
+python3 tools/gen_mutations.py StarHunt/modules/round.lua 787,885
+WORKERS=2 python3 tools/sweep_mutations.py round_client   # one suite: fast
+ONLY=2,5,6-8 WORKERS=2 python3 tools/sweep_mutations.py   # re-run named survivors
 ```
 
 ### How the checkers know the engine API
@@ -88,9 +113,20 @@ into `mods/`.
 
 ### Known-clean baseline and false positives
 
-As of the v1.1 hash below, `main.lua` is clean: luacheck reports 0 errors, and
-lua-language-server reports no undefined global, undefined field or arity problem — which also
-confirms every engine symbol the mod uses still exists in current sm64coopdx.
+The whole mod is clean. **These are the baselines; a rise in either is a regression:**
+
+| check | expected |
+|---|---|
+| `lua5.4 test/run.lua` | 767 passed, 0 failed |
+| `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 46 files |
+| `lua-language-server --check` | Found 10 problems in 2 files |
+
+The 2 luacheck warnings are `hud.lua:93` shadowing the upvalue `alpha` and an empty `if`
+branch in `modifiers.lua`. The 10 type-checker problems are in `save.lua` (2) and
+`test/harness.lua` (8). lua-language-server reports no undefined global, undefined field or
+arity problem, which also confirms every engine symbol the mod uses still exists in current
+sm64coopdx. `.luarc.json` disables `different-requires`, because the engine's own definitions
+and the mod both define names the checker would otherwise pair up.
 
 Two categories of report are expected and are **not** bugs. Confirmed against the engine's
 binding code, not just its annotations:
@@ -101,9 +137,10 @@ binding code, not just its annotations:
   `smlua_to_lua_function` special-cases `LUA_TNIL` and returns 0; `nil` is the intended way to
   pass no setup function.
 
-The 24 "shadowing upvalue `goal`" warnings come from local variables named `goal` shadowing the
-`goal()` constructor at line 157. Deliberate and harmless, but it does mean a typo'd `goal(...)`
-call inside such a scope would be a runtime error rather than a lint error.
+The 24 "shadowing upvalue `goal`" warnings are **gone**: the `goal()` constructor is now
+`modules/goals.lua:61` and file-local to it, so the local variables named `goal` elsewhere no
+longer shadow anything. Inside `goals.lua` itself they still do, which still means a typo'd
+`goal(...)` call in such a scope is a runtime error rather than a lint error.
 
 `selene` is installed but **unusable here**: the 0.31.0 Linux release only compiles in the
 `lua51` and `luau` grammars, so it cannot parse this file's 5.4 syntax. Do not add a
@@ -124,6 +161,45 @@ never in this repository and is not on this machine; `test/` is a fresh implemen
 
 ## Architecture
 
+### Where the code lives
+
+Thirteen modules under `StarHunt/modules/`, loaded by folder-relative `require` from
+`main.lua`. `DEVELOPMENT_CHECKLIST.md`'s `Mapa del código` maps a system to its module; this
+is the same information by size, so you can judge what a file costs to read:
+
+| module | lines | holds |
+|---|---|---|
+| `round.lua` | 1,079 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
+| `goals.lua` | 890 | the 93-star catalog, its readers, star interaction and visibility |
+| `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
+| `hud.lua` | 708 | text layer, picture layer and frame; nothing requires it |
+| `boss.lua` | 493 | Bowser's data, health pool, attack queue and hazards |
+| `menu.lua` | 321 | the `/starhunt` config menu and its input |
+| `team.lua` | 271 | rosters, palettes and PvP |
+| `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
+| `i18n.lua` | 246 | six languages and their persistence |
+| `core.lua` | 193 | `Team`, `local_runtime` and the cross-cutting helpers |
+| `chaos.lua` | 154 | Chaos's map, reroll and elimination |
+| `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
+| `save.lua` | 80 | the temporary star flag and its removal |
+
+The `require` graph has no cycles and must not gain one: sm64coopdx fails to load a mod whose
+modules require each other in a circle. Re-derive the graph before moving code between modules; `tools/module_deps.py`
+does not answer this question and can report a false positive from a string literal:
+
+```bash
+for f in StarHunt/modules/*.lua; do echo "-- $(basename $f)"; grep -n '^local .*require(' $f; done
+```
+
+```
+audit     -> goals                                    boss      -> core ONLY
+modifiers -> goals, audit, boss, team, i18n           chaos     -> core, audit, modifiers
+round     -> core, i18n, save, goals, audit,          difficulty-> core, audit
+             boss, chaos, modifiers                    team      -> core, goals
+goals     -> core, i18n, save, boss                   menu      -> core, i18n, round
+hud       -> core, i18n, goals, boss, round, menu     (nothing requires hud)
+```
+
 ### Host authority and synchronized state
 
 Everything that must agree between players lives in `gGlobalSyncTable` (round state, mode,
@@ -139,12 +215,14 @@ cycle numbers rather than testing for one exact frame, for the same reason.
 
 ### `Team` — the shared namespace
 
-`Team` is one table declared near the top of the file that holds mode/difficulty/team constants
+`Team` is one table declared in `core.lua` that holds mode/difficulty/team constants
 (`Team.NORMAL`, `Team.BOSS`, `Team.MODE`, `Team.CHAOS`; `Team.EASY`…`Team.NIGHTMARE`;
 `Team.RED`/`Team.BLUE`) alongside most cross-cutting functions and mutable state. Its name is
-historical: it is not limited to Team mode. Local `function` definitions and `Team.x = function`
-definitions are used interchangeably; the difference is only whether the test API or a later
-part of the file needs the name.
+historical: it is not limited to Team mode. **It is also how modules reach each other without a
+`require` edge** — a function hung on `Team` in one module is callable from any module that has
+`core`, which is how several moves avoided creating a cycle. Local `function` definitions and
+`Team.x = function` definitions are used interchangeably; the difference is only whether
+another module or the test API needs the name.
 
 ### Goals and the modifier audit
 
@@ -209,9 +287,12 @@ and the Gun Mod / Day-Night / WiddlePets helpers around it, all guarded by `type
 - **Caps and HUD flags.** StarHunt records the player's pre-round cap, lives and HUD visibility
   and restores exactly those, instead of forcing its own defaults, so external mods survive a
   round.
-- **Test export.** New functions that a test needs must be added to `STARHUNT_TEST_API`, the
-  table published when the global `STARHUNT_TEST_MODE` is set. The harness references functions
-  by name there so reordering hooks cannot silently test the wrong one.
+- **Test export.** New functions that a test needs must be added to `STARHUNT_TEST_API` in
+  `main.lua`, the table published when the global `STARHUNT_TEST_MODE` is set, and exported
+  from their own module first. The harness references functions by name there so reordering
+  hooks cannot silently test the wrong one. **Being in `STARHUNT_TEST_API` does not mean a
+  function is tested** — eight times now a published function turned out to be called by no
+  test at all. `grep` for the key before assuming coverage.
 - **Mod header.** The first three comment lines of `main.lua` are Co-op DX metadata (`-- name:`,
   `-- description:`, `-- incompatible: romhack`), with color escapes the checklist treats as
   verified. They are not ordinary comments.

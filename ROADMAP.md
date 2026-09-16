@@ -7,13 +7,15 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-014
+Next ID: R-015
 
-Two documents carry the detail this file deliberately omits. `REFACTOR_PLAN.md` holds the
-module boundaries, the extraction order, the per-symbol appendix and the working rules for
-every `Refactor` item below. `DEVELOPMENT_CHECKLIST.md` holds the process that is mandatory
-before editing `StarHunt/main.lua`, including the table of already-fixed bugs whose fixes
-must not be undone.
+Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
+the process that is mandatory before editing the mod, the code map that says which module a
+system lives in, and the table of already-fixed bugs whose fixes must not be undone — **read
+that table first on every bugfix**, because several of those fixes look like redundant code.
+`REFACTOR_PLAN.md` holds the module boundaries, the per-symbol appendix and the working rules
+for every `Refactor` item; the split itself is finished, so it is now a reference rather than
+a plan.
 
 **A standing constraint on every `Refactor` item:** extract at most one module per chat
 session — and that is a ceiling, not a target. When a module is large, or only part of it
@@ -26,16 +28,34 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-012 — Split `modules/round.lua`, now the largest file in the mod
+### R-014 — Take the bug reports and turn them into roadmap items
 
-- **Category:** Refactor
-- **What:** `round.lua` is 1,079 lines — larger than `goals.lua` (890), larger than `modifiers.lua` (841), larger than `hud.lua` (708), and two and a half times `main.lua` (420), which is now finished. Split it. The cut is the one the file documents in its own header: the host half (89-786) and the client half (787-1079) meet through the synchronized tables and, since R-013, at exactly one other point (re-derive both ranges with grep; they have shifted three times already). So they can become `round_host.lua` and `round_client.lua` with no shared state to arrange, but the cut is **no longer free**: `on_before_boss_cutscene` is in the client half and calls `host_end_round` behind a `network_is_server()` check. `round_client` requiring `round_host` is the obvious answer and adds no cycle — nothing requires `round` — but decide it deliberately rather than discovering it half way through. Measure both the ranges and that one call again before acting on this line. Note also that the cut as it stands does **not** reach the outcome below: the halves are roughly 700 and 290, so getting the host half under 600 needs the second cut described next, in its own verified commit first. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
-- **Why:** The file got large for a reason that no longer applies. Its two halves were extracted in separate passes months apart, and the second one landed in the file the first had created because that was where the name `round` already lived — not because the two belong in one file. They are the two sides of the mod's host-authority rule and share nothing, which is the clearest possible sign they are two units. Being the largest file in the mod also makes it the most expensive one to read at the start of a session, which is the cost the whole split exists to reduce.
-- **Outcome:** Neither half of the round is larger than roughly 600 lines; the host and client sides are separate files; every move is proven byte-identical in both directions and the 767 tests still pass. (`goals.lua` is now 890 lines and the second-largest file in the mod. Whether it wants the same treatment is a separate question this item does not answer.)
+- **Category:** Bugfix
+- **What:** The refactor is finished and merged, and the next work on this mod is corrective maintenance. There is no bug list yet — the intent is that the reports arrive at the start of a session. For each one, write a roadmap item with What / Why / Outcome, find the affected system in `DEVELOPMENT_CHECKLIST.md`'s `Mapa del código` to learn which module it lives in, and **read `Errores ya encontrados y solución que no se debe deshacer` before touching anything**: several already-fixed bugs look like redundant code and are not.
+- **Why:** `PROJECT_STATUS.md` declares v1.1 final and accepts only corrective maintenance, so a bug report is the only kind of work this project takes. Writing each one down before fixing it is what stops a session from fixing the symptom it happened to notice rather than the bug that was reported.
+- **Outcome:** Each reported bug is a roadmap item under Now, with the module it affects named. This item stays here and is worked through repeatedly rather than being completed once.
+- **Blocked-by:** —
+- **Enables:** —
+
+### R-010 — Verify the split mod in a real sm64coopdx multiplayer session
+
+- **Category:** Release
+- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **This one needs you at the keyboard**; no part of it can be done from a session. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
+- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods, and `PROJECT_STATUS.md` is explicit that the validation does not cover them. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
+- **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
 - **Blocked-by:** —
 - **Enables:** —
 
 ## Next
+
+### R-012 — Split `modules/round.lua`, now the largest file in the mod
+
+- **Category:** Refactor
+- **What:** `round.lua` is 1,079 lines — larger than `goals.lua` (890), larger than `modifiers.lua` (841), larger than `hud.lua` (708), and two and a half times `main.lua` (420), which is now finished. Split it. The cut is the one the file documents in its own header: the host half (89-786) and the client half (787-1079) meet through the synchronized tables and, since the client half of the loop moved in, at exactly one other point (re-derive both ranges with grep; they have shifted three times already). So they can become `round_host.lua` and `round_client.lua` with no shared state to arrange, but the cut is **no longer free**: `on_before_boss_cutscene` is in the client half and calls `host_end_round` behind a `network_is_server()` check. `round_client` requiring `round_host` is the obvious answer and adds no cycle — nothing requires `round` — but decide it deliberately rather than discovering it half way through. Measure both the ranges and that one call again before acting on this line. Note also that the cut as it stands does **not** reach the outcome below: the halves are roughly 700 and 290, so getting the host half under 600 needs the second cut described next, in its own verified commit first. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
+- **Why:** The file got large for a reason that no longer applies. Its two halves were extracted in separate passes months apart, and the second one landed in the file the first had created because that was where the name `round` already lived — not because the two belong in one file. They are the two sides of the mod's host-authority rule and share nothing, which is the clearest possible sign they are two units. Being the largest file in the mod also makes it the most expensive one to read at the start of a session, which is the cost the whole split exists to reduce.
+- **Outcome:** Neither half of the round is larger than roughly 600 lines; the host and client sides are separate files; every move is proven byte-identical in both directions and the 767 tests still pass. (`goals.lua` is now 890 lines and the second-largest file in the mod. Whether it wants the same treatment is a separate question this item does not answer.)
+- **Blocked-by:** —
+- **Enables:** —
 
 ### R-005 — Move the suite onto a Lua test framework
 
@@ -82,22 +102,4 @@ session fills the context window and invites mistakes.
 - **Why:** Both linters are useless without the engine API: `main.lua` calls about 59 engine functions and reads roughly 1,090 engine constants, which are undefined globals otherwise. Those definitions live in `~/.local/share/sm64coopdx/` on this machine only — deliberately outside the repo, because the game loads every `.lua` file it finds in a mod directory — and `.luacheckrc` reads `~/.local/share/sm64coopdx/luacheck_globals.lua` by absolute path. A fresh CI runner has none of it. Pinning the version is the point as much as availability: the checkers are only meaningful against the engine version being targeted.
 - **Outcome:** CI runs luacheck and lua-language-server against a known sm64coopdx version, holding the baseline of 2 luacheck warnings / 0 errors and 10 type-checker problems in 2 files. A rise in either fails the build.
 - **Blocked-by:** R-008
-- **Enables:** —
-
-### R-010 — Verify the split mod in a real sm64coopdx multiplayer session
-
-- **Category:** Release
-- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players.
-- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods, and `PROJECT_STATUS.md` is explicit that the validation does not cover them. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
-- **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
-- **Blocked-by:** —
-- **Enables:** R-011
-
-### R-011 — Reconcile the release documents and open the pull request
-
-- **Category:** Release
-- **What:** Recompute `sha256sum StarHunt/main.lua` and update the recorded hash in `PROJECT_STATUS.md`, which still carries the released v1.1 value `EBC76DBE…A906B883`. (`DEVELOPMENT_CHECKLIST.md` no longer carries a live copy — its verification record moved to `HISTORY.md`, where the released hash correctly stays as a historical fact.) Change the install instructions everywhere from "copy `main.lua`" to "copy the `StarHunt/` folder". Update `CLAUDE.md`'s "Known-clean baseline" section with the new luacheck and type-checker numbers, the `different-requires` entry in `.luarc.json`, the fact that the 24 `shadowing upvalue goal` warnings are gone with the `goal()` constructor, and the new `tools/module_deps.py`. `CLAUDE.md` also still describes `tools/` as holding only "generators for the test stub and linter data". Then push `refactor/modularize` and open the PR.
-- **Why:** The hash reconciliation was deliberately deferred rather than done per commit: the line in `PROJECT_STATUS.md` reads "SHA-256 final de `main.lua`" and describes what shipped as v1.1, so rewriting it on every commit of an unmerged branch would misstate the release. It has to happen exactly once, at merge. Nothing on the branch has been pushed, so none of this work exists anywhere but this machine.
-- **Outcome:** The project documents describe the mod as it is actually shipped and installed; the branch is pushed; the PR is open.
-- **Blocked-by:** R-010
 - **Enables:** —

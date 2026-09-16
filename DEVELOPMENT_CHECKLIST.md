@@ -3,8 +3,10 @@
 **Estado del proyecto: FINALIZADO. Versión final: v1.1 (2026-07-30).**
 
 No hay versiones nuevas planificadas. Solo se aceptan actualizaciones de
-mantenimiento sobre v1.1. Actualmente hay una excepción en curso: la rama
-`refactor/modularize` divide `main.lua` en módulos sin cambiar comportamiento.
+mantenimiento sobre v1.1. La excepción que hubo, la división de `main.lua` en
+catorce archivos sin cambiar comportamiento, **ya está terminada y fusionada en
+`main`**; las etiquetas `v1.1-monolithic` y `v1.1-modular` marcan el antes y el
+después. El trabajo a partir de aquí es corrección de errores.
 
 Esta nota debe revisarse **antes de programar cualquier cambio** en StarHunt.
 Su objetivo es evitar arreglos rápidos que rompan HUD, guardado, red, OMM o
@@ -26,8 +28,15 @@ cerradas, las verificaciones antiguas y los cambios ya implementados están en
 5. Añadir o modificar una prueba en `test/` **antes** de instalar.
 6. Ejecutar la comprobación de sintaxis y la prueba completa:
    `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` y `lua5.4 test/run.lua`.
-7. Instalar solamente si ambas pruebas pasan y comprobar que la copia instalada
-   coincide con la fuente.
+   Las tres líneas de referencia, y **cualquier subida es una regresión**:
+   767 pruebas sin fallos, `luacheck StarHunt/ test/` con 2 avisos y 0 errores,
+   y `lua-language-server --check` con 10 problemas en 2 archivos.
+7. Mutar el código cambiado y comprobar que la prueba lo detecta
+   (`tools/gen_mutations.py` y `tools/sweep_mutations.py`). Estar publicado en
+   `STARHUNT_TEST_API` **no** significa estar probado: ocho veces una función
+   publicada resultó no tener ni una sola prueba que la llamara.
+8. Instalar solamente si todo pasa. Copiar la **carpeta `StarHunt/` entera**, no
+   `main.lua` solo, y comprobar que la copia instalada coincide con la fuente.
 
 El paso 5 nombraba `work/starhunt_v11_load_test.lua`, un arnés que nunca estuvo
 en este repositorio y no existe en esta máquina. `test/` es su reemplazo.
@@ -42,8 +51,10 @@ de los siete pasos:
   direcciones: el cuerpo del módulo contra las líneas extraídas, y el
   `main.lua` reconstruido desde el commit anterior contra el archivo nuevo.
 - Mutar el código movido y comprobar que la prueba lo detecta. Una ejecución
-  verde no demuestra que el traslado sea correcto; en quince de los diecisiete traslados
-  ya hechos la mutación encontró un área sin ninguna cobertura.
+  verde no demuestra que el traslado sea correcto; en veintiuno de los veinticuatro
+  traslados ya hechos la mutación encontró un área sin ninguna cobertura.
+  Calcular el rango de líneas **después** de la última edición del archivo: un
+  rango calculado antes queda desplazado por las líneas añadidas.
 - Volver a comparar el módulo contra su original **justo antes** de hacer
   commit. Una vez quedó una mutación aplicada y la prueba siguió pasando.
 

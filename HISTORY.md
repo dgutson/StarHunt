@@ -13,6 +13,34 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-011: the refactor is reconciled, merged into `main` and tagged
+
+The thirteen-module split was merged into `main` as a single merge commit, with
+`v1.1-monolithic` marking the commit before it and `v1.1-modular` the merge itself. Both are
+pushed. The release documents were reconciled in the same pass, which is what R-011 asked for
+and had deliberately deferred to this moment:
+
+- `PROJECT_STATUS.md` keeps the released single-file hash as the historical fact of what
+  shipped as v1.1, and adds the modular layout separately. **A single file's hash no longer
+  identifies the mod**, so the recorded identifier is now the SHA-256 of the sorted list of
+  every shipped `.lua` file's hash,
+  `27BEDAA8…5D3DD0C7`. The install instruction changed from "copy `main.lua`" to "copy the
+  `StarHunt/` folder", which is not cosmetic: `main.lua` alone no longer runs.
+- `CLAUDE.md` gained a module map with line counts and the `require` graph, and its
+  known-clean baseline is now a table of all three checks — 767 tests, 2 luacheck warnings,
+  10 type-checker problems in 2 files. The claim about 24 "shadowing upvalue `goal`" warnings
+  was removed: they are gone, because `goal()` is file-local to `goals.lua` now.
+- `ROADMAP.md` is reorganized around corrective maintenance. R-014 (take bug reports and turn
+  them into items) and R-010 (play the split mod in a real session) are under Now; R-012 is
+  under Next and stays deferred until a bug actually lands in `round.lua`'s host half.
+
+**What this merge does not claim.** The split has never been played inside sm64coopdx. The 767
+tests run outside the game against a double of the engine, so they do not reach rendering,
+networking, warping or other-mod interaction — and they do not reach the game's own
+folder-relative `require`, which is the one mechanism the split actually changed.
+`test/harness.lua` reimplements `require` rather than using it. That is R-010, and
+`v1.1-monolithic` is what to go back to if it fails.
+
 ### 2026-09-16 — R-013 finished: the client half of the round loop moves into `modules/round.lua`
 
 `on_before_boss_cutscene`, `local_goal_warp_update` and `local_boss_warp_update` left
