@@ -32,6 +32,7 @@ local Team = core.Team
 local local_runtime = core.local_runtime
 local modifier = core.modifier
 local clamp = core.clamp
+local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local is_round_active = core.is_round_active
 local is_boss_mode = core.is_boss_mode
 local is_local_player_on_floor = core.is_local_player_on_floor
@@ -330,6 +331,149 @@ local function apply_boss_hazards(m)
     local_runtime.boss_hazard_seq = attack_seq
 end
 
+-- The reserve bomb wave and Bowser's health ownership, moved out of main.lua
+-- by R-013 -- the boss pass had been given them and left them behind. The
+-- four local_boss_health_* locals are read nowhere else and travel with the
+-- function that owns them.
+local local_boss_health_object = nil
+local local_boss_health_initialized = false
+local local_boss_health_last_value = nil
+local local_boss_health_report_at = 0
+
+Team.boss_reserve_bomb_count = function()
+    local difficulty = Team.selected_difficulty()
+    if difficulty == Team.HARD then return 2 end
+    if difficulty == Team.NIGHTMARE then return 4 end
+    return 0
+end
+
+-- Only the current host observes the native bomb supply and creates the
+-- reserve. The synchronized flags make this one-shot survive a host change:
+-- a replacement host cannot mistake its own level load for a new wave.
+Team.host_update_boss_bomb_supply = function()
+    if not network_is_server() or not is_round_active() or not is_boss_mode()
+        or gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then
+        return
+    end
+
+    local round = gGlobalSyncTable.sh5_round or 0
+    if Team.bossBombSupplyRound ~= round then
+        Team.bossBombSupplyRound = round
+        Team.bossBombZeroSince = nil
+    end
+
+    local reserve_count = Team.boss_reserve_bomb_count()
+    local already_spawned = gGlobalSyncTable.sh5_boss_extra_bombs_spawned or 0
+    if reserve_count == 0 or already_spawned >= reserve_count then return end
+
+    local behavior = get_behavior_from_id(id_bhvBowserBomb)
+    local active_bombs = count_objects_with_behavior(behavior)
+    if (gGlobalSyncTable.sh5_boss_original_bombs_seen or 0) == 0 then
+        -- A zero during the level-loading frames is not an exhausted arena.
+        -- Arm the reserve only after this host has observed the native set.
+        if active_bombs >= #Team.bossBombPositions then
+            gGlobalSyncTable.sh5_boss_original_bombs_seen = 1
+            Team.bossBombZeroSince = nil
+        end
+        return
+    end
+    if active_bombs > 0 then
+        Team.bossBombZeroSince = nil
+        return
+    end
+
+    -- Require one continuous second at zero. Besides filtering the native
+    -- explosion transition, this gives a newly promoted host time to receive
+    -- synchronized objects before it decides that the arena is empty.
+    if Team.bossBombZeroSince == nil then
+        Team.bossBombZeroSince = get_global_timer()
+        return
+    end
+    if get_global_timer() - Team.bossBombZeroSince < FRAMES_PER_SECOND then return end
+
+    local available = {}
+    for index = 1, #Team.bossBombPositions do available[index] = index end
+    local spawned = 0
+    for _ = 1, reserve_count - already_spawned do
+        local choice = math.random(#available)
+        local position = Team.bossBombPositions[available[choice]]
+        table.remove(available, choice)
+        local bomb = spawn_sync_object(
+            id_bhvBowserBomb, E_MODEL_BOWSER_BOMB,
+            position.x, position.y, position.z,
+            function(object)
+                object.oHomeX = position.x
+                object.oHomeY = position.y
+                object.oHomeZ = position.z
+            end)
+        if bomb ~= nil then spawned = spawned + 1 end
+    end
+    -- spawn_sync_object is synchronous. Publish only completed creations; if
+    -- one fails, the host may supply only the missing amount after the arena
+    -- is empty again instead of duplicating the successful objects.
+    gGlobalSyncTable.sh5_boss_extra_bombs_spawned = already_spawned + spawned
+    Team.bossBombZeroSince = nil
+end
+
+-- Bowser uses dynamic object ownership. Only the client that currently owns
+-- the synchronized object may initialize his five health points; otherwise a
+-- later full-object packet can silently restore the vanilla value.
+local function ensure_boss_health_owner()
+    if not is_round_active() or not is_boss_mode()
+        or gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then
+        local_boss_health_object = nil
+        local_boss_health_initialized = false
+        local_boss_health_last_value = nil
+        local_boss_health_report_at = 0
+        return
+    end
+
+    local bowser = obj_get_first_with_behavior_id(id_bhvBowser)
+    if bowser ~= local_boss_health_object then
+        local_boss_health_object = bowser
+        local_boss_health_initialized = false
+        local_boss_health_last_value = nil
+    end
+    if bowser == nil then return end
+
+    local round = gGlobalSyncTable.sh5_round or 0
+    local health_was_initialized = false
+    for i = 0, MAX_PLAYERS - 1 do
+        if (gPlayerSyncTable[i].sh5_boss_health_ready_round or 0) == round then
+            health_was_initialized = true
+            break
+        end
+    end
+
+    local sync_id = bowser.oSyncID
+    if sync_id == nil or sync_id == 0 or not sync_object_is_owned_locally(sync_id) then return end
+
+    if not local_boss_health_initialized then
+        local authoritative = clamp(gGlobalSyncTable.sh5_boss_health or Team.boss_max_health(), 0, Team.boss_max_health())
+        if health_was_initialized then
+            -- Never increase a synchronized object's already lower value.
+            bowser.oHealth = math.min(clamp(bowser.oHealth or authoritative, 0, Team.boss_max_health()), authoritative)
+        else
+            bowser.oHealth = Team.boss_max_health()
+        end
+        network_send_object(bowser, true)
+        gPlayerSyncTable[0].sh5_boss_health_ready_round = round
+        local_boss_health_initialized = true
+    end
+
+    -- The current owner publishes the authoritative remaining health. If
+    -- ownership or the object changes, the next owner restores this value
+    -- instead of healing Bowser or reverting him to vanilla health.
+    if bowser.oHealth ~= local_boss_health_last_value
+        or get_global_timer() >= local_boss_health_report_at then
+        local_boss_health_last_value = bowser.oHealth
+        local_boss_health_report_at = get_global_timer() + 5
+        gPlayerSyncTable[0].sh5_boss_health_ready_round = round
+        gPlayerSyncTable[0].sh5_boss_health_value = clamp(bowser.oHealth, 0, Team.boss_max_health())
+        gPlayerSyncTable[0].sh5_boss_health_tick = get_global_timer()
+    end
+end
+
 return {
     BOSS_HEALTH = BOSS_HEALTH,
     BOSS_LEVELS = BOSS_LEVELS,
@@ -345,4 +489,5 @@ return {
     boss_modifier_text = boss_modifier_text,
     host_read_boss_health_report = host_read_boss_health_report,
     apply_boss_hazards = apply_boss_hazards,
+    ensure_boss_health_owner = ensure_boss_health_owner,
 }

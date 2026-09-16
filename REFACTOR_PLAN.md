@@ -27,8 +27,11 @@ shared helper had to move before a module could follow it.
 
 Every module being finished is **not** the same as `main.lua` being empty of them. R-004's
 audit found eight declarations that the `boss` and `goals` passes were meant to take and left
-behind, and they are R-013; the appendix at the end of this document now lists them alongside
-the five that were never assigned to a module at all. What stays in `main.lua` permanently is
+behind, and they are R-013. Three of the eight have since moved -- `Team.boss_reserve_bomb_count`,
+`Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
+`local_boss_health_*` locals, all into `boss.lua` -- leaving five. The appendix at the end of
+this document lists the remainder alongside the five that were never assigned to a module at
+all. What stays in `main.lua` permanently is
 the header, the require wiring, the hook block, the synchronized-table seed and
 `STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains.
 
@@ -416,6 +419,32 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   `Team.objective_text_max_width()`, which has a floor of 24. **Leave all three as they are**,
   and note that the two `nil`s are the kind of clause worth keeping: they are cheap, and they
   are what makes the read at the bottom safe if a later pass ever reorders those branches.
+  The Boss reserve wave and Bowser's health ownership produced nineteen more out of 136, in
+  four shapes. Four are the `local_boss_health_*` declarations themselves: deleting one turns
+  the name into a global and no test can tell, but **luacheck reports it** as a non-standard
+  global -- so those four are caught by the project's own checks and only the suite misses
+  them. Five are `or 0` defaults on synchronized fields -- `sh5_round`,
+  `sh5_boss_extra_bombs_spawned`, `sh5_boss_original_bombs_seen` and
+  `local_boss_health_report_at`'s seed -- that no reachable state reaches: `main.lua`'s
+  load-time block fills each of them with zero under `network_is_server()`, and
+  `host_update_boss_bomb_supply` returns unless the local player is the server, so the default
+  can never fire there. **Five are the whole body of the reset branch in
+  `ensure_boss_health_owner`**, which is redundant with the object-change branch below it:
+  clearing `local_boss_health_object` makes `bowser ~= local_boss_health_object` true on the
+  next call, and that branch clears the initialized flag and the last published value again,
+  so deleting any one of the four assignments -- or raising the report deadline -- changes
+  nothing observable. The claim written in the initialization block
+  (`gPlayerSyncTable[0].sh5_boss_health_ready_round = round`) is equivalent for the same
+  reason: the publication block below always runs on that frame, because the last published
+  value is `nil` whenever an initialization has just happened, and it writes the same field.
+  The remaining four are arithmetic that cannot change an outcome: `reserve_count == 0 or ...`
+  becomes `and` without effect, because the reserve loop runs `reserve_count - already_spawned`
+  times and that is zero exactly when the guard would have returned; `reserve_count == 1` is
+  never true, since the counts are 0, 2 and 4; `sh5_boss_original_bombs_seen = 2` is
+  indistinguishable from `= 1`, because the flag is only ever compared to zero; and seeding the
+  bomb-position pool from index 0 instead of 1 adds an `available[0]` that Lua's length
+  operator ignores -- verified in the interpreter, `#` stays 5 and the draw is unchanged.
+  **Leave all nineteen exactly as they are.**
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
@@ -564,16 +593,18 @@ every mutation caught.
 **Group two: eight declarations the `boss` and `goals` passes were meant to take and left
 behind.** These are *not* a decision to stay — they are an oversight the audit found, and they
 are R-013 in `ROADMAP.md`. Each was checked against the real require graph, so none of them
-needs a new edge:
+needs a new edge. **Three are done:** `Team.boss_reserve_bomb_count`,
+`Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
+`local_boss_health_*` locals are now in `boss.lua`, which gained one import,
+`core.FRAMES_PER_SECOND`, and nothing else. `main.lua`'s own `FRAMES_PER_SECOND` binding had
+no reader left afterwards and went with the move. The five below remain. Lines are as they
+were when R-004 ran and have shifted since — re-derive them:
 
 | decl | line | goes to | checked |
 |---|---|---|---|
 | `Team.lifetime` | 107 | `goals.lua` | `goals.lua:817-819` is the only code that increments and persists it |
 | `Team.update_lifetime_sync` | 115 | `goals.lua` | its only caller is `goals.lua:819`; needs nothing but `gPlayerSyncTable` |
 | `Team.pick_second_modifier` | 119 | `modifiers.lua` | reaches `Team.chaos_pair_allowed` and `Team.difficulty_modifier_allowed` as `Team` fields, so nothing blocks it anywhere; the appendix said `goals`, but the decision it makes is the modifier catalog's, not a star's |
-| `Team.boss_reserve_bomb_count` | 132 | `boss.lua` | `Team` fields only |
-| `Team.host_update_boss_bomb_supply` | 142 | `boss.lua` | needs `FRAMES_PER_SECOND`, `is_round_active`, `is_boss_mode` from `core`, which `boss.lua` already requires, and `Team.bossBombPositions`, which is already in `boss.lua` |
-| `ensure_boss_health_owner` + the four `local_boss_health_*` locals | 109-112, 210 | `boss.lua` | `core` plus `Team.boss_max_health`, already there. The four locals are read nowhere else and travel with it |
 | `on_before_boss_cutscene` | 266 | `round.lua`, **not** `boss.lua` | it calls `host_end_round`, and the graph already runs `round -> boss`, so an edge back would be a cycle |
 | `local_goal_warp_update`, `local_boss_warp_update` | 280, 317 | `round.lua` | the client half of the round loop. Between them they need `get_goal`, `BOSS_LEVELS` and `reset_local_modifier_state`, and `round.lua` already requires `goals`, `boss` and `modifiers` |
 

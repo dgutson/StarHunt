@@ -109,6 +109,9 @@ local function install_engine()
         screen = { w = 1920, h = 1009 },
         player_count = 2,
         bomb_count = 0,          -- what count_objects_with_behavior reports
+        spawn_failures = 0,      -- how many of the next spawn_sync_object calls fail
+        owned_sync_ids = {},     -- sync id -> true; drives sync_object_is_owned_locally
+        sent_objects = {},       -- every network_send_object call
         transition = false,      -- what is_transition_playing reports
     }
     harness.ctl = ctl
@@ -261,7 +264,16 @@ local function install_engine()
         if setup ~= nil then setup(obj) end
         return obj
     end
-    spawn_sync_object = spawn_non_sync_object
+    -- A synchronized spawn can fail in a real session, and the reserve bomb
+    -- wave publishes only the creations that succeeded so it can supply the
+    -- rest later.  ctl.spawn_failures is how many of the next calls return nil.
+    function spawn_sync_object(bhv, model, x, y, z, setup)
+        if ctl.spawn_failures > 0 then
+            ctl.spawn_failures = ctl.spawn_failures - 1
+            return nil
+        end
+        return spawn_non_sync_object(bhv, model, x, y, z, setup)
+    end
 
     function warp_to_level(level, area, act)
         table.insert(ctl.warps, { level = level, area = area, act = act })
@@ -295,7 +307,25 @@ local function install_engine()
     -- is not ready and returns before ever choosing an attack.  Tests put the
     -- object they want in ctl.objects, keyed by behavior id.
     function obj_get_first_with_behavior_id(id) return ctl.objects[id] end
-    function count_objects_with_behavior() return ctl.bomb_count end
+    -- The first stub ignored its argument and answered ctl.bomb_count for
+    -- anything, so asking the engine to count the wrong behavior was invisible.
+    -- get_behavior_from_id above returns { id = <behavior id> }; the mod counts
+    -- only Bowser's bombs, and every other behavior reports none.
+    function count_objects_with_behavior(behavior)
+        if behavior == nil or behavior.id ~= id_bhvBowserBomb then return 0 end
+        return ctl.bomb_count
+    end
+    -- The generated stub returns nil for both of these, which makes the whole
+    -- second half of ensure_boss_health_owner unreachable: nothing is ever
+    -- owned locally, so the function returns before it can initialize or
+    -- publish Bowser's health.  A test marks the sync ids it owns in
+    -- ctl.owned_sync_ids and reads the publications back from ctl.sent_objects.
+    function sync_object_is_owned_locally(sync_id)
+        return ctl.owned_sync_ids[sync_id] == true
+    end
+    function network_send_object(object, reliable)
+        table.insert(ctl.sent_objects, { object = object, reliable = reliable })
+    end
     -- The generated stub returns nil here and the first hand-written
     -- replacement returned `false`, so `obj_has_behavior_id(o, id) == 0` was
     -- never true and the HMC Metal Cap portal guard in goals.lua could not be

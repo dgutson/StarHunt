@@ -179,7 +179,152 @@ return function(t, harness)
         c.timer = c.timer + 600
         a.boss_bomb_supply()
         a.boss_bomb_supply()
+        -- and still not a second later, which is the only point at which the
+        -- one-second wait could have elapsed a second time.
+        c.timer = c.timer + 600
+        a.boss_bomb_supply()
         t.eq(#c.spawned, 4, "a second reserve wave was created")
+        t.eq(gGlobalSyncTable.sh5_boss_extra_bombs_spawned, 4,
+            "the published count grew with a wave that was never created")
+    end)
+
+    s.test("the wave publishes how many bombs it actually created", function()
+        local api = harness.load()
+        local _, ctl = run_supply(api.nightmare)
+        t.eq(#ctl.spawned, 4, "Nightmare did not create four reserve bombs")
+        t.eq(gGlobalSyncTable.sh5_boss_extra_bombs_spawned, 4,
+            "the wave published a count that does not match what it spawned")
+    end)
+
+    s.test("a reserve bomb is a Bowser bomb at a layout position, with its home set", function()
+        -- The home position is what a bomb returns to; leaving it unset drops
+        -- every reserve bomb at the origin, which is not in the arena at all.
+        local api = harness.load()
+        local a, ctl = run_supply(api.nightmare)
+        t.eq(#ctl.spawned, 4, "setup did not create the wave")
+        local layout, used = {}, {}
+        for _, p in ipairs(a.boss_bomb_positions) do
+            layout[p.x .. "/" .. p.y .. "/" .. p.z] = true
+        end
+        for i, obj in ipairs(ctl.spawned) do
+            local where = tostring(obj.oPosX) .. "/" .. tostring(obj.oPosY) .. "/" .. tostring(obj.oPosZ)
+            t.eq(obj.behavior, id_bhvBowserBomb, "reserve bomb " .. i .. " is not a Bowser bomb")
+            t.eq(obj.model, E_MODEL_BOWSER_BOMB, "reserve bomb " .. i .. " has the wrong model")
+            t.ok(layout[where], "reserve bomb " .. i .. " is not at a layout position")
+            t.ok(not used[where], "two reserve bombs share position " .. where)
+            used[where] = true
+            t.eq(obj.oHomeX, obj.oPosX, "reserve bomb " .. i .. " has the wrong home X")
+            t.eq(obj.oHomeY, obj.oPosY, "reserve bomb " .. i .. " has the wrong home Y")
+            t.eq(obj.oHomeZ, obj.oPosZ, "reserve bomb " .. i .. " has the wrong home Z")
+        end
+    end)
+
+    s.test("a spawn that fails is not published, and the rest wait a fresh second", function()
+        -- spawn_sync_object is synchronous, so the host can count what it
+        -- really created. Publishing the whole reserve after a failure would
+        -- strand the missing bombs for the rest of the round.
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 0
+        api.boss_bomb_supply()
+        ctl.timer = ctl.timer + 30
+        ctl.spawn_failures = 4                       -- every creation fails
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "a failed spawn was recorded as a bomb")
+        t.eq(gGlobalSyncTable.sh5_boss_extra_bombs_spawned, 0,
+            "published bombs that were never created")
+        ctl.timer = ctl.timer + 30
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "the retry fired without a fresh second at zero")
+        ctl.timer = ctl.timer + 30
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 4, "the retry never supplied the missing bombs")
+    end)
+
+    s.test("the reserve reads the host's own level, not another player's", function()
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        gNetworkPlayers[1].currLevelNum = LEVEL_BOB   -- a straggler who has not warped
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 0
+        api.boss_bomb_supply()
+        ctl.timer = ctl.timer + 30
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 4, "a straggler in another level stopped the reserve")
+    end)
+
+    s.test("a zero seen in the previous round does not count toward this one", function()
+        -- Team.bossBombSupplyRound is what makes the wait per-round. Without
+        -- it a round that begins with an empty arena inherits the last round's
+        -- clock and fires the reserve immediately.
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 0
+        api.boss_bomb_supply()                       -- the wait starts, in round one
+        ctl.timer = ctl.timer + 600
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        gGlobalSyncTable.sh5_boss_original_bombs_seen = 1
+        gGlobalSyncTable.sh5_boss_extra_bombs_spawned = 0
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "a zero from the previous round armed this one")
+    end)
+
+    s.test("sighting the natives again clears a wait already running", function()
+        -- round.lua clears sh5_boss_original_bombs_seen whenever the host
+        -- re-enters the arena, so the sighting can happen twice in one round.
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 0
+        api.boss_bomb_supply()                       -- the wait starts
+        gGlobalSyncTable.sh5_boss_original_bombs_seen = 0
+        ctl.timer = ctl.timer + 600
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()                       -- sighted again
+        ctl.bomb_count = 0
+        ctl.timer = ctl.timer + 1
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "the wait survived a fresh sighting of the natives")
+    end)
+
+    s.test("one bomb still in the arena is not an empty arena", function()
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 1
+        api.boss_bomb_supply()
+        ctl.timer = ctl.timer + 600
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "the reserve fired with a bomb still on the field")
+    end)
+
+    s.test("a bomb reappearing restarts the one-second wait", function()
+        local api, ctl = harness.load()
+        ctl.timer = 500
+        ctl.begin_round(api, api.boss_mode, api.nightmare, LEVEL_BOWSER_3)
+        ctl.bomb_count = #api.boss_bomb_positions
+        api.boss_bomb_supply()
+        ctl.bomb_count = 0
+        api.boss_bomb_supply()                       -- the wait starts at 500
+        ctl.bomb_count = 2
+        ctl.timer = ctl.timer + 600
+        api.boss_bomb_supply()                       -- bombs are back
+        ctl.bomb_count = 0
+        ctl.timer = ctl.timer + 1
+        api.boss_bomb_supply()
+        t.eq(#ctl.spawned, 0, "the reserve fired without a fresh second at zero")
     end)
 
     s.test("a client never creates bombs", function()

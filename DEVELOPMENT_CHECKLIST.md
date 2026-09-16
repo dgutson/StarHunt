@@ -62,7 +62,7 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Retos | Aplica el modificador personal del jugador local | `modules/modifiers.lua` (`apply_local_modifier`) |
 | Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `modules/goals.lua` (`apply_goal_power`, `restore_starhunt_power`) |
 | Guardado | Quita solo la bandera temporal de la estrella obtenida | `modules/save.lua` (`save_course_index_for`, `remove_starhunt_save_flag`) |
-| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques y `apply_boss_hazards`); `modules/round.lua` (`host_update_boss_round`) |
+| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques, `apply_boss_hazards`, la oleada de bombas de reserva y `ensure_boss_health_owner`); `modules/round.lua` (`host_update_boss_round`) |
 | Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `modules/round.lua` (`host_update_chaos_round`) |
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |

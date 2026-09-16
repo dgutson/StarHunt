@@ -13,6 +13,48 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — R-013, first of three: the Boss trio moves into `modules/boss.lua`
+
+`Team.boss_reserve_bomb_count`, `Team.host_update_boss_bomb_supply` and
+`ensure_boss_health_owner` with its four `local_boss_health_*` locals left `main.lua` for
+`modules/boss.lua`. 137 lines moved, proven byte-identical in both directions: the two blocks
+in `boss.lua` match lines 109-112 and 132-264 of `457289d`'s `main.lua` exactly, and the new
+`main.lua` is that file minus those two ranges, minus one line, plus one import. The line
+removed is `local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND`, which had no reader left once
+the bomb supply went; `boss.lua` gained the same binding and nothing else, so it still requires
+only `core`. `main.lua` is 676 → 538 lines.
+
+**`ensure_boss_health_owner` was published in `STARHUNT_TEST_API` and called by no test at
+all** — the sixth time that has been true, and the reason the project does not treat being in
+that table as evidence of coverage. A 136-mutation sweep of the moved code caught 90. Two
+engine stubs were hiding most of the rest: `sync_object_is_owned_locally` returned `nil` from
+the generated stub, so no client ever owned anything and the whole second half of the function
+was unreachable, and `network_send_object` was inert, so a publication left no trace. A third,
+`count_objects_with_behavior`, ignored its argument and answered `ctl.bomb_count` for any
+behavior, which made asking the engine to count the wrong thing invisible. `test/harness.lua`
+now drives ownership from `ctl.owned_sync_ids`, records publications in `ctl.sent_objects`,
+counts only Bowser's bombs, and can fail a synchronized spawn on demand through
+`ctl.spawn_failures`.
+
+`test/suite/boss_health.lua` is new — 31 tests over who may write Bowser's health, what the
+pool is per difficulty, why a new owner must never heal a fight already under way, and the
+five-frame publication heartbeat. Nine more went into `test/suite/boss.lua` for the reserve
+wave, and the existing "fires only once per round" test was strengthened: it advanced the
+timer between two calls but never past the one-second wait, so a mutation that discarded the
+already-spawned count still passed it.
+
+Final sweep: **136 mutations, 117 caught by the suite, 4 caught by luacheck** (deleting a
+`local` declaration turns the name into a global, which luacheck reports and no test can see),
+**15 analysed as equivalent** and recorded in `REFACTOR_PLAN.md` so the next sweep does not
+re-investigate them. Five of the fifteen are the entire body of the reset branch in
+`ensure_boss_health_owner`, which is redundant with the object-change branch below it. Left
+exactly as it is: a redundant clause found during a move is still not a move's business to
+delete.
+
+The suite is 670 → 709 tests, all passing. luacheck stays at 2 warnings / 0 errors (45 files
+now), and lua-language-server at 10 problems in 2 files. **R-013 is not finished:** five
+declarations remain, in three destinations — `goals.lua`, `modifiers.lua` and `round.lua`.
+
 ### 2026-09-15 — R-004: every remaining declaration has a reason, and Lakitu has a test
 
 One commit, and no mod code changed at all — `StarHunt/main.lua` is byte-identical to
