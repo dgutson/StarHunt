@@ -22,7 +22,7 @@ range. `modifiers.lua` gained **no import at all** — the function reads only `
 (`Team.chaos_pair_allowed` from `chaos.lua`, `Team.difficulty_modifier_allowed` from
 `difficulty.lua`) and the goal's own `mods` list, and its one caller, `host_assign_goal` in
 `round.lua`, already reached it through `Team`. The require graph is unchanged. `main.lua` is
-531 → 518 lines; `modifiers.lua` is 823 → 836, the twelve moved lines plus a blank and a
+531 → 518 lines; `modifiers.lua` is 823 → 841, the twelve moved lines plus a blank and a
 five-line header note.
 
 **The header note is a real edit, not part of the move.** `modifiers.lua` opened by saying
