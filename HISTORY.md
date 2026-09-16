@@ -13,46 +13,6 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
-### 2026-09-16 — R-019: the mode, the difficulty and the team colour stop sharing numbers
-
-`Team` held eleven flat constants in one table: `NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3,
-EASY = 0, MEDIUM = 1, HARD = 2, NIGHTMARE = 3, NONE = 0, RED = 1, BLUE = 2`. Three unrelated
-axes, the same small integers, so `Team.NORMAL`, `Team.EASY` and `Team.NONE` were all 0 and
-`Team.CHAOS` and `Team.NIGHTMARE` were both 3. Handing one axis to code that expected another
-was not an error anywhere — it matched a real member of the wrong axis — and no check this
-project runs could see it. All 104 uses were audited first and every one was on its right
-axis, so nothing had shipped broken; this was a latent bug, fixed while the area was fresh.
-
-The names now live on `Team.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `Team.Difficulty`
-(`EASY`, `MEDIUM`, `HARD`, `NIGHTMARE`) and `Team.TeamColor` (`NONE`, `RED`, `BLUE`). Every
-number is exactly what v1.1 shipped, because `sh5_mode` and `sh5_difficulty` are synchronized
-and the values are used arithmetically (`% 4` when the menu cycles, `+ 1` as a table index,
-`clamp(..., 0, 3)`). Disjoint ranges would have made the mistake impossible but would have
-broken a lobby holding both a released and a patched client, so the numbers were left alone.
-
-The first version of this fix wrapped each axis in a metatable that raised on a wrong-axis
-read and refused assignment. The reviewer called it nonsensical and was right: it guarded
-against a mistake the rename has already made hard to make, it added a new way for a released
-mod to stop mid-round, and it grew its own test surface — three assertions about where Lua's
-`error(..., 2)` points. `BOWSER_ACT`, added the same day in R-017, is a plain table of named
-constants and needs nothing around it. These are three plain tables for the same reason. A
-name off the wrong axis now reads as `nil`, so the comparison that reads it is false instead
-of true for the wrong reason, which is the safe direction and a strict improvement on a
-member of the wrong axis answering.
-
-`Team.MODE` became `Team.Mode.TEAM` on the way through, which is a plain reading of what it
-always meant.
-
-`test/suite/core.lua` gained four tests: the three axes are three distinct tables with no
-name in common, a name from another axis reads as `nil` rather than as a number off the other
-axis, every number is the one that went on the wire, and the eleven flat names are gone from
-the shared table. The last one is the only thing standing between the fix and
-its own quiet undoing. The mutation sweep over the three declarations catches 41 of 41.
-
-Checks: 779 passed / 0 failed (775 before, plus the four new), luacheck 2 warnings / 0 errors
-in 46 files, lua-language-server 10 problems in 2 files. The shipped-file hash is now
-`AFF4D8047593D4265F78045CA5C94C1727BF0318EC19C8C8D995374BF563DDFA`.
-
 ### 2026-09-16 — R-018: the predicate is `boss_is_held` again, and tests only that
 
 `boss_is_grabbed` returned true both when a player had Bowser in their hands and when he was
