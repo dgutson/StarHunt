@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 428 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 431 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -169,16 +169,16 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,090 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
+| `round.lua` | 1,091 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 890 | the 93-star catalog, its readers, star interaction and visibility |
 | `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
-| `hud.lua` | 708 | text layer, picture layer and frame; nothing requires it |
+| `hud.lua` | 709 | text layer, picture layer and frame; nothing requires it |
 | `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
 | `menu.lua` | 321 | the `/starhunt` config menu and its input |
-| `team.lua` | 271 | rosters, palettes and PvP |
+| `team.lua` | 273 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
 | `i18n.lua` | 246 | six languages and their persistence |
-| `core.lua` | 232 | `Team`, `local_runtime` and the cross-cutting helpers |
+| `core.lua` | 230 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
 | `chaos.lua` | 154 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
@@ -213,24 +213,35 @@ Boss attacks use a circular queue of 8 slots (`sh5_boss_attack_queue_1..8`) rath
 "latest attack" field, because a single field lost attacks under lag. Timed effects compare
 cycle numbers rather than testing for one exact frame, for the same reason.
 
-### `Team` — the shared namespace
+### `SH` and `Team` — the two shared namespaces
 
-`Team` is one table declared in `core.lua` that holds the mode, difficulty and team-colour
-constants alongside most cross-cutting functions and mutable state. Its name is
-historical: it is not limited to Team mode.
+`core.lua` declares **two** tables that the rest of the mod hangs things on. `SH` is the
+mod-wide one: the mode and difficulty axes, the language, the HUD helpers, Bowser's health,
+the modifier readers, Chaos, the menu and third-party compatibility — 74 members, 443
+references. `Team` is what is genuinely about Team mode: the colour axis, the rosters, the
+palettes, the per-team scores and the balancing — 15 members, 113 references. Only `main.lua`,
+`hud.lua`, `round.lua` and `team.lua` bind both; every other module binds `SH` alone.
 
-The constants sit on **three separate tables**, because until R-019 they were eleven flat
-fields and the three axes shared their numbers — `Team.NORMAL`, `Team.EASY` and `Team.NONE`
-were all 0. They are now `Team.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `Team.Difficulty`
-(`EASY`, `MEDIUM`, `HARD`, `NIGHTMARE`) and `Team.TeamColor` (`NONE`, `RED`, `BLUE`), and each
-raises rather than answering when read for a name that belongs to another axis, or assigned
-to at all. The numbers are unchanged and must stay so: `sh5_mode` and `sh5_difficulty` are
-synchronized, and the menu cycles them with `% 4`, indexes tables with `+ 1` and clamps to
-`0, 3`. **It is also how modules reach each other without a
-`require` edge** — a function hung on `Team` in one module is callable from any module that has
-`core`, which is how several moves avoided creating a cycle. Local `function` definitions and
-`Team.x = function` definitions are used interchangeably; the difference is only whether
-another module or the test API needs the name.
+Until R-019 there was one table called `Team` holding both, which is why older comments warn
+that `Team` is "not a Team-mode table".
+
+**This is also how modules reach each other without a `require` edge** — a function hung on
+`SH` in one module is callable from any module that has `core`, which is how several moves
+during the refactor avoided creating a cycle. Local `function` definitions and `SH.x =
+function` definitions are used interchangeably; the difference is only whether another module
+or the test API needs the name. Both tables are declared in `core.lua`, which requires
+nothing, so either is reachable everywhere; putting the team side in `team.lua` would force
+`round.lua` and `hud.lua` to require that module for the colour axis alone.
+
+The three axes sit on **three separate tables**, because until R-019 they were eleven flat
+fields and shared their numbers — `Team.NORMAL`, `Team.EASY` and `Team.NONE` were all 0. They
+are now `SH.Mode` (`NORMAL`, `BOSS`, `TEAM`, `CHAOS`), `SH.Difficulty` (`EASY`, `MEDIUM`,
+`HARD`, `NIGHTMARE`) and `Team.Color` (`NONE`, `RED`, `BLUE`). They are plain tables: a name
+off the wrong axis reads as `nil`, so the comparison that reads it is false rather than true
+for the wrong reason. **The numbers are unchanged and must stay so:** `sh5_mode` and
+`sh5_difficulty` are synchronized, and the menu cycles them with `% 4`, indexes tables with
+`+ 1` and clamps to `0, 3`. Two tests in `test/suite/core.lua` are all that keeps the axes
+apart and the namespaces from merging back.
 
 ### Goals and the modifier audit
 
@@ -250,18 +261,18 @@ changes the whole matrix, so the counts in `BALANCE_AUDIT.md` must be re-derived
 
 ### Difficulty is a separate axis from mode
 
-`Team.effective_modifier(base)` copies a modifier and scales it for the active difficulty:
+`SH.effective_modifier(base)` copies a modifier and scales it for the active difficulty:
 Medium returns v0.9 values untouched; Easy converts permanent binary restrictions into pulses
-(`pulse_period`/`pulse_frames`, read through `Team.periodic_window`) and softens numbers; Hard
-and Nightmare strengthen them. `Team.lower_is_harder` says which direction "harder" scales.
+(`pulse_period`/`pulse_frames`, read through `SH.periodic_window`) and softens numbers; Hard
+and Nightmare strengthen them. `SH.lower_is_harder` says which direction "harder" scales.
 
-**`Team.effective_modifier_for_goal(goal, base)` is the function to call**, never
+**`SH.effective_modifier_for_goal(goal, base)` is the function to call**, never
 `effective_modifier` alone, when a goal is involved: it re-runs the scaled result through
 `audit_modifier()` and returns `nil` if difficulty pushed a modifier past what that star can
 safely take. A difficulty must never bypass the audit.
 
 Nightmare adds a second modifier in every mode. Pair compatibility
-(`Team.chaos_pair_allowed`, `Team.pick_second_modifier`) is checked **in both orders** — an
+(`SH.chaos_pair_allowed`, `SH.pick_second_modifier`) is checked **in both orders** — an
 earlier bug let a conflicting pair through by reversing it.
 
 ### The four modes
@@ -274,13 +285,13 @@ death eliminates instead of reassigning. Difficulty applies to all four independ
 
 ### Effects, hooks and other mods
 
-Player-facing effects are applied every frame in `Team.apply_local_modifier` (under
-`HOOK_BEFORE_MARIO_UPDATE`) and re-clamped in `Team.apply_post_moveset_limits` (under
+Player-facing effects are applied every frame in `SH.apply_local_modifier` (under
+`HOOK_BEFORE_MARIO_UPDATE`) and re-clamped in `SH.apply_post_moveset_limits` (under
 `HOOK_MARIO_UPDATE`) — character and moveset mods such as OMM run their own
 `HOOK_MARIO_UPDATE` callbacks and would otherwise undo the limits. Hook registration is a flat
 block at the end of the file; order within a hook matters.
 
-Compatibility with third-party mods is handled explicitly in `Team.register_mod_compatibility`
+Compatibility with third-party mods is handled explicitly in `SH.register_mod_compatibility`
 and the Gun Mod / Day-Night / WiddlePets helpers around it, all guarded by `type(...) ==
 "function"` checks so a missing mod is not an error.
 
@@ -307,12 +318,12 @@ and the Gun Mod / Day-Night / WiddlePets helpers around it, all guarded by `type
 
 ## Languages
 
-Six UI languages (`en, es, pt, fr, de, it`) via `Team.language`, an index into
-`Team.language_codes`, persisted with `mod_storage_save("starhunt_v11_language", …)` and
+Six UI languages (`en, es, pt, fr, de, it`) via `SH.language`, an index into
+`SH.language_codes`, persisted with `mod_storage_save("starhunt_v11_language", …)` and
 migrated from the v1.0…v0.6 keys on first load. Goal and world names carry `title`/`title_es`
 fields on the goal itself and go through `translated()`; other languages fall back to English
 for star names, which is deliberate — only text with a safe translation is localized. Menu,
-modifier and Boss strings live in `Team.ui_translations`, `Team.modifier_translations` and the
+modifier and Boss strings live in `SH.ui_translations`, `SH.modifier_translations` and the
 `label_es`/per-code tables near `BOSS_MODIFIERS`.
 
 ## Documents

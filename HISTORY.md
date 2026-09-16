@@ -13,6 +13,60 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-019: three axes, two name spaces, one table too few
+
+`modules/core.lua` declared `NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3, EASY = 0, MEDIUM = 1,
+HARD = 2, NIGHTMARE = 3, NONE = 0, RED = 1, BLUE = 2` flat on one table, so the mode, the
+difficulty and the team colour — three unrelated axes — shared their integers. Passing one
+where another was expected matched a real member of the wrong axis instead of failing.
+`Team.NIGHTMARE` is 3 and 3 is Chaos mode, so a Normal round set to Nightmare would have
+become a Chaos round; `Team.BOSS` is 1, which is `RED`, so a mode value reaching `sh5_team`
+would have turned on friendly fire in a mode with no teams. All 104 use sites were audited
+and every one was on its right axis, so **nothing shipped broken**: the defect was latent, and
+it shipped in released v1.1 rather than being introduced by any recent change.
+
+The same table was also two name spaces wearing one name. 74 of its 89 members applied in all
+four modes and 15 were genuinely about Team mode, so the axes ended up on a table named for
+one mode and `Team.Difficulty.NIGHTMARE` read as "Team mode's difficulty" in a Normal round.
+The two halves were done as one ticket because neither finishes the job alone and done
+separately they rewrite the same references twice.
+
+The result is `SH.Mode`, `SH.Difficulty` and `Team.Color`, with the mod-wide members on `SH`
+and the fifteen Team-mode ones keeping the name `Team`. Both tables are declared in
+`core.lua`, which requires nothing, so no module gained a `require` edge; only `main.lua`,
+`hud.lua`, `round.lua` and `team.lua` bind both. 443 references moved and 113 stayed. Every
+number is what v1.1 put on the wire: `sh5_mode` and `sh5_difficulty` are synchronized and are
+used arithmetically, so renumbering would have made a released client and a patched one
+disagree about what mode a lobby is in.
+
+Three names changed as they moved, because their references were being rewritten anyway:
+`Team.is_mode` became `SH.is_team_mode` (the old name said nothing once it was off a table
+called `Team`, and `STARHUNT_TEST_API` already published it as `is_team_mode`),
+`Team.TeamColor` became `Team.Color`, and the per-team RGB table `Team.colors` became
+`Team.color_rgb` so it no longer differs from the colour axis by a letter's case and a plural.
+**Entries below this one still say `Team.x` for members that are now `SH.x`** — they were
+written when there was one table, and a log is not rewritten.
+
+A rejected alternative, recorded so it is not re-proposed: an erroring metatable on each axis,
+raising on an unknown key and refusing assignment. Review called it nonsensical and it was. It
+guarded a mistake the split already makes hard, it added a new way for a released mod to stop
+mid-round, and it grew its own test surface — three assertions pinning where `error(..., 2)`
+points. `BOWSER_ACT` in `modules/boss.lua` is a plain table of named constants and needs
+nothing around it. Also rejected: renaming the whole table to `SH`, which moves 556 references
+instead of 443 and files `RED`, `BLUE`, the rosters and the palettes under a mod name.
+
+Nothing behavioural changed, so there was no mutation sweep for the second half; the first
+half's was 41 of 41. Undoing the rename mechanically over the whole tree left exactly six
+differences: `core.lua`'s declaration split and its extra return field, one added `local` line
+in each of the four files that bind both tables, `main.lua` publishing two name spaces where
+it published one, and the two tests. Checks: 780 passed / 0 failed, luacheck 2 warnings /
+0 errors in 46 files, lua-language-server 10 problems in 2 files. The suite was 779 before the
+second half — dropping the metatable removed a test and the documents were left claiming 780 —
+so the added test restores the count the documents already had.
+
+`PROJECT_STATUS.md` was two hashes behind for the same reason and now records
+`012E0DA9…4E2848E7`, with the intermediate `AFF4D804…F563DDFA` named as the axis-split value.
+
 ### 2026-09-16 — R-018: the predicate is `boss_is_held` again, and tests only that
 
 `boss_is_grabbed` returned true both when a player had Bowser in their hands and when he was
