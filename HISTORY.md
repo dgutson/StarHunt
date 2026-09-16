@@ -13,6 +13,62 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — R-004: every remaining declaration has a reason, and Lakitu has a test
+
+One commit, and no mod code changed at all — `StarHunt/main.lua` is byte-identical to
+`457289d`. R-004 was an audit and a test, not an extraction. **R-004 is done**, and it split
+into two findings.
+
+**The five declarations R-004 was written about all stay in `main.lua`, on purpose.**
+`gServerSettings.skipIntro`, `local_lakitu_scan_at`, `remove_castle_lakitu`,
+`remove_existing_castle_lakitu` and `on_find_water_level` are castle-grounds lobby cleanup
+that belongs to no StarHunt system: they run whether or not a round is active, read no
+synchronized field, and have no caller but the hook block. A `modules/lobby.lua` was
+considered and rejected — one variable and three short functions with a single reader, where
+the `require` line costs about what the code does. The reasons are now a table in
+`REFACTOR_PLAN.md`'s appendix, which is no longer a plan but the record of what is left in
+`main.lua` and why.
+
+**`test/suite/lobby.lua` is new: 12 tests.** `DEVELOPMENT_CHECKLIST.md` had carried "Sin
+prueba" against the Lakitu row since the bug was fixed — nothing under `test/` mentioned
+Lakitu at all. The suite covers both deletion paths, the behavior id that distinguishes the
+camera Lakitu from anything else, the refusal to act away from the castle grounds, the
+fifteen-frame gap between retroactive scans, the fact that time spent off the grounds does not
+consume that gap, and the water-level hook handing back the height it was given. A
+29-mutation sweep over the whole area caught **29 of 29**, each by the test written for it.
+Three of them only fell after a twelfth test was added: `gServerSettings.skipIntro = 1` could
+be deleted, or set to 0 or 2, with everything still green, because nothing had ever looked at
+it. The harness sets it to 0 before `main.lua` runs, which is what makes the load-time
+assertion mean something.
+
+**The audit found a second group nobody had checked: eight declarations left behind.** The
+handoff had flagged this as unverified and it turned out to be real. `Team.lifetime`,
+`Team.update_lifetime_sync`, `Team.pick_second_modifier`, `Team.boss_reserve_bomb_count`,
+`Team.host_update_boss_bomb_supply`, `ensure_boss_health_owner`, `on_before_boss_cutscene`,
+`local_goal_warp_update` and `local_boss_warp_update` were all assigned to a module by the
+original appendix — `boss`, `goals` or `i18n` — and were simply not taken when that module
+came out. Only `on_joined_game` had a recorded decision. So `REFACTOR_PLAN.md`'s sentence
+"Nothing else in `main.lua` belongs to a module that exists" was wrong, and the document had
+asserted "the module is finished" five times on the strength of the planned *block* being out
+rather than the *file* being clear. Each of the eight was checked against the real require
+graph and none needs a new edge; `on_before_boss_cutscene` is the one that does not go where
+it looks like it should, because it calls `host_end_round` and the graph already runs
+`round -> boss`. Moving them is **R-013**, now the only item under Now, and R-010 was
+re-pointed from R-004 onto it.
+
+The cheap check that would have caught this, now written into the plan: grep `main.lua` for
+its top-level declarations at the end of every pass, and treat anything that is not the
+header, an import, a hook callback with a recorded reason, or `STARHUNT_TEST_API` as
+unfinished.
+
+Baselines after: **670 tests pass** (was 658), luacheck 2 warnings / 0 errors in 44 files
+(was 43), lua-language-server 10 problems in 2 files — all unchanged apart from the file
+counts. `test/README.md` gained the `lobby` row and now says plainly that its table is
+incomplete: `core`, `i18n`, `team`, `world` and `modifiers` still have no row.
+`DEVELOPMENT_CHECKLIST.md`'s code map had also gone stale on the HUD, still naming `main.lua`
+for `draw_hud`, `draw_player_health_bar` and `draw_config_menu` three sessions after they
+moved; that row is corrected.
+
 ### 2026-09-15 — `modules/hud.lua` is finished: the frame
 
 One commit. `main.lua` fell from 857 to **676** lines, `modules/hud.lua` grew from 510 to

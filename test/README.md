@@ -48,6 +48,7 @@ something the mod uses, this is what picks it up. Run
 | `save` | the one-based to zero-based course conversion, per-act star bits, flushing |
 | `caps` | the Wing/Metal/Vanish cap a goal requires: the right flags per power, none outside the goal's own level, act, round and mode, none for remote players, and the handing-back that DEVELOPMENT_CHECKLIST forbids undoing — a cap another mod granted, a cap it refreshed underneath StarHunt, the player's own cap timer and cap-on-head flag |
 | `interact` | claiming a star and hiding the ones that are not it: the castle lock on doors, warp doors, the cannon and warps, the HMC Metal Cap portal and the three things that distinguish it from any other HMC warp, the star gate in each of the four modes, the coin toll in both a local and a remote player's slots, the rejection memory keyed on player, goal and round, Boss's one-hit-death modifier, and restoring only the invisibility flags StarHunt itself set |
+| `lobby` | the castle grounds, which belong to no StarHunt system: the opening scene switched off at load, the camera Lakitu deleted as it loads and the retroactive scan that catches the one already there, both refusing to act away from the grounds or on another behavior, the fifteen-frame gap between scans, and the water-level hook handing back the height it was given rather than a fixed one |
 | `hud` | no colon ever reaching `FONT_HUD`, which renders it as an X; where a colon's two dots land and how they scale; what a string measures so it can be centered on it; the objective panel's width between the score and timer cards; shrinking text to its box; the clock; the star and coin counters saved before a round and restored after it, including one the player already had off; the native HUD hidden for the round and left alone outside it; and the DARKNESS PULSE rectangle, drawn once a frame and only while the pulse is dark |
 | `hud_panels` | the HUD's picture layer: every modifier's name in English, Spanish and Portuguese including the four families the later languages build by rule; the three rectangles a panel is made of; the health bar's wedges, its colours and its two thresholds; the score, Team, Chaos and Bowser cards and the timer and coin card they all share; the objective panel in each mode, its two modifier lines, the jump and coin-toll counters and the row they move to; the Chaos reroll countdown and the eliminated notice; and the Gun Mod repaint with each of the eight conditions that stop it |
 | `hud_frame` | the HUD's frame: the start banner, its three layers and its 105-frame window; the config menu's picture, its box on a host and on a client, its rows and their spacing, the selected row's bar, the locked and dimmed rows, the range hint and the footer; the winner announcement in each of the four modes and each of Boss's and Chaos's reasons; and what `draw_hud` assembles in each case, including the menu drawn over the round's panels rather than instead of them |
@@ -70,6 +71,9 @@ multiplayer session in sm64coopdx, and that is still true.
 The suite was mutation-checked: breaking the save conversion, the Easy pulse
 width, the symmetric pair check, the Hard bomb count, and the HUD colon rule
 each made it fail, with the failure naming the right thing.
+
+The table above is **not complete**: `core`, `i18n`, `team`, `world` and
+`modifiers` run in `test/run.lua` and have no row here.
 
 Three lines of `run_static_modifier_checks` are the known exception, recorded in
 `HISTORY.md`: its water-cap, A/B-swap and control-drift checks call helpers that

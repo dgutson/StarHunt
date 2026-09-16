@@ -4,7 +4,7 @@ Branch `refactor/modularize`. This document holds **how** to do the split correc
 rules, the verification discipline, and the traps that have already cost a session. It does
 not track progress.
 
-- **What is left, and in what order:** `ROADMAP.md` (items R-003 and R-004).
+- **What is left, and in what order:** `ROADMAP.md` (item R-013).
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
@@ -13,9 +13,7 @@ and it came out in three passes: its text layer and the native HUD's visibility 
 its picture layer -- `modifier_text`, the panel every card is built from, the health bar, the
 score/timer strip, the objective panel and the Gun Mod repaint -- and finally its frame: the
 start banner, the config menu's drawing, `draw_hud` itself and the round notifications.
-Nothing else in `main.lua` belongs to a module that exists; what is still there is the five
-declarations R-004 has to give a home, plus the header, the require wiring, the hook block and
-`STARHUNT_TEST_API`, which stay there permanently. `round.lua` is finished: its client half
+`round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
@@ -26,6 +24,13 @@ and its list of accepted modifier kinds. `boss.lua` is finished too, in three pa
 static data and the health pool, then the readers, then the attack queue and the hazards --
 that last one once `is_local_player_on_floor` had moved into `core.lua`, the second time a
 shared helper had to move before a module could follow it.
+
+Every module being finished is **not** the same as `main.lua` being empty of them. R-004's
+audit found eight declarations that the `boss` and `goals` passes were meant to take and left
+behind, and they are R-013; the appendix at the end of this document now lists them alongside
+the five that were never assigned to a module at all. What stays in `main.lua` permanently is
+the header, the require wiring, the hook block, the synchronized-table seed and
+`STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains.
 
 **R-002 is finished.** Its last function, `Team.host_update_chaos_round`, went into
 `round.lua`, and the reason is the one `host_update_boss_round` had before it: a mode's round
@@ -509,16 +514,16 @@ hud   -> modifiers  22
 `team` and `modifiers` never became require edges at all: everything the HUD reads from them
 is a field on the shared `Team` table, which every module reaches by reference.
 
-## Appendix: per-symbol assignment for the one remaining module
+## Appendix: what is left in `main.lua`
 
-**Machine-derived, not hand-verified**: seeded label propagation over the reference graph,
-constrained so each state cluster stays whole. Line numbers refer to the **released** v1.1
-file and are stale — re-derive every range with grep. Treat this as a starting point, never as
-settled; `tools/module_deps.py` is what actually decides.
+The original appendix was **machine-derived, not hand-verified**: seeded label propagation
+over the reference graph, constrained so each state cluster stays whole. Its per-module
+sections were deleted as those modules came out and are in git history if ever needed. Treat
+anything left of it as a starting point, never as settled; `tools/module_deps.py` is what
+actually decides.
 
-The appendix sections for the thirteen extracted modules were deleted once those modules
-existed. They are in git history if ever needed. What is left is the five declarations that
-were never assigned to one, which is R-004.
+What follows is no longer a plan. It is the record R-004 produced: a decision, with a reason,
+for every top-level declaration still in `main.lua`.
 
 Two things to know when reading it:
 
@@ -534,12 +539,58 @@ Two things to know when reading it:
   menu is open, reads nothing from `modifiers`, and has no caller but the menu and the hook
   block.
 
-### Unassigned — 5 declarations, need a decision during extraction
+### What is still in `main.lua`, and why — settled by R-004
 
+R-004 audited every top-level declaration left in `main.lua` and recorded a decision for each.
+The audit found two separate groups, not one. Lines below are in the **current** file.
+
+**Group one: the five the appendix never assigned. All five stay, and that is the decision.**
+
+| decl | line | why it stays |
+|---|---|---|
+| `gServerSettings.skipIntro = 1` | 19 | A load-time engine setting rather than behavior. `main.lua` already owns the mod's engine wiring — the hook block and the synchronized-table seed — and this belongs with it. It is also the first third of one idea: skip the opening scene, delete the Lakitu that plays it, delete the one that is already there. |
+| `local_lakitu_scan_at` | 106 | Rebound, but only by the one function that reads it, so the shared-state rule does not force it onto `local_runtime` or anywhere else. |
+| `remove_castle_lakitu` | 368 | Castle-grounds cleanup that belongs to no StarHunt system: it runs whether or not a round is active, reads no synchronized field, and has no caller but its hook. |
+| `remove_existing_castle_lakitu` | 382 | Same, and it is the retroactive half of the same idea — `HOOK_ON_OBJECT_LOAD` does not fire for objects that loaded before the mod was enabled. |
+| `on_find_water_level` | 390 | Five lines that return their own argument, for the same reason: the castle moat is lobby furniture, not a StarHunt system. |
+
+A `modules/lobby.lua` was considered and rejected. It would hold one variable and three short
+functions whose only reader is the hook block, so the `require` line would cost about what the
+code does, and `DEVELOPMENT_CHECKLIST.md`'s code map already points at `main.lua` for them.
+The reason to keep a decision rather than a habit is that these are now **tested**:
+`test/suite/lobby.lua` covers all four, and the whole group survived a 29-mutation sweep with
+every mutation caught.
+
+**Group two: eight declarations the `boss` and `goals` passes were meant to take and left
+behind.** These are *not* a decision to stay — they are an oversight the audit found, and they
+are R-013 in `ROADMAP.md`. Each was checked against the real require graph, so none of them
+needs a new edge:
+
+| decl | line | goes to | checked |
+|---|---|---|---|
+| `Team.lifetime` | 107 | `goals.lua` | `goals.lua:817-819` is the only code that increments and persists it |
+| `Team.update_lifetime_sync` | 115 | `goals.lua` | its only caller is `goals.lua:819`; needs nothing but `gPlayerSyncTable` |
+| `Team.pick_second_modifier` | 119 | `modifiers.lua` | reaches `Team.chaos_pair_allowed` and `Team.difficulty_modifier_allowed` as `Team` fields, so nothing blocks it anywhere; the appendix said `goals`, but the decision it makes is the modifier catalog's, not a star's |
+| `Team.boss_reserve_bomb_count` | 132 | `boss.lua` | `Team` fields only |
+| `Team.host_update_boss_bomb_supply` | 142 | `boss.lua` | needs `FRAMES_PER_SECOND`, `is_round_active`, `is_boss_mode` from `core`, which `boss.lua` already requires, and `Team.bossBombPositions`, which is already in `boss.lua` |
+| `ensure_boss_health_owner` + the four `local_boss_health_*` locals | 109-112, 210 | `boss.lua` | `core` plus `Team.boss_max_health`, already there. The four locals are read nowhere else and travel with it |
+| `on_before_boss_cutscene` | 266 | `round.lua`, **not** `boss.lua` | it calls `host_end_round`, and the graph already runs `round -> boss`, so an edge back would be a cycle |
+| `local_goal_warp_update`, `local_boss_warp_update` | 280, 317 | `round.lua` | the client half of the round loop. Between them they need `get_goal`, `BOSS_LEVELS` and `reset_local_modifier_state`, and `round.lua` already requires `goals`, `boss` and `modifiers` |
+
+`on_joined_game` (397) is a ninth leftover that was already decided: the note above records
+that the appendix put it in `i18n` because it calls `translated`, and that it stayed in
+`main.lua` as a hook callback. R-004 confirmed that decision rather than reopening it — it
+reaches `Team.update_config_menu_lock` from the menu, `Team.is_chaos_mode` from chaos and
+`is_round_active` from core, and belongs to none of the three.
+
+**The lesson for R-013 and for any pass after it.** "The module is finished" was asserted five
+times in this document on the strength of the planned block being out, and each time it was
+true of the block and not of the file. The check that would have caught it is one grep, and it
+is cheap enough to run at the end of every pass:
+
+```bash
+grep -n '^local function \|^Team\.[a-z_]* = function\|^local [a-z_]* =' StarHunt/main.lua
 ```
-   22-22    table_field     gServerSettings.skipIntro
-  902-902   local_var       local_lakitu_scan_at
- 3454-3463  local_function  remove_castle_lakitu
- 3468-3474  local_function  remove_existing_castle_lakitu
- 3913-3918  local_function  on_find_water_level
-```
+
+Anything in that list that is not the header, an import, a hook callback with a recorded
+reason, or `STARHUNT_TEST_API` is unfinished work.
