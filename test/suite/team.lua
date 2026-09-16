@@ -151,7 +151,7 @@ return function(t, harness)
         t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
             "friendly fire was allowed between two red players")
 
-        gPlayerSyncTable[1].sh5_team = 0            -- Team.NONE, never enrolled
+        gPlayerSyncTable[1].sh5_team = 0            -- Team.Color.NONE, never enrolled
         t.eq(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1]), false,
             "a player on no team was attackable")
     end)
@@ -210,7 +210,7 @@ return function(t, harness)
     end)
 
     s.test("red is the red one and blue is the blue one", function()
-        -- Swapping the two entries of Team.colors is invisible to every check
+        -- Swapping the two entries of Team.color_rgb is invisible to every check
         -- that only asks whether a player was painted.
         local api = harness.load()
         local red, blue = api.team_colors[api.team_red], api.team_colors[api.team_blue]
@@ -332,7 +332,7 @@ return function(t, harness)
         local api = harness.load()
         connect(2)
         enroll(0, api.team_red, 3, 4)
-        enroll(1, 0, 7, 9)                 -- Team.NONE
+        enroll(1, 0, 7, 9)                 -- Team.Color.NONE
         local stats = api.team_participant_stats()
         t.eq(stats[api.team_red].count, 1, "red counted somebody without a team")
         t.eq(stats[api.team_blue].count, 0, "blue counted somebody without a team")

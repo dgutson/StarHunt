@@ -6,7 +6,7 @@
 -- speed, the locked button, the cursed floor -- is recomputed locally every
 -- frame from local_runtime.
 --
--- One function here is not local. Team.pick_second_modifier runs on the host
+-- One function here is not local. SH.pick_second_modifier runs on the host
 -- and chooses the second modifier a star race hands out at Nightmare. It lives
 -- here because its subject is the catalog and pair compatibility rather than
 -- the round; its only caller is host_assign_goal in round.lua.
@@ -17,13 +17,13 @@
 -- as OMM run their own HOOK_MARIO_UPDATE callbacks and would otherwise undo
 -- everything applied before them.
 --
--- Which modifier is in force is asked of Team.get_local_modifier_base, and the
+-- Which modifier is in force is asked of SH.get_local_modifier_base, and the
 -- answer depends on the mode: Boss draws from its own player catalog, Chaos
 -- from the full audited catalog, and a star race from what the audit approved
 -- for that particular star.
 
 local core = require("core")
-local Team = core.Team
+local SH = core.SH
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local local_runtime = core.local_runtime
 local clamp = core.clamp
@@ -49,14 +49,14 @@ local CASTLE_LOWERED_MOAT = -450
 
 local local_moat_refresh_at = 0
 
-Team.modifier_override = nil
+SH.modifier_override = nil
 
-Team.get_local_modifier_base = function(slot)
+SH.get_local_modifier_base = function(slot)
     if is_boss_mode() then
         local field = slot == 2 and "sh5_boss_player_modifier_2" or "sh5_boss_player_modifier"
         return BOSS_PLAYER_MODIFIERS[gGlobalSyncTable[field] or 0]
     end
-    if Team.is_chaos_mode() then
+    if SH.is_chaos_mode() then
         local field = slot == 2 and "sh5_modifier_2" or "sh5_modifier"
         return NORMAL_MODIFIER_CATALOG[gPlayerSyncTable[0][field] or 0]
     end
@@ -67,60 +67,60 @@ Team.get_local_modifier_base = function(slot)
 end
 
 local function get_local_modifier()
-    return Team.effective_modifier(Team.get_local_modifier_base(1))
+    return SH.effective_modifier(SH.get_local_modifier_base(1))
 end
 
-Team.get_local_modifiers = function()
+SH.get_local_modifiers = function()
     local result = {}
     local goal = get_local_goal()
-    local first = Team.get_local_modifier_base(1)
+    local first = SH.get_local_modifier_base(1)
     if first ~= nil then
-        local effective = (is_boss_mode() or Team.is_chaos_mode()) and Team.effective_modifier(first)
-            or Team.effective_modifier_for_goal(goal, first)
+        local effective = (is_boss_mode() or SH.is_chaos_mode()) and SH.effective_modifier(first)
+            or SH.effective_modifier_for_goal(goal, first)
         if effective ~= nil then table.insert(result, effective) end
     end
-    if Team.is_chaos_mode() or Team.selected_difficulty() == Team.Difficulty.NIGHTMARE then
-        local second = Team.get_local_modifier_base(2)
+    if SH.is_chaos_mode() or SH.selected_difficulty() == SH.Difficulty.NIGHTMARE then
+        local second = SH.get_local_modifier_base(2)
         if second ~= nil and (first == nil or second.kind ~= first.kind) then
-            local effective = (is_boss_mode() or Team.is_chaos_mode())
-                and Team.effective_modifier(second)
-                or Team.effective_modifier_for_goal(goal, second)
+            local effective = (is_boss_mode() or SH.is_chaos_mode())
+                and SH.effective_modifier(second)
+                or SH.effective_modifier_for_goal(goal, second)
             if effective ~= nil then table.insert(result, effective) end
         end
     end
     return result
 end
 
-Team.coin_count = function(m)
+SH.coin_count = function(m)
     if m ~= nil and m.numCoins ~= nil then return math.max(0, m.numCoins) end
     return math.max(0, hud_get_value(HUD_DISPLAY_COINS) or 0)
 end
 
-Team.coin_toll_paid = function(m, modifier_data)
+SH.coin_toll_paid = function(m, modifier_data)
     return modifier_data == nil or modifier_data.kind ~= "coin_toll"
-        or Team.coin_count(m) >= modifier_data.value
+        or SH.coin_count(m) >= modifier_data.value
 end
 
-Team.all_coin_tolls_paid = function(m)
-    for _, modifier_data in ipairs(Team.get_local_modifiers()) do
-        if not Team.coin_toll_paid(m, modifier_data) then return false end
+SH.all_coin_tolls_paid = function(m)
+    for _, modifier_data in ipairs(SH.get_local_modifiers()) do
+        if not SH.coin_toll_paid(m, modifier_data) then return false end
     end
     return true
 end
 
-Team.local_modifier_of_kind = function(kind)
-    for _, modifier_data in ipairs(Team.get_local_modifiers()) do
+SH.local_modifier_of_kind = function(kind)
+    for _, modifier_data in ipairs(SH.get_local_modifiers()) do
         if modifier_data.kind == kind then return modifier_data end
     end
     return nil
 end
 
-Team.pick_second_modifier = function(goal, first_index)
+SH.pick_second_modifier = function(goal, first_index)
     local choices = {}
     local first = goal.mods[first_index]
     for index, candidate in ipairs(goal.mods) do
-        if index ~= first_index and Team.chaos_pair_allowed(first, candidate)
-            and Team.difficulty_modifier_allowed(goal, candidate) then
+        if index ~= first_index and SH.chaos_pair_allowed(first, candidate)
+            and SH.difficulty_modifier_allowed(goal, candidate) then
             table.insert(choices, index)
         end
     end
@@ -188,19 +188,19 @@ local function suppress_local_input(m)
     if (m.action & ACT_FLAG_AIR) == 0 then m.forwardVel = 0 end
 end
 
-Team.apply_one_local_modifier = function(m)
+SH.apply_one_local_modifier = function(m)
     if m.playerIndex ~= 0 or not is_round_active() then return end
-    if Team.is_chaos_mode() and (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1 then return end
+    if SH.is_chaos_mode() and (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1 then return end
     -- The configuration menu owns the controller completely. No challenge
     -- may remap or consume A/B, the stick, or the close button before it.
     if local_runtime.config_open then return end
-    local modifier_data = Team.modifier_override or get_local_modifier()
+    local modifier_data = SH.modifier_override or get_local_modifier()
     if modifier_data == nil then return end
     local ready_key
     if is_boss_mode() then
         if gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then return end
         ready_key = -(gGlobalSyncTable.sh5_round or 0)
-    elseif Team.is_chaos_mode() then
+    elseif SH.is_chaos_mode() then
         if gNetworkPlayers[0].currLevelNum ~= (gGlobalSyncTable.sh5_chaos_level or -1) then return end
         ready_key = 1000000 + (gGlobalSyncTable.sh5_chaos_modifier_seq or 0)
     else
@@ -217,7 +217,7 @@ Team.apply_one_local_modifier = function(m)
     -- Otherwise the first active frame resets the clock and collapses the
     -- intended multi-second window to a single frame.
     if modifier_data.pulse_period ~= nil
-        and not Team.periodic_window(modifier_data.pulse_period, modifier_data.pulse_frames) then
+        and not SH.periodic_window(modifier_data.pulse_period, modifier_data.pulse_frames) then
         if modifier_data.kind == "periodic_freeze" then
             local_runtime.freeze_frames = 0
             local_runtime.freeze_yaw = nil
@@ -420,7 +420,7 @@ Team.apply_one_local_modifier = function(m)
         end
 
     elseif modifier_data.kind == "coin_surge" then
-        local coins = Team.coin_count(m)
+        local coins = SH.coin_count(m)
         if local_runtime.last_coin_count ~= nil and coins > local_runtime.last_coin_count then
             local gained = math.min(2, coins - local_runtime.last_coin_count)
             m.forwardVel = math.min(64, math.max(0, m.forwardVel) + modifier_data.value * gained)
@@ -449,7 +449,7 @@ Team.apply_one_local_modifier = function(m)
         end
 
     elseif modifier_data.kind == "slow_pulse" then
-        if Team.periodic_window(8, 45) then
+        if SH.periodic_window(8, 45) then
             m.forwardVel = clamp(m.forwardVel, -modifier_data.value, modifier_data.value)
             if m.intendedMag > modifier_data.value then m.intendedMag = modifier_data.value end
         end
@@ -472,7 +472,7 @@ Team.apply_one_local_modifier = function(m)
         end
 
     elseif modifier_data.kind == "control_pulse" then
-        if Team.periodic_window(9, modifier_data.value) then
+        if SH.periodic_window(9, modifier_data.value) then
             m.controller.stickX = -m.controller.stickX
             m.controller.stickY = -m.controller.stickY
             m.controller.rawStickX = -m.controller.rawStickX
@@ -480,7 +480,7 @@ Team.apply_one_local_modifier = function(m)
         end
 
     elseif modifier_data.kind == "coin_weight" then
-        local speed = math.max(35, modifier_data.value - math.floor(Team.coin_count(m) / 5))
+        local speed = math.max(35, modifier_data.value - math.floor(SH.coin_count(m) / 5))
         m.forwardVel = clamp(m.forwardVel, -speed, speed)
         if m.intendedMag > speed then m.intendedMag = speed end
 
@@ -509,24 +509,24 @@ Team.apply_one_local_modifier = function(m)
     end
 end
 
-Team.apply_local_modifier = function(m)
-    local modifiers = Team.get_local_modifiers()
+SH.apply_local_modifier = function(m)
+    local modifiers = SH.get_local_modifiers()
     for _, modifier_data in ipairs(modifiers) do
-        Team.modifier_override = modifier_data
-        Team.apply_one_local_modifier(m)
+        SH.modifier_override = modifier_data
+        SH.apply_one_local_modifier(m)
     end
-    Team.modifier_override = nil
+    SH.modifier_override = nil
 end
 
 -- Character/moveset mods run their own HOOK_MARIO_UPDATE callbacks and may
 -- replace velocities after StarHunt's before-update challenge pass. Reapply
 -- only idempotent limits here: effects such as gravity, turbo, slippery
 -- movement and remapped controls must never be applied twice in one frame.
-Team.apply_post_moveset_limits = function(m)
+SH.apply_post_moveset_limits = function(m)
     if m.playerIndex ~= 0 or local_runtime.config_open or not is_round_active() then return end
     if is_boss_mode() then
         if gNetworkPlayers[0].currLevelNum ~= LEVEL_BOWSER_3 then return end
-    elseif Team.is_chaos_mode() then
+    elseif SH.is_chaos_mode() then
         if (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 1
             or gNetworkPlayers[0].currLevelNum ~= (gGlobalSyncTable.sh5_chaos_level or -1) then
             return
@@ -544,9 +544,9 @@ Team.apply_post_moveset_limits = function(m)
         m.intendedYaw = local_runtime.freeze_yaw
     end
 
-    for _, modifier_data in ipairs(Team.get_local_modifiers()) do
+    for _, modifier_data in ipairs(SH.get_local_modifiers()) do
         local pulse_active = modifier_data.pulse_period == nil
-            or Team.periodic_window(modifier_data.pulse_period, modifier_data.pulse_frames)
+            or SH.periodic_window(modifier_data.pulse_period, modifier_data.pulse_frames)
         if pulse_active and modifier_data.kind == "speed_cap" then
             m.forwardVel = clamp(m.forwardVel, -modifier_data.value, modifier_data.value)
             if m.intendedMag > modifier_data.value then m.intendedMag = modifier_data.value end
@@ -564,12 +564,12 @@ Team.apply_post_moveset_limits = function(m)
             local health_cap = modifier_data.health_cap or 0x400
             if m.health > health_cap then m.health = health_cap end
         elseif pulse_active and modifier_data.kind == "slow_pulse" then
-            if Team.periodic_window(8, 45) then
+            if SH.periodic_window(8, 45) then
                 m.forwardVel = clamp(m.forwardVel, -modifier_data.value, modifier_data.value)
                 if m.intendedMag > modifier_data.value then m.intendedMag = modifier_data.value end
             end
         elseif pulse_active and modifier_data.kind == "coin_weight" then
-            local speed = math.max(35, modifier_data.value - math.floor(Team.coin_count(m) / 5))
+            local speed = math.max(35, modifier_data.value - math.floor(SH.coin_count(m) / 5))
             m.forwardVel = clamp(m.forwardVel, -speed, speed)
             if m.intendedMag > speed then m.intendedMag = speed end
         end
@@ -589,7 +589,7 @@ local function grant_infinite_lives(m)
     end
 end
 
-Team.local_index_from_global = function(global_index)
+SH.local_index_from_global = function(global_index)
     if global_index == nil or type(network_local_index_from_global) ~= "function" then return nil end
     local index = network_local_index_from_global(global_index)
     if type(index) ~= "number" or index < 0 or index >= MAX_PLAYERS then return nil end
@@ -601,7 +601,7 @@ end
 -- HOOK_ALLOW_PVP_ATTACK. Wrap only that public hitbox entry so Gun Mod keeps
 -- all of its normal damage, metal-cap and invincibility behaviour while
 -- respecting the same Normal/Boss/TEAM PvP rules as direct attacks.
-Team.install_gun_mod_compatibility = function()
+SH.install_gun_mod_compatibility = function()
     if local_runtime.gun_mod_compat_wrapper ~= nil then return true end
     local api = rawget(_G, "gunModApi")
     local hitboxes = rawget(_G, "gShootableHitboxes")
@@ -615,8 +615,8 @@ Team.install_gun_mod_compatibility = function()
     local_runtime.gun_mod_compat_original = hitboxes[mario_behavior]
     local_runtime.gun_mod_compat_wrapper = function(target_object, bullet_object)
         if is_round_active() and target_object ~= nil and bullet_object ~= nil then
-            local attacker_index = Team.local_index_from_global(api.obj_get_weapon_owner(bullet_object))
-            local victim_index = Team.local_index_from_global(target_object.globalPlayerIndex)
+            local attacker_index = SH.local_index_from_global(api.obj_get_weapon_owner(bullet_object))
+            local victim_index = SH.local_index_from_global(target_object.globalPlayerIndex)
             if attacker_index ~= nil and victim_index ~= nil
                 and not on_allow_pvp_attack(
                     { playerIndex = attacker_index }, { playerIndex = victim_index }, nil) then
@@ -639,8 +639,8 @@ local function keep_moat_lowered()
     set_water_level(1, CASTLE_LOWERED_MOAT, network_is_server())
 end
 
-Team.manual_reroll_remaining = function()
-    if not is_round_active() or (selected_mode() ~= Team.Mode.NORMAL and not Team.is_mode())
+SH.manual_reroll_remaining = function()
+    if not is_round_active() or (selected_mode() ~= SH.Mode.NORMAL and not SH.is_team_mode())
         or get_local_goal() == nil then
         return nil
     end
@@ -648,9 +648,9 @@ Team.manual_reroll_remaining = function()
         - get_global_timer())
 end
 
-Team.manual_reroll_label = function()
+SH.manual_reroll_label = function()
     local base = translated("ANOTHER LEVEL", "OTRO NIVEL")
-    local remaining = Team.manual_reroll_remaining()
+    local remaining = SH.manual_reroll_remaining()
     if remaining == nil then
         return base .. " - " .. translated("NORMAL/TEAM ONLY", "SOLO NORMAL/TEAM")
     end
@@ -662,8 +662,8 @@ Team.manual_reroll_label = function()
         math.floor(seconds / 60), seconds % 60)
 end
 
-Team.request_manual_reroll = function(_)
-    local remaining = Team.manual_reroll_remaining()
+SH.request_manual_reroll = function(_)
+    local remaining = SH.manual_reroll_remaining()
     if remaining == nil then
         djui_popup_create(translated(
             "ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM.",
@@ -688,8 +688,8 @@ Team.request_manual_reroll = function(_)
         "NUEVO NIVEL SOLICITADO."), 1)
 end
 
-Team.register_mod_compatibility = function()
-    Team.install_gun_mod_compatibility()
+SH.register_mod_compatibility = function()
+    SH.install_gun_mod_compatibility()
 
     if not local_runtime.dnc_compat_registered then
         local api = rawget(_G, "dayNightCycleApi")
@@ -698,7 +698,7 @@ Team.register_mod_compatibility = function()
         if type(api) == "table" and type(api.dnc_hook_event) == "function" and hook_id ~= nil then
             -- Day/Night invokes this before drawing its clock. The frame guard
             -- keeps the regular fallback hook from drawing over that clock.
-            api.dnc_hook_event(hook_id, Team.draw_darkness_behind)
+            api.dnc_hook_event(hook_id, SH.draw_darkness_behind)
             local_runtime.dnc_compat_registered = true
         end
     end

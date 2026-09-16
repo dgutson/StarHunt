@@ -46,7 +46,7 @@ return function(t, harness)
         -- so a module that took a copy of a table would keep writing into its
         -- own -- and nothing would error; the writes would simply never meet.
         --
-        -- Team.periodic_window lives in modules/difficulty.lua and measures
+        -- SH.periodic_window lives in modules/difficulty.lua and measures
         -- from local_runtime.modifier_start_frame. Writing that field here and
         -- watching difficulty.lua change its answer is the proof, because the
         -- two files reached the table by separate require() calls.
@@ -180,17 +180,52 @@ return function(t, harness)
         end
     end)
 
-    s.test("the flat axis names are gone from the shared table", function()
+    s.test("the flat axis names are gone from both name spaces", function()
         -- Putting any of them back restores the collision, and nothing else in
         -- the suite would notice, because the value would simply be right
         -- again. Only this test stands between the fix and its own undoing.
-        for _, name in ipairs({
-            "NORMAL", "BOSS", "MODE", "CHAOS",
-            "EASY", "MEDIUM", "HARD", "NIGHTMARE",
-            "NONE", "RED", "BLUE",
+        -- Both tables are checked: the axes were split apart in the same
+        -- change that split the one `Team` table into `SH` and `Team`, so a
+        -- flat name could come back on either.
+        for _, space in ipairs({
+            { name = "SH", table = api.mod_namespace },
+            { name = "Team", table = api.team_namespace },
         }) do
-            t.is_nil(rawget(api.shared_namespace, name),
-                "Team." .. name .. " is back on the shared table")
+            for _, name in ipairs({
+                "NORMAL", "BOSS", "MODE", "CHAOS",
+                "EASY", "MEDIUM", "HARD", "NIGHTMARE",
+                "NONE", "RED", "BLUE",
+            }) do
+                t.is_nil(rawget(space.table, name),
+                    space.name .. "." .. name .. " is back on the name space")
+            end
         end
+    end)
+
+    -- The table the axes hang on used to be called `Team` and held both the
+    -- mod-wide members and Team mode's own, so `Team.Difficulty.NIGHTMARE`
+    -- read as "Team mode's difficulty" in a Normal round. The mod-wide members
+    -- moved to `SH` and the fifteen Team-mode ones kept the name.
+
+    s.test("the mod-wide and Team-mode name spaces are two tables", function()
+        t.eq(type(api.mod_namespace), "table", "SH is not a table")
+        t.eq(type(api.team_namespace), "table", "Team is not a table")
+        t.ne(api.mod_namespace, api.team_namespace,
+            "SH and Team are one table again")
+
+        -- Which axis sits on which name space is the point of the split: the
+        -- mode and the difficulty apply in every mode, the colour only in one.
+        t.eq(rawget(api.mod_namespace, "Mode"), api.mode_axis,
+            "the mode axis left SH")
+        t.eq(rawget(api.mod_namespace, "Difficulty"), api.difficulty_axis,
+            "the difficulty axis left SH")
+        t.eq(rawget(api.team_namespace, "Color"), api.team_color_axis,
+            "the colour axis left Team")
+        t.is_nil(rawget(api.team_namespace, "Mode"),
+            "the mode axis is back on Team")
+        t.is_nil(rawget(api.team_namespace, "Difficulty"),
+            "the difficulty axis is back on Team")
+        t.is_nil(rawget(api.mod_namespace, "Color"),
+            "the colour axis moved to SH")
     end)
 end

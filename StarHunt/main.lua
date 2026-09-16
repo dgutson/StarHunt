@@ -17,6 +17,7 @@ local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 -- immediately after launching.
 gServerSettings.skipIntro = 1
 
+local SH = core.SH
 local Team = core.Team
 local local_runtime = core.local_runtime
 local clamp = core.clamp
@@ -48,7 +49,7 @@ local players_have_private_variant = goals.players_have_private_variant
 local players_can_share_world = goals.players_can_share_world
 local audit = require("modules/audit")
 local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
--- Attaches the difficulty scaling to Team; nothing to bind here.
+-- Attaches the difficulty scaling to SH; nothing to bind here.
 require("modules/difficulty")
 local on_allow_pvp_attack = require("modules/team").on_allow_pvp_attack
 local boss = require("modules/boss")
@@ -138,9 +139,9 @@ local function on_find_water_level(_, _, water_level)
 end
 
 local function on_joined_game()
-    Team.update_config_menu_lock()
+    SH.update_config_menu_lock()
     if is_round_active() then
-        if Team.is_chaos_mode() then
+        if SH.is_chaos_mode() then
             djui_popup_create(translated("CHAOS IS ACTIVE: YOU WILL SPECTATE.",
                 "CAOS ESTA ACTIVO: SERAS ESPECTADOR."), 1)
         else
@@ -158,12 +159,12 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         goals = GOALS,
         runtime = local_runtime,
         translated = translated,
-        language_codes = Team.language_codes,
-        language_names = Team.language_names,
-        ui_translations = Team.ui_translations,
-        modifier_translations = Team.modifier_translations,
-        boss_modifier_translations = Team.boss_modifier_translations,
-        menu_lock_labels = Team.menu_lock_labels,
+        language_codes = SH.language_codes,
+        language_names = SH.language_names,
+        ui_translations = SH.ui_translations,
+        modifier_translations = SH.modifier_translations,
+        boss_modifier_translations = SH.boss_modifier_translations,
+        menu_lock_labels = SH.menu_lock_labels,
         normal_modifier_catalog = NORMAL_MODIFIER_CATALOG,
         -- The audit matrix and its tallies are published for the self-check
         -- suite alone: it is the only test that needs to damage them on
@@ -174,22 +175,22 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         boss_modifiers = BOSS_MODIFIERS,
         boss_attack_queue_size = BOSS_ATTACK_QUEUE_SIZE,
         boss_active_attack_lookup = BOSS_ACTIVE_ATTACK_LOOKUP,
-        boss_max_health = Team.boss_max_health,
-        boss_health_for_difficulty = Team.boss_health_for_difficulty,
+        boss_max_health = SH.boss_max_health,
+        boss_health_for_difficulty = SH.boss_health_for_difficulty,
         boss_has_modifier = boss_has_modifier,
         boss_is_desperate = boss_is_desperate,
         boss_modifier_text = boss_modifier_text,
         boss_health_report = host_read_boss_health_report,
         menu_input = update_config_input,
-        freeze_menu_mario = Team.freeze_menu_mario,
+        freeze_menu_mario = SH.freeze_menu_mario,
         boss_cutscene = on_before_boss_cutscene,
         goal_warp = local_goal_warp_update,
-        chaos_warp = Team.update_chaos_warp,
+        chaos_warp = SH.update_chaos_warp,
         boss_warp = local_boss_warp_update,
         return_to_lobby = force_return_to_lobby,
-        modifier = Team.apply_local_modifier,
-        post_moveset_limits = Team.apply_post_moveset_limits,
-        get_local_modifier_base = Team.get_local_modifier_base,
+        modifier = SH.apply_local_modifier,
+        post_moveset_limits = SH.apply_post_moveset_limits,
+        get_local_modifier_base = SH.get_local_modifier_base,
         capped_horizontal_velocity = capped_horizontal_velocity,
         static_checks = run_static_modifier_checks,
         boss_hazards = apply_boss_hazards,
@@ -203,8 +204,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         record_key = player_record_key,
         player_count = connected_player_count,
         boss_health_owner = ensure_boss_health_owner,
-        boss_bomb_supply = Team.host_update_boss_bomb_supply,
-        boss_bomb_positions = Team.bossBombPositions,
+        boss_bomb_supply = SH.host_update_boss_bomb_supply,
+        boss_bomb_positions = SH.bossBombPositions,
         disconnected = remember_disconnected_player,
         connected = mark_connected_player_unenrolled,
         dialog = on_dialog,
@@ -230,21 +231,21 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         time_range = configured_time_range,
         draw_player_health_bar = hud.draw_player_health_bar,
         modifier_text = hud.modifier_text,
-        draw_hud_panel = Team.draw_hud_panel,
+        draw_hud_panel = SH.draw_hud_panel,
         draw_start_banner = hud.draw_start_banner,
         draw_config_menu = hud.draw_config_menu,
         round_notifications = local_round_notifications,
-        health_wedges = Team.health_wedges,
-        health_color = Team.health_color,
-        draw_round_status_panels = Team.draw_round_status_panels,
-        draw_objective_panel = Team.draw_objective_panel,
+        health_wedges = SH.health_wedges,
+        health_color = SH.health_color,
+        draw_round_status_panels = SH.draw_round_status_panels,
+        draw_objective_panel = SH.draw_objective_panel,
         draw_hud = draw_hud,
         draw_hud_text = draw_hud_text,
         measure_hud_text = hud.measure_hud_text,
         draw_centered_hud_text = draw_centered_hud_text,
         format_remaining_time = format_remaining_time,
-        objective_text_max_width = Team.objective_text_max_width,
-        draw_scaled_centered_text = Team.draw_scaled_centered_text,
+        objective_text_max_width = SH.objective_text_max_width,
+        draw_scaled_centered_text = SH.draw_scaled_centered_text,
         remove_save_flag = remove_starhunt_save_flag,
         flush_save_on_exit = flush_starhunt_save_on_exit,
         flush_save_on_warp = flush_starhunt_save_on_warp,
@@ -252,8 +253,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         goal_already_collected = goal_already_collected,
         selected_mode = selected_mode,
         is_boss_mode = is_boss_mode,
-        is_team_mode = Team.is_mode,
-        is_chaos_mode = Team.is_chaos_mode,
+        is_team_mode = SH.is_team_mode,
+        is_chaos_mode = SH.is_chaos_mode,
         get_goal = get_goal,
         get_local_goal = get_local_goal,
         goal_world_text = goal_world_text,
@@ -264,62 +265,64 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         -- Team.initial is replaced wholesale by build_balanced, so the suite
         -- needs an accessor rather than a captured reference.
         team_rosters = function() return Team.initial end,
-        team_colors = Team.colors,
+        team_colors = Team.color_rgb,
         palette_key = Team.palette_key,
         update_palettes = Team.update_palettes,
         restore_palettes = Team.restore_palettes,
-        selected_difficulty = Team.selected_difficulty,
-        effective_modifier = Team.effective_modifier,
-        effective_modifier_for_goal = Team.effective_modifier_for_goal,
-        periodic_window = Team.periodic_window,
-        normal_mode = Team.Mode.NORMAL,
-        boss_mode = Team.Mode.BOSS,
-        team_mode = Team.Mode.TEAM,
-        chaos_mode = Team.Mode.CHAOS,
-        easy = Team.Difficulty.EASY,
-        medium = Team.Difficulty.MEDIUM,
-        hard = Team.Difficulty.HARD,
-        nightmare = Team.Difficulty.NIGHTMARE,
-        team_red = Team.TeamColor.RED,
-        team_blue = Team.TeamColor.BLUE,
-        -- The axis tables themselves, and the namespace they hang on, so
-        -- test/suite/core.lua can assert that the three sets stay separate.
-        -- The ten flat keys above are the same numbers read through the axes;
-        -- they stay because four hundred test references use them.
-        mode_axis = Team.Mode,
-        difficulty_axis = Team.Difficulty,
-        team_color_axis = Team.TeamColor,
-        shared_namespace = Team,
+        selected_difficulty = SH.selected_difficulty,
+        effective_modifier = SH.effective_modifier,
+        effective_modifier_for_goal = SH.effective_modifier_for_goal,
+        periodic_window = SH.periodic_window,
+        normal_mode = SH.Mode.NORMAL,
+        boss_mode = SH.Mode.BOSS,
+        team_mode = SH.Mode.TEAM,
+        chaos_mode = SH.Mode.CHAOS,
+        easy = SH.Difficulty.EASY,
+        medium = SH.Difficulty.MEDIUM,
+        hard = SH.Difficulty.HARD,
+        nightmare = SH.Difficulty.NIGHTMARE,
+        team_red = Team.Color.RED,
+        team_blue = Team.Color.BLUE,
+        -- The axis tables themselves, and the two name spaces they hang on,
+        -- so test/suite/core.lua can assert that the three sets stay separate
+        -- and that no flat axis name comes back on either table. The ten flat
+        -- keys above are the same numbers read through the axes; they stay
+        -- because four hundred test references use them.
+        mode_axis = SH.Mode,
+        difficulty_axis = SH.Difficulty,
+        team_color_axis = Team.Color,
+        mod_namespace = SH,
+        team_namespace = Team,
         team_participant_stats = Team.participant_stats,
         team_update_scores = Team.update_scores,
         team_pick_late = Team.pick_late,
         team_update_palettes = Team.update_palettes,
         team_restore_palettes = Team.restore_palettes,
-        lifetime_sync = Team.update_lifetime_sync,
-        darkness_active = Team.darkness_active,
-        local_modifiers = Team.get_local_modifiers,
-        chaos_pair_allowed = Team.chaos_pair_allowed,
-        chaos_modifier_allowed = Team.chaos_modifier_allowed,
-        chaos_maps = Team.chaos_maps,
-        pick_chaos_pair = Team.pick_chaos_pair,
-        chaos_reroll = Team.host_reroll_chaos_modifiers,
+        lifetime_sync = SH.update_lifetime_sync,
+        darkness_active = SH.darkness_active,
+        local_modifiers = SH.get_local_modifiers,
+        chaos_pair_allowed = SH.chaos_pair_allowed,
+        chaos_modifier_allowed = SH.chaos_modifier_allowed,
+        chaos_maps = SH.chaos_maps,
+        pick_chaos_pair = SH.pick_chaos_pair,
+        chaos_reroll = SH.host_reroll_chaos_modifiers,
         chaos_reroll_frames = CHAOS_REROLL_FRAMES,
         next_goal_delay = NEXT_GOAL_DELAY,
-        pick_second_modifier = Team.pick_second_modifier,
-        draw_darkness_behind = Team.draw_darkness_behind,
-        draw_gun_mod_hud_compatibility = Team.draw_gun_mod_hud_compatibility,
-        register_mod_compatibility = Team.register_mod_compatibility,
-        manual_reroll_request = Team.request_manual_reroll,
-        manual_reroll_remaining = Team.manual_reroll_remaining,
-        manual_reroll_label = Team.manual_reroll_label,
-        update_manual_reroll_menu = Team.update_manual_reroll_menu,
-        update_config_menu_lock = Team.update_config_menu_lock,
-        manual_reroll_cooldown = Team.manualRerollCooldown,
+        pick_second_modifier = SH.pick_second_modifier,
+        draw_darkness_behind = SH.draw_darkness_behind,
+        draw_gun_mod_hud_compatibility = SH.draw_gun_mod_hud_compatibility,
+        register_mod_compatibility = SH.register_mod_compatibility,
+        manual_reroll_request = SH.request_manual_reroll,
+        manual_reroll_remaining = SH.manual_reroll_remaining,
+        manual_reroll_label = SH.manual_reroll_label,
+        update_manual_reroll_menu = SH.update_manual_reroll_menu,
+        update_config_menu_lock = SH.update_config_menu_lock,
+        manual_reroll_cooldown = SH.manualRerollCooldown,
         toggle_menu = open_config_menu,
         chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
         set_language = function(value)
-            Team.language = clamp(math.floor(value or 0), 0, #Team.language_codes - 1)
+            SH.language = clamp(math.floor(value or 0), 0, #SH.language_codes - 1)
         end,
     }
 end
@@ -328,11 +331,11 @@ end
 -- Keep its star/coin flags disabled during the update, before it can draw.
 hook_event(HOOK_UPDATE, update_native_hud_visibility)
 hook_event(HOOK_UPDATE, apply_counter_visibility)
-hook_event(HOOK_UPDATE, Team.update_lifetime_sync)
+hook_event(HOOK_UPDATE, SH.update_lifetime_sync)
 hook_event(HOOK_UPDATE, Team.update_palettes)
 hook_event(HOOK_UPDATE, host_update_round)
-hook_event(HOOK_UPDATE, Team.update_config_menu_lock)
-hook_event(HOOK_UPDATE, Team.update_manual_reroll_menu)
+hook_event(HOOK_UPDATE, SH.update_config_menu_lock)
+hook_event(HOOK_UPDATE, SH.update_manual_reroll_menu)
 hook_event(HOOK_UPDATE, ensure_boss_health_owner)
 hook_event(HOOK_UPDATE, host_reset_scores_after_result)
 hook_event(HOOK_UPDATE, keep_moat_lowered)
@@ -342,10 +345,10 @@ hook_event(HOOK_UPDATE, update_star_visibility)
 hook_event(HOOK_UPDATE, update_private_player_visibility)
 hook_event(HOOK_UPDATE, flush_starhunt_save_removals)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, local_goal_warp_update)
-hook_event(HOOK_BEFORE_MARIO_UPDATE, Team.update_chaos_warp)
+hook_event(HOOK_BEFORE_MARIO_UPDATE, SH.update_chaos_warp)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, local_boss_warp_update)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, force_return_to_lobby)
-hook_event(HOOK_BEFORE_MARIO_UPDATE, Team.apply_local_modifier)
+hook_event(HOOK_BEFORE_MARIO_UPDATE, SH.apply_local_modifier)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, apply_boss_hazards)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, apply_goal_power)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, grant_infinite_lives)
@@ -353,8 +356,8 @@ hook_event(HOOK_BEFORE_MARIO_UPDATE, update_config_input)
 -- Reapply after character/moveset hooks as well, so custom characters cannot
 -- accidentally remove a cap required by the current StarHunt goal.
 hook_event(HOOK_MARIO_UPDATE, apply_goal_power)
-hook_event(HOOK_MARIO_UPDATE, Team.apply_post_moveset_limits)
-hook_event(HOOK_MARIO_UPDATE, Team.freeze_menu_mario)
+hook_event(HOOK_MARIO_UPDATE, SH.apply_post_moveset_limits)
+hook_event(HOOK_MARIO_UPDATE, SH.freeze_menu_mario)
 hook_event(HOOK_ON_OBJECT_LOAD, remove_castle_lakitu)
 hook_event(HOOK_ON_LEVEL_INIT, reset_hidden_object_tracking)
 hook_event(HOOK_ON_WARP, flush_starhunt_save_on_warp)
@@ -376,14 +379,14 @@ hook_event(HOOK_JOINED_GAME, on_joined_game)
 hook_event(HOOK_ON_HUD_RENDER_BEHIND, hide_native_hud_before_render)
 hook_event(HOOK_ON_HUD_RENDER, draw_hud)
 if HOOK_ON_MODS_LOADED ~= nil then
-    hook_event(HOOK_ON_MODS_LOADED, Team.register_mod_compatibility)
+    hook_event(HOOK_ON_MODS_LOADED, SH.register_mod_compatibility)
 else
-    Team.register_mod_compatibility()
+    SH.register_mod_compatibility()
 end
 hook_chat_command("starhunt", "Open menu; use /starhunt updates for changes", starhunt_command)
 if type(hook_mod_menu_button) == "function" then
-    Team.rerollMenuIndex = hook_mod_menu_button(
-        translated("ANOTHER LEVEL", "OTRO NIVEL"), Team.request_manual_reroll)
+    SH.rerollMenuIndex = hook_mod_menu_button(
+        translated("ANOTHER LEVEL", "OTRO NIVEL"), SH.request_manual_reroll)
 end
 
 if network_is_server() and gGlobalSyncTable.sh5_active == nil then
@@ -391,8 +394,8 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_round = 0
     gGlobalSyncTable.sh5_result_seq = 0
     gGlobalSyncTable.sh5_return_seq = 0
-    gGlobalSyncTable.sh5_mode = Team.Mode.NORMAL
-    gGlobalSyncTable.sh5_difficulty = Team.Difficulty.MEDIUM
+    gGlobalSyncTable.sh5_mode = SH.Mode.NORMAL
+    gGlobalSyncTable.sh5_difficulty = SH.Difficulty.MEDIUM
     gGlobalSyncTable.sh5_chaos_next_reroll = 0
     gGlobalSyncTable.sh5_chaos_level = 0
     gGlobalSyncTable.sh5_chaos_act = 1
@@ -424,5 +427,5 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_config_minutes = 8
 end
 
-Team.update_lifetime_sync()
+SH.update_lifetime_sync()
 run_static_modifier_checks()

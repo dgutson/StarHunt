@@ -1,6 +1,6 @@
 -- StarHunt v1.1 - the six UI languages.
 --
--- Team.language is an index into Team.language_codes, persisted under
+-- SH.language is an index into SH.language_codes, persisted under
 -- "starhunt_v11_language" and migrated from the v1.0 down to v0.6 keys on first
 -- load, so a player's choice survives an upgrade from any earlier version.
 --
@@ -8,19 +8,19 @@
 -- their own title/title_es fields on the goal and fall back to English in the
 -- other four languages, which is deliberate.
 
-local Team = require("core").Team
+local SH = require("core").SH
 
-Team.saved_language = mod_storage_load("starhunt_v11_language")
+SH.saved_language = mod_storage_load("starhunt_v11_language")
     or mod_storage_load("starhunt_v10_language")
     or mod_storage_load("starhunt_v09_language")
     or mod_storage_load("starhunt_v08_language")
     or mod_storage_load("starhunt_v07_language")
     or mod_storage_load("starhunt_v06_language")
-Team.language = math.max(0, math.min(5, math.floor(tonumber(Team.saved_language) or 1)))
-Team.saved_language = nil
+SH.language = math.max(0, math.min(5, math.floor(tonumber(SH.saved_language) or 1)))
+SH.saved_language = nil
 
-Team.language_codes = { "en", "es", "pt", "fr", "de", "it" }
-Team.menu_lock_labels = {
+SH.language_codes = { "en", "es", "pt", "fr", "de", "it" }
+SH.menu_lock_labels = {
     "MENU LOCKED UNTIL ROUND STARTS",
     "MENU BLOQUEADO HASTA INICIAR LA RONDA",
     "MENU BLOQUEADO ATE A RODADA COMECAR",
@@ -28,8 +28,8 @@ Team.menu_lock_labels = {
     "MENU BIS ZUM RUNDENSTART GESPERRT",
     "MENU BLOCCATO FINO ALL'INIZIO DEL ROUND",
 }
-Team.language_names = { "ENGLISH", "ESPAÑOL", "PORTUGUÊS", "FRANÇAIS", "DEUTSCH", "ITALIANO" }
-Team.ui_translations = {
+SH.language_names = { "ENGLISH", "ESPAÑOL", "PORTUGUÊS", "FRANÇAIS", "DEUTSCH", "ITALIANO" }
+SH.ui_translations = {
     pt = {
         ["START!"] = "COMEÇAR!", ["START ROUND"] = "INICIAR RODADA", ["STOP ROUND"] = "PARAR RODADA",
         ["LANGUAGE"] = "IDIOMA", ["GAME MODE"] = "MODO DE JOGO", ["TIME"] = "TEMPO",
@@ -147,7 +147,7 @@ Team.ui_translations = {
         ["NEW LEVEL REQUESTED."] = "NUOVO LIVELLO RICHIESTO.",
     },
 }
-Team.modifier_translations = {
+SH.modifier_translations = {
     pt = {
         no_b="BOTÃO B BLOQUEADO", floor_doom="CHÃO AMALDIÇOADO", speed_cap="PÉS PESADOS",
         low_jump="PULOS BAIXOS", water_cap="NADO PESADO", jump_limit="PULOS", reverse_controls="CONTROLES INVERTIDOS",
@@ -201,7 +201,7 @@ Team.modifier_translations = {
         overheat="SURRISCALDAMENTO",
     },
 }
-Team.boss_modifier_translations = {
+SH.boss_modifier_translations = {
     pt = {
         instakill="BOWSER: GOLPE MORTAL", shockwaves="BOWSER: ONDAS PARALISANTES",
         violet_fire="BOWSER: FOGO VIOLETA DIVIDIDO", rage="BOWSER: FÚRIA",
@@ -237,9 +237,9 @@ Team.boss_modifier_translations = {
 }
 
 local function translated(en, es)
-    if Team.language == 1 then return es end
-    local code = Team.language_codes[Team.language + 1]
-    local dictionary = code ~= nil and Team.ui_translations[code] or nil
+    if SH.language == 1 then return es end
+    local code = SH.language_codes[SH.language + 1]
+    local dictionary = code ~= nil and SH.ui_translations[code] or nil
     return dictionary ~= nil and dictionary[en] or en
 end
 

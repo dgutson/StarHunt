@@ -23,13 +23,13 @@
 -- of the host half.  `host_start_round` REPLACES three of them outright, so
 -- they cannot be shared with another module by re-localizing -- Lua copies the
 -- value on `local x = other.x`.  The fourth, the per-player records, is needed
--- by Team mode's scoring as well, so it lives on the shared `Team` table in
+-- by Team mode's scoring as well, so it lives on the shared `SH` table in
 -- core.lua rather than here.
 --
 -- Two things that look like they belong elsewhere and do not:
 --
 --   * `host_update_boss_round` is Boss's round loop and
---     `Team.host_update_chaos_round` is Chaos's, yet neither can live in the
+--     `SH.host_update_chaos_round` is Chaos's, yet neither can live in the
 --     module of the mode it belongs to.  This file requires boss.lua for the
 --     time range, the modifier slots and the health report, and chaos.lua for
 --     CHAOS_REROLL_FRAMES, so an edge back the other way would be a require
@@ -44,6 +44,7 @@
 -- hook block stays there because order within a hook type matters.
 
 local core = require("core")
+local SH = core.SH
 local Team = core.Team
 local local_runtime = core.local_runtime
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
@@ -102,7 +103,7 @@ local function time_range_for_players(count)
 end
 
 local function configured_time_range(count)
-    if gGlobalSyncTable.sh5_mode == Team.Mode.BOSS then return boss_time_range_for_players(count) end
+    if gGlobalSyncTable.sh5_mode == SH.Mode.BOSS then return boss_time_range_for_players(count) end
     return time_range_for_players(count)
 end
 
@@ -150,14 +151,14 @@ local function host_assign_goal(player_index, avoid_modifier_kind, avoid_level)
     local goal = get_goal(goal_id)
     local alternatives = {}
     for index, modifier_data in ipairs(goal.mods) do
-        if Team.difficulty_modifier_allowed(goal, modifier_data)
+        if SH.difficulty_modifier_allowed(goal, modifier_data)
             and (avoid_modifier_kind == nil or modifier_data.kind ~= avoid_modifier_kind) then
             table.insert(alternatives, index)
         end
     end
     if #alternatives == 0 then
         for index, modifier_data in ipairs(goal.mods) do
-            if Team.difficulty_modifier_allowed(goal, modifier_data) then table.insert(alternatives, index) end
+            if SH.difficulty_modifier_allowed(goal, modifier_data) then table.insert(alternatives, index) end
         end
     end
     if #alternatives == 0 then return false end
@@ -168,16 +169,16 @@ local function host_assign_goal(player_index, avoid_modifier_kind, avoid_level)
     local sync = gPlayerSyncTable[player_index]
     sync.sh5_goal = goal_id
     sync.sh5_modifier = modifier_index
-    sync.sh5_modifier_2 = Team.selected_difficulty() == Team.Difficulty.NIGHTMARE
-        and Team.pick_second_modifier(goal, modifier_index) or 0
+    sync.sh5_modifier_2 = SH.selected_difficulty() == SH.Difficulty.NIGHTMARE
+        and SH.pick_second_modifier(goal, modifier_index) or 0
     local second = goal.mods[sync.sh5_modifier_2 or 0]
     local jump_modifier = modifier_data.kind == "jump_limit" and modifier_data
         or (second ~= nil and second.kind == "jump_limit" and second or nil)
-    jump_modifier = Team.effective_modifier_for_goal(goal, jump_modifier)
+    jump_modifier = SH.effective_modifier_for_goal(goal, jump_modifier)
     sync.sh5_jump_count = jump_modifier ~= nil and jump_modifier.value or -1
     sync.sh5_goal_seq = (sync.sh5_goal_seq or 0) + 1
     sync.sh5_manual_reroll_ready_frame =
-        get_global_timer() + Team.manualRerollCooldown
+        get_global_timer() + SH.manualRerollCooldown
     return true
 end
 
@@ -204,7 +205,7 @@ local function winner_text_and_score()
     end
     -- A brief disconnect at the final second must not erase a participant
     -- from the results. The host keeps the latest authoritative snapshot.
-    for key, record in pairs(Team.host_player_records) do
+    for key, record in pairs(SH.host_player_records) do
         if not connected_keys[key] and record.enrolled == 1 then
             best_score, winners = update_winner_candidate(
                 record.name, record.score, best_score, winners)
@@ -219,16 +220,16 @@ local function host_end_round(reason)
     if not is_round_active() then return end
 
     local result_mode = selected_mode()
-    local boss_round = result_mode == Team.Mode.BOSS
+    local boss_round = result_mode == SH.Mode.BOSS
     local winner, score = winner_text_and_score()
     if boss_round then
         winner = reason == "boss defeated" and "TEAM STARHUNT" or "BOWSER"
         score = reason == "boss defeated" and 1 or 0
-    elseif result_mode == Team.Mode.CHAOS then
+    elseif result_mode == SH.Mode.CHAOS then
         winner = reason == "chaos last standing"
             and (gGlobalSyncTable.sh5_chaos_winner or "Nobody") or "Nobody"
         score = reason == "chaos last standing" and 1 or 0
-    elseif result_mode == Team.Mode.TEAM then
+    elseif result_mode == SH.Mode.TEAM then
         Team.update_scores()
         local red_score = gGlobalSyncTable.sh5_red_score or 0
         local blue_score = gGlobalSyncTable.sh5_blue_score or 0
@@ -273,7 +274,7 @@ local function host_end_round(reason)
             sync.sh5_manual_reroll_ack = 0
             sync.sh5_manual_reroll_ready_frame = 0
             sync.sh5_enrolled = 0
-            sync.sh5_team = Team.TeamColor.NONE
+            sync.sh5_team = Team.Color.NONE
             sync.sh5_chaos_eliminated = 0
             sync.sh5_return_seq = gGlobalSyncTable.sh5_return_seq
         end
@@ -312,7 +313,7 @@ local function host_prepare_player(player_index)
     local sync = gPlayerSyncTable[player_index]
     local name = gNetworkPlayers[player_index].name or ""
     local key = player_record_key(player_index)
-    local record = key ~= nil and Team.host_player_records[key] or nil
+    local record = key ~= nil and SH.host_player_records[key] or nil
     -- Co-op DX reuses global player indices after a disconnect. A direct key
     -- match is a reconnect only when the identity also matches; otherwise a
     -- new player could inherit somebody else's score and challenge.
@@ -329,7 +330,7 @@ local function host_prepare_player(player_index)
             end
         end
         local candidate = nil
-        for record_key, saved in pairs(Team.host_player_records) do
+        for record_key, saved in pairs(SH.host_player_records) do
             if saved.name == name and not connected_record_keys[record_key] then
                 if candidate ~= nil then
                     candidate = false
@@ -341,7 +342,7 @@ local function host_prepare_player(player_index)
         if candidate ~= false then record = candidate end
     end
     if record ~= nil then
-        local restored_team = Team.is_mode() and Team.pick_late(record.team) or Team.TeamColor.NONE
+        local restored_team = SH.is_team_mode() and Team.pick_late(record.team) or Team.Color.NONE
         sync.sh5_score = record.score
         sync.sh5_goal = record.goal
         sync.sh5_modifier = record.modifier
@@ -361,8 +362,8 @@ local function host_prepare_player(player_index)
         sync.sh5_lifetime_stars = math.max(sync.sh5_lifetime_stars or 0, record.lifetime_stars or 0)
         host_seen_done[player_index] = record.done
         host_seen_forfeit[player_index] = record.forfeit
-        Team.host_player_records[record.key] = nil
-        if is_boss_mode() or Team.is_chaos_mode() or record.goal ~= 0 then return true end
+        SH.host_player_records[record.key] = nil
+        if is_boss_mode() or SH.is_chaos_mode() or record.goal ~= 0 then return true end
         return host_assign_goal(player_index)
     end
 
@@ -378,24 +379,24 @@ local function host_prepare_player(player_index)
     sync.sh5_jump_count = -1
     sync.sh5_enrolled = 1
     sync.sh5_boss_victory = 0
-    sync.sh5_chaos_eliminated = Team.is_chaos_mode()
+    sync.sh5_chaos_eliminated = SH.is_chaos_mode()
         and ((gGlobalSyncTable.sh5_chaos_roster_locked or 0) == 1 and 1 or 0) or 0
     sync.sh5_boss_health_ready_round = 0
-    sync.sh5_boss_health_value = Team.boss_max_health()
+    sync.sh5_boss_health_value = SH.boss_max_health()
     sync.sh5_boss_health_tick = 0
     local initial_team = Team.initial[player_index]
     Team.initial[player_index] = nil
-    sync.sh5_team = Team.is_mode()
-        and (initial_team or Team.pick_late()) or Team.TeamColor.NONE
+    sync.sh5_team = SH.is_team_mode()
+        and (initial_team or Team.pick_late()) or Team.Color.NONE
     host_seen_done[player_index] = 0
     host_seen_forfeit[player_index] = 0
-    if Team.is_chaos_mode() then
-        local first_index, second_index = Team.pick_chaos_pair(0)
+    if SH.is_chaos_mode() then
+        local first_index, second_index = SH.pick_chaos_pair(0)
         if first_index == 0 then return false end
         sync.sh5_modifier = first_index
         sync.sh5_modifier_2 = second_index
-        local first = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[first_index])
-        local second = Team.effective_modifier(NORMAL_MODIFIER_CATALOG[second_index])
+        local first = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[first_index])
+        local second = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[second_index])
         sync.sh5_jump_count = first ~= nil and first.kind == "jump_limit" and first.value
             or (second ~= nil and second.kind == "jump_limit" and second.value or -1)
         return true
@@ -410,8 +411,8 @@ local function host_start_round(minutes)
         djui_chat_message_create("No connected players were found.")
         return false
     end
-    if (Team.is_mode() or Team.is_chaos_mode()) and players < 2 then
-        djui_chat_message_create(Team.is_chaos_mode()
+    if (SH.is_team_mode() or SH.is_chaos_mode()) and players < 2 then
+        djui_chat_message_create(SH.is_chaos_mode()
             and "Chaos Mode needs at least two connected players."
             or "Team Mode needs at least two connected players.")
         return false
@@ -420,7 +421,7 @@ local function host_start_round(minutes)
     local minimum, maximum = configured_time_range(players)
     minutes = clamp(math.floor(minutes), minimum, maximum)
 
-    if not is_boss_mode() and not Team.is_chaos_mode() then
+    if not is_boss_mode() and not SH.is_chaos_mode() then
         local available = 0
         for _, goal_data in ipairs(GOALS) do
             if not goal_already_collected(goal_data) then available = available + 1 end
@@ -434,13 +435,13 @@ local function host_start_round(minutes)
     host_used_goals = {}
     host_seen_done = {}
     host_seen_forfeit = {}
-    Team.host_player_records = {}
+    SH.host_player_records = {}
     math.randomseed(get_global_timer())
-    if Team.is_mode() then Team.build_balanced() else Team.initial = {} end
+    if SH.is_team_mode() then Team.build_balanced() else Team.initial = {} end
     gGlobalSyncTable.sh5_chaos_roster_locked = 0
-    if Team.is_chaos_mode() then
+    if SH.is_chaos_mode() then
         gGlobalSyncTable.sh5_chaos_level =
-            Team.chaos_maps[math.random(#Team.chaos_maps)]
+            SH.chaos_maps[math.random(#SH.chaos_maps)]
         gGlobalSyncTable.sh5_chaos_act = math.random(6)
         gGlobalSyncTable.sh5_chaos_modifier_1 = 0
         gGlobalSyncTable.sh5_chaos_modifier_2 = 0
@@ -457,14 +458,14 @@ local function host_start_round(minutes)
         gServerSettings.playerInteractions = PLAYER_INTERACTIONS_SOLID
         gGlobalSyncTable.sh5_boss_level_index = math.random(#BOSS_LEVELS)
         gGlobalSyncTable.sh5_boss_player_modifier = math.random(#BOSS_PLAYER_MODIFIERS)
-        if Team.selected_difficulty() == Team.Difficulty.NIGHTMARE then
+        if SH.selected_difficulty() == SH.Difficulty.NIGHTMARE then
             local second_choices = {}
             local first_modifier = BOSS_PLAYER_MODIFIERS[
                 gGlobalSyncTable.sh5_boss_player_modifier]
             for index = 1, #BOSS_PLAYER_MODIFIERS do
                 if index ~= gGlobalSyncTable.sh5_boss_player_modifier then
                     local candidate = BOSS_PLAYER_MODIFIERS[index]
-                    if Team.chaos_pair_allowed(first_modifier, candidate) then
+                    if SH.chaos_pair_allowed(first_modifier, candidate) then
                         table.insert(second_choices, index)
                     end
                 end
@@ -501,7 +502,7 @@ local function host_start_round(minutes)
         for slot = 1, BOSS_ATTACK_QUEUE_SIZE do
             gGlobalSyncTable["sh5_boss_attack_queue_" .. tostring(slot)] = 0
         end
-        gGlobalSyncTable.sh5_boss_max_health = Team.boss_health_for_difficulty()
+        gGlobalSyncTable.sh5_boss_max_health = SH.boss_health_for_difficulty()
         gGlobalSyncTable.sh5_boss_health = gGlobalSyncTable.sh5_boss_max_health
         gGlobalSyncTable.sh5_boss_original_bombs_seen = 0
         gGlobalSyncTable.sh5_boss_extra_bombs_spawned = 0
@@ -539,11 +540,11 @@ local function host_start_round(minutes)
             return false
         end
     end
-    if Team.is_chaos_mode() then gGlobalSyncTable.sh5_chaos_roster_locked = 1 end
+    if SH.is_chaos_mode() then gGlobalSyncTable.sh5_chaos_roster_locked = 1 end
 
     local mode_name = is_boss_mode() and "BOSS"
-        or (Team.is_mode() and "TEAM" or (Team.is_chaos_mode() and "CHAOS" or "NORMAL"))
-    if Team.is_mode() then Team.update_scores() end
+        or (SH.is_team_mode() and "TEAM" or (SH.is_chaos_mode() and "CHAOS" or "NORMAL"))
+    if SH.is_team_mode() then Team.update_scores() end
     djui_popup_create_global("STARHUNT " .. mode_name .. ": " .. tostring(minutes) .. " MINUTES", 1)
     return true
 end
@@ -556,7 +557,7 @@ local function remember_player_index(index)
     local name = network_player.name or ""
     local key = player_record_key(index)
     if name == "" or key == nil then return end
-    Team.host_player_records[key] = {
+    SH.host_player_records[key] = {
         key = key,
         name = name,
         enrolled = 1,
@@ -572,7 +573,7 @@ local function remember_player_index(index)
         jump_count = sync.sh5_jump_count or -1,
         boss_victory = sync.sh5_boss_victory or 0,
         chaos_eliminated = sync.sh5_chaos_eliminated or 0,
-        team = sync.sh5_team or Team.TeamColor.NONE,
+        team = sync.sh5_team or Team.Color.NONE,
         lifetime_stars = sync.sh5_lifetime_stars or 0,
     }
 end
@@ -594,7 +595,7 @@ local function host_add_late_joiner(player_index)
     if (sync.sh5_enrolled or 0) == 1 then return true end
     if host_prepare_player(player_index) then
         djui_chat_message_create(gNetworkPlayers[player_index].name
-            .. (Team.is_chaos_mode() and " joined Chaos as a spectator."
+            .. (SH.is_chaos_mode() and " joined Chaos as a spectator."
                 or " joined StarHunt and received a goal!"))
         return true
     end
@@ -621,7 +622,7 @@ local function host_update_boss_round()
     local boss_ready = false
     local reported_health = host_read_boss_health_report()
     if reported_health ~= nil then
-        local authoritative = clamp(gGlobalSyncTable.sh5_boss_health or Team.boss_max_health(), 0, Team.boss_max_health())
+        local authoritative = clamp(gGlobalSyncTable.sh5_boss_health or SH.boss_max_health(), 0, SH.boss_max_health())
         gGlobalSyncTable.sh5_boss_health = math.min(authoritative, reported_health)
         reported_health = gGlobalSyncTable.sh5_boss_health
         if reported_health <= 0 then
@@ -654,7 +655,7 @@ local function host_update_boss_round()
         end
     end
 
-    Team.host_update_boss_bomb_supply()
+    SH.host_update_boss_bomb_supply()
 
     -- A temporarily missing Bowser can be caused by lag, ownership transfer or
     -- a player respawning. Never interpret that as a victory and never queue
@@ -688,14 +689,14 @@ local function host_update_boss_round()
         if boss_has_modifier(4) then interval = math.max(4, math.floor(interval * 0.8)) end
         if boss_is_desperate() then interval = math.max(4, math.floor(interval * 0.65)) end
         local difficulty_factors = { 1.35, 1.0, 0.78, 0.55 }
-        interval = math.max(Team.selected_difficulty() == Team.Difficulty.NIGHTMARE and 2 or 3,
-            math.floor(interval * difficulty_factors[Team.selected_difficulty() + 1] + 0.5))
+        interval = math.max(SH.selected_difficulty() == SH.Difficulty.NIGHTMARE and 2 or 3,
+            math.floor(interval * difficulty_factors[SH.selected_difficulty() + 1] + 0.5))
         gGlobalSyncTable.sh5_boss_attack_frame = get_global_timer() + interval * FRAMES_PER_SECOND
     end
 end
 
-Team.host_update_chaos_round = function()
-    Team.host_reroll_chaos_modifiers()
+SH.host_update_chaos_round = function()
+    SH.host_reroll_chaos_modifiers()
     local alive_count, alive_name = 0, "Nobody"
     for i = 0, MAX_PLAYERS - 1 do
         if gNetworkPlayers[i].connected then
@@ -729,8 +730,8 @@ local function host_update_round()
         return
     end
 
-    if Team.is_chaos_mode() then
-        Team.host_update_chaos_round()
+    if SH.is_chaos_mode() then
+        SH.host_update_chaos_round()
         return
     end
 
@@ -792,7 +793,7 @@ local function host_update_round()
             remember_player_index(i)
         end
     end
-    if Team.is_mode() then Team.update_scores() end
+    if SH.is_team_mode() then Team.update_scores() end
 end
 
 local function on_before_boss_cutscene(m, incoming_action, _)
@@ -811,7 +812,7 @@ end
 
 local function local_goal_warp_update(m)
     if m.playerIndex ~= 0 then return end
-    if is_boss_mode() or Team.is_chaos_mode() then return end
+    if is_boss_mode() or SH.is_chaos_mode() then return end
 
     local current_goal_id = gPlayerSyncTable[0].sh5_goal or 0
     local current_goal = get_goal(current_goal_id)
@@ -1000,7 +1001,7 @@ local function on_death(m)
         end
         return false
     end
-    if Team.is_chaos_mode() then
+    if SH.is_chaos_mode() then
         if (gPlayerSyncTable[0].sh5_chaos_eliminated or 0) == 0 then
             gPlayerSyncTable[0].sh5_chaos_eliminated = 1
             local_runtime.chaos_spectator_warped = false
