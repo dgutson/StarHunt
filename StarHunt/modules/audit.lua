@@ -1,4 +1,4 @@
--- StarHunt v1.1 - which of the 32 modifiers each of the 93 stars can survive.
+-- StarHunt v1.1.1 - which of the 32 modifiers each of the 93 stars can survive.
 --
 -- BALANCE_AUDIT.md describes the four stages audit_modifier() runs, in order:
 -- a button or ability the star requires may never be removed; a route that is
@@ -20,7 +20,7 @@
 local modifier = require("core").modifier
 local GOALS = require("goals").GOALS
 
--- v1.1 checks every modifier against every goal. These are conservative
+-- The audit checks every modifier against every goal. These are conservative
 -- compatibility rules, not simulated playthroughs: 1) obvious mechanical
 -- impossibilities, 2) route-specific risk, 3) per-star/fallback tuning, and
 -- 4) numeric safety limits.

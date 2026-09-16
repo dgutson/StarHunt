@@ -1,4 +1,4 @@
--- StarHunt v1.1 - the two shared name spaces every other module builds on.
+-- StarHunt v1.1.1 - the two shared name spaces every other module builds on.
 --
 -- `SH` is the mod's general name space: the mode and difficulty axes, the
 -- language, the HUD helpers, Bowser's health, the modifier readers, Chaos, the
