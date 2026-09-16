@@ -45,7 +45,7 @@ en este repositorio y no existe en esta máquina. `test/` es su reemplazo.
 
 Un traslado byte a byte no puede deshacer una solución de la tabla de abajo,
 pero sí puede romperla si el traslado no es exacto. Para esos cambios, además
-de los siete pasos:
+de los ocho pasos:
 
 - Demostrar que las líneas movidas son idénticas byte a byte, en las dos
   direcciones: el cuerpo del módulo contra las líneas extraídas, y el
