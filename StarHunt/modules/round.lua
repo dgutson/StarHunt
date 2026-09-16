@@ -65,6 +65,7 @@ local players_have_private_variant = goals.players_have_private_variant
 local NORMAL_MODIFIER_CATALOG = require("audit").NORMAL_MODIFIER_CATALOG
 local boss = require("boss")
 local BOSS_LEVELS = boss.BOSS_LEVELS
+local BOWSER_ACT = boss.BOWSER_ACT
 local BOSS_PLAYER_MODIFIERS = boss.BOSS_PLAYER_MODIFIERS
 local BOSS_MODIFIERS = boss.BOSS_MODIFIERS
 local BOSS_MODIFIER_FIELDS = boss.BOSS_MODIFIER_FIELDS
@@ -631,20 +632,22 @@ local function host_update_boss_round()
     if boss_level ~= nil and gNetworkPlayers[0].currLevelNum == boss_level then
         local bowser = obj_get_first_with_behavior_id(id_bhvBowser)
         if bowser ~= nil then
-            -- Action 4 is Bowser's vanilla death sequence. End immediately,
+            -- DEAD is Bowser's vanilla death sequence. End immediately,
             -- before he can open a dialog, create a key cutscene or trigger
             -- the final-star cinematic.
-            if bowser.oAction == 4 then
+            if bowser.oAction == BOWSER_ACT.DEAD then
                 host_end_round("boss defeated")
                 return
             end
-            -- Actions 5, 6 and 20 belong to Bowser's multiplayer intro.
+            -- TEXT_WAIT, INTRO_WALK and WAIT are Bowser's multiplayer intro.
             -- Hazards must not begin while a player is still trapped in it,
             -- and must stop again for as long as a player has hold of
             -- Bowser: every attack spawns at his position, so it would go off
             -- in the face of whoever is spinning him by the tail, or of
             -- whoever has just thrown him and cannot move until he lands.
-            boss_ready = bowser.oAction ~= 5 and bowser.oAction ~= 6 and bowser.oAction ~= 20
+            boss_ready = bowser.oAction ~= BOWSER_ACT.TEXT_WAIT
+                and bowser.oAction ~= BOWSER_ACT.INTRO_WALK
+                and bowser.oAction ~= BOWSER_ACT.WAIT
                 and not boss_is_grabbed(bowser)
         end
     end

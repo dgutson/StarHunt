@@ -38,7 +38,7 @@ El identificador es el SHA-256 de la lista ordenada de hashes de todos los
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-`235A6D29EF8134016A29A2F493BEB91DF5B03F7ABC569DC23A5F8ACCE7803283`, tras las correcciones
+`E03B9B6CCEF6B2D14459B6A7DD5FE859AF13185BBE082681F7F0DB215E4A45B9`, tras las correcciones
 del 16 de septiembre. El valor de la division en modulos era
 `27BEDAA820964202EABAAFB96633B8F4A9C4812BA7866C3F97E463CC5D3DD0C7`.
 
