@@ -104,13 +104,6 @@ local draw_hud = hud.draw_hud
 local local_round_notifications = hud.local_round_notifications
 
 local local_lakitu_scan_at = 0
-Team.lifetime = math.max(0, math.floor(tonumber(
-    mod_storage_load("starhunt_lifetime_stars")) or 0))
-
-
-Team.update_lifetime_sync = function()
-    gPlayerSyncTable[0].sh5_lifetime_stars = Team.lifetime
-end
 
 Team.pick_second_modifier = function(goal, first_index)
     local choices = {}

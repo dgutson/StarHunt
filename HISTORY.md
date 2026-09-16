@@ -13,6 +13,40 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — R-013, second of four destinations: the lifetime star count moves into `modules/goals.lua`
+
+`Team.lifetime` and `Team.update_lifetime_sync` left `main.lua` for `modules/goals.lua`. Seven
+lines moved, proven byte-identical in both directions: the block in `goals.lua` matches lines
+107-113 of `7af4b9e`'s `main.lua` exactly, and the new `main.lua` is that file minus exactly
+that range. `goals.lua` gained **no import at all** — both are fields of the shared `Team`
+table it already binds from `core`, and `main.lua` keeps reaching them the way it reaches
+`Team.update_palettes`, so the require graph is unchanged. `main.lua` is 538 → 531 lines;
+`goals.lua` is 877 → 890, the seven moved lines plus a five-line comment saying why the
+counter lives there and a blank.
+
+**`Team.update_lifetime_sync` was published in `STARHUNT_TEST_API` and called by no test at
+all** — the seventh time that has been true. A sweep of the block before the move caught 4 of
+8 mutations: the whole body of `update_lifetime_sync` could be deleted, the total could be
+written into player 1's slot instead of player 0's, and a negative stored total could pass the
+clamp, all with 709 tests still green.
+
+`test/suite/lifetime.lua` is new — 9 tests over the stored total read at load, a first run with
+nothing stored, a stored value that is not a number, a negative one clamped and a fractional
+one floored, the republish that puts the total back when the synchronized value is lost, and
+claiming a star raising, saving and republishing it while a star that is not the goal leaves it
+alone. The re-sweep at the new location, over both the moved block and the three lines in
+`on_interact` that increment and persist the total, caught 14 of 15. The one survivor is
+equivalent and is recorded in `REFACTOR_PLAN.md`: the `or 0` that catches an absent total sits
+inside `math.max(0, math.floor(...))`, so `or -1` still loads as zero.
+
+**The mutation tooling is now committed**, at the user's decision, as `tools/gen_mutations.py`
+and `tools/sweep_mutations.py`. It had been written from scratch into the session scratchpad
+and lost with it at least twice, while the project's own verification rules require a mutation
+check on every pass. `tools/` is outside `StarHunt/`, so nothing there ships with the mod.
+
+718 tests pass. luacheck 2 warnings / 0 errors in 46 files and lua-language-server 10 problems
+in 2 files, both unchanged baselines.
+
 ### 2026-09-15 — R-013, first of three: the Boss trio moves into `modules/boss.lua`
 
 `Team.boss_reserve_bomb_count`, `Team.host_update_boss_bomb_supply` and

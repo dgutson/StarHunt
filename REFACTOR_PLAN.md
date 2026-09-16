@@ -216,9 +216,16 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    the previous commit (`git show HEAD:StarHunt/main.lua | sed -n 'A,Bp'`), *and* reconstruct
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
-2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **eighteen of the twenty** passes so far. The HUD's frame was the last of
-   them: a ten-mutation spot check caught nothing at all, because `test/suite/hud.lua` reached
+2. **Mutation.** Mutate the moved code and check the suite notices. The two scripts that do it
+   live in `tools/` — `gen_mutations.py` produces the candidates for a range of lines and
+   `sweep_mutations.py` runs the suite against each one in a throwaway copy of the tree. They
+   are committed rather than written fresh each session, which is what used to happen, and
+   `tools/` is outside `StarHunt/` so nothing there ships with the mod. This check has found a
+   real coverage gap in **twenty of the twenty-two** passes so far. The lifetime star count was
+   the last of them: `Team.update_lifetime_sync` was published in `STARHUNT_TEST_API` and
+   called by no test at all, so its whole body could be deleted with 709 tests still passing,
+   and so could writing the total into the wrong player's slot or letting a negative stored
+   total through the clamp. Before it, the HUD's frame: a ten-mutation spot check caught nothing at all, because `test/suite/hud.lua` reached
    `draw_hud` exactly once inside a `pcall` that only checked no colon had gone to the font,
    `test/suite/menu.lua` tests what the menu does when a button is pressed rather than what it
    draws, and nothing tested the banner or the winner announcements. **Four of the gaps it
@@ -444,7 +451,11 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   indistinguishable from `= 1`, because the flag is only ever compared to zero; and seeding the
   bomb-position pool from index 0 instead of 1 adds an `available[0]` that Lua's length
   operator ignores -- verified in the interpreter, `#` stays 5 and the draw is unchanged.
-  **Leave all nineteen exactly as they are.**
+  The lifetime star count added one more: the `or 0` that catches an absent or unparseable
+  stored total can be any value at or below zero, because it sits inside
+  `math.max(0, math.floor(...))`. `or -1` therefore still loads as zero -- verified in the
+  interpreter -- while `or 1` is caught, and the clamp itself is caught by the test that stores
+  `-5`. **Leave all twenty exactly as they are.**
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
@@ -593,17 +604,18 @@ every mutation caught.
 **Group two: eight declarations the `boss` and `goals` passes were meant to take and left
 behind.** These are *not* a decision to stay — they are an oversight the audit found, and they
 are R-013 in `ROADMAP.md`. Each was checked against the real require graph, so none of them
-needs a new edge. **Three are done:** `Team.boss_reserve_bomb_count`,
+needs a new edge. **Five are done:** `Team.boss_reserve_bomb_count`,
 `Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
 `local_boss_health_*` locals are now in `boss.lua`, which gained one import,
 `core.FRAMES_PER_SECOND`, and nothing else. `main.lua`'s own `FRAMES_PER_SECOND` binding had
-no reader left afterwards and went with the move. The five below remain. Lines are as they
-were when R-004 ran and have shifted since — re-derive them:
+no reader left afterwards and went with the move. `Team.lifetime` and
+`Team.update_lifetime_sync` are now in `goals.lua`, which gained no import at all: both are
+fields of the shared `Team` table, which `goals.lua` already binds from `core`, and `main.lua`
+keeps reaching them the same way it reaches `Team.update_palettes`. The three below remain.
+Lines are as they were when R-004 ran and have shifted since — re-derive them:
 
 | decl | line | goes to | checked |
 |---|---|---|---|
-| `Team.lifetime` | 107 | `goals.lua` | `goals.lua:817-819` is the only code that increments and persists it |
-| `Team.update_lifetime_sync` | 115 | `goals.lua` | its only caller is `goals.lua:819`; needs nothing but `gPlayerSyncTable` |
 | `Team.pick_second_modifier` | 119 | `modifiers.lua` | reaches `Team.chaos_pair_allowed` and `Team.difficulty_modifier_allowed` as `Team` fields, so nothing blocks it anywhere; the appendix said `goals`, but the decision it makes is the modifier catalog's, not a star's |
 | `on_before_boss_cutscene` | 266 | `round.lua`, **not** `boss.lua` | it calls `host_end_round`, and the graph already runs `round -> boss`, so an edge back would be a cycle |
 | `local_goal_warp_update`, `local_boss_warp_update` | 280, 317 | `round.lua` | the client half of the round loop. Between them they need `get_goal`, `BOSS_LEVELS` and `reset_local_modifier_state`, and `round.lua` already requires `goals`, `boss` and `modifiers` |

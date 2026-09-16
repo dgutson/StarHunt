@@ -24,6 +24,19 @@ local local_runtime = core.local_runtime
 local remove_starhunt_save_flag = require("save").remove_starhunt_save_flag
 local boss_has_modifier = require("boss").boss_has_modifier
 
+-- The player's lifetime star count, loaded once at startup.  It lives in this
+-- module because on_interact below is the only code that increments and saves
+-- it.  update_lifetime_sync publishes it for modules/team.lua, which balances
+-- the rosters by reading sh5_lifetime_stars rather than this total directly,
+-- and main.lua both calls it at load and hooks it to HOOK_UPDATE.
+Team.lifetime = math.max(0, math.floor(tonumber(
+    mod_storage_load("starhunt_lifetime_stars")) or 0))
+
+
+Team.update_lifetime_sync = function()
+    gPlayerSyncTable[0].sh5_lifetime_stars = Team.lifetime
+end
+
 local WORLD_NAMES = {
     [LEVEL_BOB] = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
     [LEVEL_WF] = { "WHOMP'S FORTRESS", "FORTALEZA DE WHOMP" },
