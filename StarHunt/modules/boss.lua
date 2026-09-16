@@ -19,9 +19,10 @@
 -- for BOSS_PLAYER_MODIFIERS. It moved into core.lua, which everything may
 -- import, and the hazards followed.
 --
--- Two details in here are deliberate and easy to undo by accident. Boss player
--- modifiers never include one that removes B, because every player has to stay
--- able to grab Bowser by the tail. And the attack queue is eight slots rather
+-- Three details in here are deliberate and easy to undo by accident. Boss
+-- player modifiers never include one that removes B, because every player has
+-- to stay able to grab Bowser by the tail, and boss_is_held stops the attacks
+-- for as long as one of them has. And the attack queue is eight slots rather
 -- than a single "latest attack" field, because a single field lost attacks
 -- under lag -- BOSS_ACTIVE_ATTACK_MODIFIERS lists the ones that create an
 -- attack of their own, so that a draw cannot consist entirely of modifiers
@@ -123,6 +124,18 @@ end
 
 local function boss_is_desperate()
     return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or Team.boss_max_health()) <= 2
+end
+
+-- A player can grab Bowser by the tail and spin him, which is how the fight is
+-- won. While he is in someone's hands, StarHunt's own attacks must stop. They
+-- all spawn at Bowser's position, so one played now goes off in the face of
+-- the player holding him, and a shockwave is worse than unfair: its stun
+-- empties the controller, which releases B and drops Bowser, so the mod's
+-- hazard cancels the vanilla mechanic the mode depends on. A Bowser the engine
+-- does not answer for reads as free, which leaves the fight as it was rather
+-- than silently switching every attack off.
+local function boss_is_held(bowser)
+    return bowser ~= nil and bowser.oHeldState == HELD_HELD
 end
 
 local function boss_modifier_text(slot)
@@ -293,9 +306,13 @@ local function apply_boss_hazards(m)
     -- queued attacks intact until the object returns instead of silently
     -- consuming them.
     if bowser == nil then return end
-    -- During Bowser's intro, consume the current sequence without executing
-    -- it. This also protects players who joined after an attack was sent.
-    if bowser.oAction == 5 or bowser.oAction == 6 or bowser.oAction == 20 then
+    -- During Bowser's intro, and for as long as a player is holding him,
+    -- consume the current sequence without executing it. The intro case also
+    -- protects players who joined after an attack was sent; the held case
+    -- drops the delayed waves and meteors too, so nothing already in flight
+    -- lands on the player doing the grabbing.
+    if bowser.oAction == 5 or bowser.oAction == 6 or bowser.oAction == 20
+        or boss_is_held(bowser) then
         local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
         local_runtime.pending_double_waves = {}
         local_runtime.pending_meteors = {}
@@ -486,6 +503,7 @@ return {
     boss_time_range_for_players = boss_time_range_for_players,
     boss_has_modifier = boss_has_modifier,
     boss_is_desperate = boss_is_desperate,
+    boss_is_held = boss_is_held,
     boss_modifier_text = boss_modifier_text,
     host_read_boss_health_report = host_read_boss_health_report,
     apply_boss_hazards = apply_boss_hazards,

@@ -13,6 +13,39 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-015: Bowser stops attacking while a player is holding him
+
+Reported from play: in Boss mode, grabbing Bowser by the tail and spinning him did not stop
+the attacks his drawn modifiers create. Every attack spawns at Bowser's own position, so each
+one went off on top of the player holding him, and a shockwave did more than hurt — its stun
+empties the controller, which releases B and drops Bowser, so the mod's own hazard cancelled
+the vanilla mechanic the fight is won by. `boss.lua`'s header already carried the other half
+of this rule (no Boss player modifier may remove B, because every player has to stay able to
+grab him) and it had never been applied to the attacks.
+
+The fix is one predicate, `boss_is_held`, used on both sides of the host-authority line:
+
+- `modules/round.lua` (`host_update_boss_round`) folds it into `boss_ready`, so the host
+  queues nothing while Bowser is held and pushes the next attack a second out, exactly as it
+  already did for his intro.
+- `modules/boss.lua` (`apply_boss_hazards`) folds it into the intro branch, so each client
+  consumes the sequence without playing it and drops the delayed waves and meteors already in
+  flight. Suppressing on both sides is deliberate: a client whose view of the grab differs
+  from the host's still refuses to play the attack.
+
+The predicate reads `oHeldState == HELD_HELD` and treats a Bowser the engine does not answer
+for as free, so an engine that stops reporting the field leaves the fight working instead of
+silently switching every attack off. `HELD_THROWN` and `HELD_DROPPED` are deliberately not
+covered: the vanilla thrown update resets the field to `HELD_FREE` on the next frame, so they
+are a one-frame state and not what was reported.
+
+Five tests were added, three in `test/suite/boss_hazards.lua` and two in
+`test/suite/round_host.lua`; the suite is 772. The mutation sweep caught 22 of 24 candidates
+on `boss.lua` first time; the two survivors were the `or 0` fallback the consume branch
+reads when the ring has never been written, which the third hazard test now pins. The
+`round.lua` sweep caught all 17. `test/engine_stub.lua` was regenerated for `HELD_HELD` and
+is now 118 constants.
+
 ### 2026-09-16 — R-011: the refactor is reconciled, merged into `main` and tagged
 
 The thirteen-module split was merged into `main` as a single merge commit, with

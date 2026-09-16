@@ -1120,6 +1120,34 @@ return function(t, harness)
         end
     end)
 
+    s.test("Bowser queues nothing while a player is holding him", function()
+        -- Grabbing him by the tail and spinning him is how the fight is won.
+        -- The attacks all spawn at his position, so queueing one now aims it
+        -- at the player holding him -- and a shockwave's stun empties that
+        -- player's controller, which releases B and drops Bowser.
+        local api, ctl = bowser_fight()
+        ctl.objects[id_bhvBowser].oHeldState = HELD_HELD
+        gGlobalSyncTable.sh5_boss_modifier_1 = 2
+        ctl.timer = gGlobalSyncTable.sh5_boss_attack_frame
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_boss_attack_kind, 0, "a held Bowser attacked")
+        t.eq(gGlobalSyncTable.sh5_boss_attack_frame, ctl.timer + 30,
+            "a held Bowser did not push the next attack a second out")
+    end)
+
+    s.test("Bowser attacks again once he is put down", function()
+        local api, ctl = bowser_fight()
+        ctl.objects[id_bhvBowser].oHeldState = HELD_HELD
+        gGlobalSyncTable.sh5_boss_modifier_1 = 2
+        ctl.timer = gGlobalSyncTable.sh5_boss_attack_frame
+        api.host_update()
+        ctl.objects[id_bhvBowser].oHeldState = 0   -- HELD_FREE; the stub carries
+                                                   -- only the constants the mod names
+        ctl.timer = gGlobalSyncTable.sh5_boss_attack_frame
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_boss_attack_kind, 2, "the fight never resumed after the grab")
+    end)
+
     s.test("no Bowser in the arena means no attacks", function()
         local api, ctl = bowser_fight()
         ctl.objects[id_bhvBowser] = nil

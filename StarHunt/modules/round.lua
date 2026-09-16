@@ -74,6 +74,7 @@ local BOSS_ACTIVE_ATTACK_LOOKUP = boss.BOSS_ACTIVE_ATTACK_LOOKUP
 local boss_time_range_for_players = boss.boss_time_range_for_players
 local boss_has_modifier = boss.boss_has_modifier
 local boss_is_desperate = boss.boss_is_desperate
+local boss_is_held = boss.boss_is_held
 local host_read_boss_health_report = boss.host_read_boss_health_report
 local CHAOS_REROLL_FRAMES = require("chaos").CHAOS_REROLL_FRAMES
 local local_modifiers = require("modifiers")
@@ -638,8 +639,12 @@ local function host_update_boss_round()
                 return
             end
             -- Actions 5, 6 and 20 belong to Bowser's multiplayer intro.
-            -- Hazards must not begin while a player is still trapped in it.
+            -- Hazards must not begin while a player is still trapped in it,
+            -- and must stop again for as long as a player is holding Bowser:
+            -- every attack spawns at his position, so it would go off in the
+            -- face of whoever is spinning him by the tail.
             boss_ready = bowser.oAction ~= 5 and bowser.oAction ~= 6 and bowser.oAction ~= 20
+                and not boss_is_held(bowser)
         end
     end
 

@@ -24,6 +24,12 @@ su configuración especial de vida.
 
 ## Cambios de v1.1
 
+- Mantenimiento del 16 de septiembre: en Boss, agarrar a Bowser de la cola
+  detiene sus ataques mientras se lo sujeta. Antes seguían saliendo desde su
+  propia posición, es decir encima del jugador que lo tenía agarrado, y el
+  aturdimiento de una onda vaciaba el mando, soltaba la B y lo dejaba caer. Las
+  olas retardadas y los meteoritos ya lanzados tampoco caen durante el agarre.
+  Al soltarlo, la pelea sigue un segundo después.
 - Mantenimiento del 4 de agosto: Boss conserva sus cinco bombas originales y,
   después de que el host confirme que todas se agotaron, recibe una única
   reserva sincronizada en posiciones originales aleatorias y distintas: dos
