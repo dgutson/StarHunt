@@ -6,6 +6,11 @@
 -- speed, the locked button, the cursed floor -- is recomputed locally every
 -- frame from local_runtime.
 --
+-- One function here is not local. Team.pick_second_modifier runs on the host
+-- and chooses the second modifier a star race hands out at Nightmare. It lives
+-- here because its subject is the catalog and pair compatibility rather than
+-- the round; its only caller is host_assign_goal in round.lua.
+--
 -- Two hooks rather than one, and the order matters. apply_local_modifier runs
 -- under HOOK_BEFORE_MARIO_UPDATE and apply_post_moveset_limits re-clamps the
 -- same limits under HOOK_MARIO_UPDATE, because character and moveset mods such
@@ -108,6 +113,19 @@ Team.local_modifier_of_kind = function(kind)
         if modifier_data.kind == kind then return modifier_data end
     end
     return nil
+end
+
+Team.pick_second_modifier = function(goal, first_index)
+    local choices = {}
+    local first = goal.mods[first_index]
+    for index, candidate in ipairs(goal.mods) do
+        if index ~= first_index and Team.chaos_pair_allowed(first, candidate)
+            and Team.difficulty_modifier_allowed(goal, candidate) then
+            table.insert(choices, index)
+        end
+    end
+    if #choices == 0 then return 0 end
+    return choices[math.random(#choices)]
 end
 
 local function reset_local_modifier_state()

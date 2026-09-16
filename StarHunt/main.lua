@@ -105,19 +105,6 @@ local local_round_notifications = hud.local_round_notifications
 
 local local_lakitu_scan_at = 0
 
-Team.pick_second_modifier = function(goal, first_index)
-    local choices = {}
-    local first = goal.mods[first_index]
-    for index, candidate in ipairs(goal.mods) do
-        if index ~= first_index and Team.chaos_pair_allowed(first, candidate)
-            and Team.difficulty_modifier_allowed(goal, candidate) then
-            table.insert(choices, index)
-        end
-    end
-    if #choices == 0 then return 0 end
-    return choices[math.random(#choices)]
-end
-
 local function on_before_boss_cutscene(m, incoming_action, _)
     if m.playerIndex ~= 0 or not is_round_active() or not is_boss_mode() then return end
     if incoming_action ~= ACT_STAR_DANCE_EXIT and incoming_action ~= ACT_STAR_DANCE_WATER

@@ -604,19 +604,22 @@ every mutation caught.
 **Group two: eight declarations the `boss` and `goals` passes were meant to take and left
 behind.** These are *not* a decision to stay — they are an oversight the audit found, and they
 are R-013 in `ROADMAP.md`. Each was checked against the real require graph, so none of them
-needs a new edge. **Five are done:** `Team.boss_reserve_bomb_count`,
+needs a new edge. **Six are done:** `Team.boss_reserve_bomb_count`,
 `Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
 `local_boss_health_*` locals are now in `boss.lua`, which gained one import,
 `core.FRAMES_PER_SECOND`, and nothing else. `main.lua`'s own `FRAMES_PER_SECOND` binding had
 no reader left afterwards and went with the move. `Team.lifetime` and
 `Team.update_lifetime_sync` are now in `goals.lua`, which gained no import at all: both are
 fields of the shared `Team` table, which `goals.lua` already binds from `core`, and `main.lua`
-keeps reaching them the same way it reaches `Team.update_palettes`. The three below remain.
+keeps reaching them the same way it reaches `Team.update_palettes`. `Team.pick_second_modifier`
+is now in `modifiers.lua`, which also gained no import: it reads only `Team` fields and the
+goal's own `mods` list, and its one caller, `host_assign_goal` in `round.lua`, already reached
+it through `Team`. It is the one host-side function in that file, so its header now says so.
+The two below remain.
 Lines are as they were when R-004 ran and have shifted since — re-derive them:
 
 | decl | line | goes to | checked |
 |---|---|---|---|
-| `Team.pick_second_modifier` | 119 | `modifiers.lua` | reaches `Team.chaos_pair_allowed` and `Team.difficulty_modifier_allowed` as `Team` fields, so nothing blocks it anywhere; the appendix said `goals`, but the decision it makes is the modifier catalog's, not a star's |
 | `on_before_boss_cutscene` | 266 | `round.lua`, **not** `boss.lua` | it calls `host_end_round`, and the graph already runs `round -> boss`, so an edge back would be a cycle |
 | `local_goal_warp_update`, `local_boss_warp_update` | 280, 317 | `round.lua` | the client half of the round loop. Between them they need `get_goal`, `BOSS_LEVELS` and `reset_local_modifier_state`, and `round.lua` already requires `goals`, `boss` and `modifiers` |
 

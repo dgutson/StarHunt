@@ -13,6 +13,49 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-013, third of four destinations: the Nightmare pair picker moves into `modules/modifiers.lua`
+
+`Team.pick_second_modifier` left `main.lua` for `modules/modifiers.lua`. Twelve lines moved,
+proven byte-identical in both directions: the block in `modifiers.lua` matches lines 108-119
+of `e0c6dd3`'s `main.lua` exactly, and the new `main.lua` is that file minus exactly that
+range. `modifiers.lua` gained **no import at all** — the function reads only `Team` fields
+(`Team.chaos_pair_allowed` from `chaos.lua`, `Team.difficulty_modifier_allowed` from
+`difficulty.lua`) and the goal's own `mods` list, and its one caller, `host_assign_goal` in
+`round.lua`, already reached it through `Team`. The require graph is unchanged. `main.lua` is
+531 → 518 lines; `modifiers.lua` is 823 → 836, the twelve moved lines plus a blank and a
+five-line header note.
+
+**The header note is a real edit, not part of the move.** `modifiers.lua` opened by saying
+"Everything here runs on the local player's own machine and is never synchronized", and
+`pick_second_modifier` runs on the host and decides which second modifier a star race hands
+out — exactly the kind of decision that sentence says lives elsewhere. Rather than leave a
+false statement at the top of a file the next session reads, the header now names the one
+exception and why it is here: its subject is the catalog and pair compatibility, not the
+round. The move itself was verified separately from that edit, and `git diff -U0` on the file
+shows exactly two hunks.
+
+**The mutation sweep found the gap this time in the `#choices == 0` guard.** Before the move,
+a sweep of the block caught 8 of 13 mutations; all five survivors were on one line,
+`if #choices == 0 then return 0 end`. `test/suite/pairing.lua` had four tests touching
+`pick_second_modifier`, and every one of them only inspected pairs that were successfully
+formed — so the opposite case, nothing compatible and therefore no second modifier, was never
+reached. It is unreachable with the real 93 goals, because every star has at least one legal
+Nightmare pair and one of those tests asserts precisely that. Reaching it needs a synthetic
+goal.
+
+Three tests were added, each building a small goal from a real one so the level and act the
+audit reads stay genuine, and searching for the modifiers rather than naming them so retuning
+a star cannot quietly turn the tests into no-ops: a goal with a single modifier offers no
+second; a goal whose only alternative is the same kind offers no second, because
+`chaos_pair_allowed` refuses a kind paired with itself; and a goal with exactly one legal
+alternative returns that one, in both directions. The first two also catch deleting the guard
+outright, since the function then reaches `math.random(0)` and errors.
+
+After the move the block caught **13 of 13**, and a sweep of the two caller lines in
+`round.lua` that assign `sh5_modifier_2` caught **8 of 8**. The suite is 718 → 721 tests, all
+passing. luacheck holds at 2 warnings / 0 errors in 46 files and lua-language-server at 10
+problems in 2 files, both pre-existing.
+
 ### 2026-09-15 — R-013, second of four destinations: the lifetime star count moves into `modules/goals.lua`
 
 `Team.lifetime` and `Team.update_lifetime_sync` left `main.lua` for `modules/goals.lua`. Seven
