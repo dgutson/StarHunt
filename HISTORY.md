@@ -13,6 +13,56 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-013 finished: the client half of the round loop moves into `modules/round.lua`
+
+`on_before_boss_cutscene`, `local_goal_warp_update` and `local_boss_warp_update` left
+`main.lua` for `modules/round.lua`'s client half — 99 lines, the last of the eight
+declarations R-004 found. `main.lua` is 518 → 420 and `round.lua` 966 → 1,079. **R-013 is
+done**: every top-level declaration left in `main.lua` is the header, an import, a hook
+callback with a recorded reason, the synchronized-table seed or `STARHUNT_TEST_API`.
+
+The moved bodies were proven byte-identical three ways — the block in `round.lua` matches
+lines 108-206 of `4f7b50f`'s `main.lua` exactly, the new `main.lua` is that file minus exactly
+that block, and the new `round.lua` is the old one plus exactly it — and the check was run
+again immediately before committing. Unlike the two passes before it this was **not** a pure
+relocation: all three are registered as hooks, so `round.lua` exports them and `main.lua` binds
+them back. That wiring is a separate, countable diff of five hunks in `main.lua` and four in
+`round.lua`. `round.lua` gained `core.NEXT_GOAL_DELAY` and
+`modifiers.reset_local_modifier_state`; `main.lua` lost `boss.BOSS_LEVELS` and the same
+`reset_local_modifier_state`, which had no reader left.
+
+**All three functions had no tests at all — the eighth time `STARHUNT_TEST_API` membership has
+meant "untested", and the clearest case so far.** `goal_warp` and `boss_warp` were published
+and called by nothing anywhere in `test/`; `on_before_boss_cutscene` was not published; and
+`hook_event` in the harness only records a callback without running it. All 210 mutations of
+those 99 lines survived a green 721-test run, confirmed against the full suite rather than
+argued: the mod could have failed to warp anyone to their star, replayed a whole fight's worth
+of Bowser attacks at a late joiner, or revived a dead player with no health, and nothing would
+have gone red.
+
+Forty-six tests were added to `test/suite/round_client.lua` (26 → 72; the suite total is 721 →
+767). Three engine stubs had to gain real bodies first: `get_ttc_speed_setting` /
+`set_ttc_speed_setting`, which made both the Tick Tock Clock guard and the choice between
+stopped and slow invisible, and `set_mario_action` / `soft_reset_camera`, which are the half of
+Boss's in-place death respawn that actually puts Mario back in play. After that, **201 of 202
+mutations are caught**. The survivor is an equivalent mutant — `BOSS_LEVELS[... or -1]` cannot
+differ from `[... or 0]` in a one-entry Lua array — and is recorded with the other twenty in
+`REFACTOR_PLAN.md`.
+
+Two things were corrected rather than left wrong. `round.lua`'s header claimed the host and
+client halves **never call each other**; `on_before_boss_cutscene` calls `host_end_round`
+behind a `network_is_server()` check, so the header now names that one exception and R-012 has
+been updated — its cut is no longer free. And `tools/gen_mutations.py` was deleting
+comment-only lines, which always survive and say nothing; six of one sweep's fifty-four
+survivors were that noise. It now skips them.
+
+Two traps worth carrying forward. The mutation range must be derived **after** the last edit to
+the file: adding the two imports pushed the block down three lines, so a range worked out
+beforehand mutated the tail of the function above it and missed three lines of the block. And
+for a block this size the full suite is too slow to sweep against (43s × 202 is over two
+hours), so the sweep ran against `round_client` alone and only the survivors were re-run
+against everything — checked rather than assumed: all 54 agreed.
+
 ### 2026-09-16 — R-013, third of four destinations: the Nightmare pair picker moves into `modules/modifiers.lua`
 
 `Team.pick_second_modifier` left `main.lua` for `modules/modifiers.lua`. Twelve lines moved,

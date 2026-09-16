@@ -113,6 +113,10 @@ local function install_engine()
         owned_sync_ids = {},     -- sync id -> true; drives sync_object_is_owned_locally
         sent_objects = {},       -- every network_send_object call
         transition = false,      -- what is_transition_playing reports
+        ttc_speed = TTC_SPEED_SLOW,  -- what get_ttc_speed_setting reports
+        ttc_speed_writes = 0,    -- how many times set_ttc_speed_setting was called
+        mario_actions = {},      -- every set_mario_action call
+        camera_resets = 0,       -- every soft_reset_camera call
     }
     harness.ctl = ctl
 
@@ -282,6 +286,30 @@ local function install_engine()
     -- The generated stub returns nil for this, so a guard that holds a warp back
     -- during a level transition could be deleted without any test noticing.
     function is_transition_playing() return ctl.transition end
+
+    -- TTC's clock runs at whatever speed the castle clock face was entered at,
+    -- and StarHunt warps straight in, so it sets the speed itself.  The
+    -- generated stub returned nil from the reader and discarded the write, so
+    -- the reader never matched and the `~=` guard was dead either way: both the
+    -- guard and the choice of speed could be deleted with the suite still green.
+    -- ctl.ttc_speed is what the setting currently is and ctl.ttc_speed_writes
+    -- counts the writes, so a test can tell "set it" from "left it alone".
+    --- @return integer
+    function get_ttc_speed_setting() return ctl.ttc_speed end
+    function set_ttc_speed_setting(speed)
+        ctl.ttc_speed = speed
+        ctl.ttc_speed_writes = ctl.ttc_speed_writes + 1
+    end
+
+    -- Both were no-ops.  Boss mode's death respawn puts Mario back in the arena
+    -- by hand rather than reloading the level, and the two calls that finish it
+    -- -- dropping him into a freefall and pointing the camera back at him --
+    -- were the half of that the suite could not see.
+    function set_mario_action(m, action, arg)
+        table.insert(ctl.mario_actions,
+            { index = m.playerIndex, action = action, arg = arg })
+    end
+    function soft_reset_camera(_) ctl.camera_resets = ctl.camera_resets + 1 end
 
     -- All five of these were no-ops: the generated stub threw away every write
     -- and the two hand-written readers answered with a constant.  That made the

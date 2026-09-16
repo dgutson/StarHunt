@@ -49,8 +49,9 @@ de los siete pasos:
 
 ## Mapa del código
 
-`main.lua` se está dividiendo en `StarHunt/modules/`. La columna «Zona» nombra
-el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía no.
+`main.lua` ya está dividido en `StarHunt/modules/`. La columna «Zona» nombra
+el módulo; lo único que sigue en `main.lua` es la limpieza del vestíbulo, y el
+motivo está en el apéndice de `REFACTOR_PLAN.md`.
 
 | Sistema | Responsabilidad | Zona |
 |---|---|---|
@@ -58,11 +59,11 @@ el módulo cuando ya existe, y la función dentro de `main.lua` cuando todavía 
 | Reclamo de estrella | Qué estrella cuenta, y oculta las demás | `modules/goals.lua` (`on_allow_interact`, `on_interact`, `update_star_visibility`) |
 | Auditoría | Acepta/rechaza cada reto para cada estrella | `modules/audit.lua` (`goal_traits`, `audit_modifier`, `rebuild_audited_modifiers`) |
 | Dificultad | Escala cada reto y vuelve a auditarlo | `modules/difficulty.lua` (`effective_modifier_for_goal`) |
-| Ronda normal | Asigna objetivos, puntos, ganador y retornos | `modules/round.lua` (`host_start_round`, `host_update_round`, `host_end_round`) |
+| Ronda normal | Asigna objetivos, puntos, ganador y retornos | `modules/round.lua` (`host_start_round`, `host_update_round`, `host_end_round`; el lado cliente, `local_goal_warp_update` y `force_return_to_lobby`) |
 | Retos | Aplica el modificador personal del jugador local | `modules/modifiers.lua` (`apply_local_modifier`) |
 | Gorras | Da Wing/Metal/Vanish sin borrar poderes externos | `modules/goals.lua` (`apply_goal_power`, `restore_starhunt_power`) |
 | Guardado | Quita solo la bandera temporal de la estrella obtenida | `modules/save.lua` (`save_course_index_for`, `remove_starhunt_save_flag`) |
-| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques, `apply_boss_hazards`, la oleada de bombas de reserva y `ensure_boss_health_owner`); `modules/round.lua` (`host_update_boss_round`) |
+| Boss | Vida de Bowser, ventajas, ataques y reaparición | `modules/boss.lua` (datos, vida, cola de ataques, `apply_boss_hazards`, la oleada de bombas de reserva y `ensure_boss_health_owner`); `modules/round.lua` (`host_update_boss_round`, y del lado cliente `local_boss_warp_update` y `on_before_boss_cutscene`) |
 | Chaos | Mapa, reroll de modificadores y eliminación | `modules/chaos.lua`; `modules/round.lua` (`host_update_chaos_round`) |
 | Team | Equipos, paletas y PvP | `modules/team.lua` |
 | Idiomas | Seis idiomas de interfaz y su persistencia | `modules/i18n.lua` (`translated`) |

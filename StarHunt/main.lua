@@ -53,7 +53,6 @@ require("modules/difficulty")
 local on_allow_pvp_attack = require("modules/team").on_allow_pvp_attack
 local boss = require("modules/boss")
 local BOSS_HEALTH = boss.BOSS_HEALTH
-local BOSS_LEVELS = boss.BOSS_LEVELS
 local BOSS_PLAYER_MODIFIERS = boss.BOSS_PLAYER_MODIFIERS
 local BOSS_MODIFIERS = boss.BOSS_MODIFIERS
 local BOSS_ATTACK_QUEUE_SIZE = boss.BOSS_ATTACK_QUEUE_SIZE
@@ -65,13 +64,15 @@ local host_read_boss_health_report = boss.host_read_boss_health_report
 local apply_boss_hazards = boss.apply_boss_hazards
 local ensure_boss_health_owner = boss.ensure_boss_health_owner
 local local_modifiers = require("modules/modifiers")
-local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
 local capped_horizontal_velocity = local_modifiers.capped_horizontal_velocity
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
 local run_static_modifier_checks = local_modifiers.run_static_modifier_checks
 local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
 local local_round = require("modules/round")
+local on_before_boss_cutscene = local_round.on_before_boss_cutscene
+local local_goal_warp_update = local_round.local_goal_warp_update
+local local_boss_warp_update = local_round.local_boss_warp_update
 local force_return_to_lobby = local_round.force_return_to_lobby
 local on_nametags_render = local_round.on_nametags_render
 local update_private_player_visibility = local_round.update_private_player_visibility
@@ -104,106 +105,6 @@ local draw_hud = hud.draw_hud
 local local_round_notifications = hud.local_round_notifications
 
 local local_lakitu_scan_at = 0
-
-local function on_before_boss_cutscene(m, incoming_action, _)
-    if m.playerIndex ~= 0 or not is_round_active() or not is_boss_mode() then return end
-    if incoming_action ~= ACT_STAR_DANCE_EXIT and incoming_action ~= ACT_STAR_DANCE_WATER
-        and incoming_action ~= ACT_STAR_DANCE_NO_EXIT and incoming_action ~= ACT_JUMBO_STAR_CUTSCENE then
-        return
-    end
-
-    -- Fallback for unusual Bowser behavior mods: the winning player reports
-    -- the victory and cancels the cinematic on its very first frame.
-    gPlayerSyncTable[0].sh5_boss_victory = (gPlayerSyncTable[0].sh5_boss_victory or 0) + 1
-    if network_is_server() then host_end_round("boss defeated") end
-    return 1
-end
-
-local function local_goal_warp_update(m)
-    if m.playerIndex ~= 0 then return end
-    if is_boss_mode() or Team.is_chaos_mode() then return end
-
-    local current_goal_id = gPlayerSyncTable[0].sh5_goal or 0
-    local current_goal = get_goal(current_goal_id)
-    if is_round_active() and current_goal ~= nil and current_goal.level == LEVEL_TTC then
-        -- Direct warps do not pass through the castle clock face. Keep TTC
-        -- deterministic: slow for traversal stars and stopped for red coins.
-        local desired_speed = current_goal.act == 6 and TTC_SPEED_STOPPED or TTC_SPEED_SLOW
-        if get_ttc_speed_setting() ~= desired_speed then set_ttc_speed_setting(desired_speed) end
-    end
-    if is_round_active() and current_goal_id ~= local_runtime.goal_id then
-        local_runtime.goal_id = current_goal_id
-        local_runtime.goal_warp_at = get_global_timer() + (local_runtime.death_warp_pending and 0 or NEXT_GOAL_DELAY)
-        local_runtime.star_visibility_next = 0
-        local_runtime.modifier_ready_key = nil
-        reset_local_modifier_state()
-    elseif not is_round_active() then
-        local_runtime.goal_id = 0
-        local_runtime.goal_warp_at = -1
-        local_runtime.modifier_ready_key = nil
-        local_runtime.death_lock = false
-        local_runtime.death_warp_pending = false
-        reset_local_modifier_state()
-    end
-
-    if is_round_active() and current_goal_id ~= 0 and local_runtime.goal_warp_at >= 0
-        and get_global_timer() >= local_runtime.goal_warp_at and not is_transition_playing() then
-        local goal = get_goal(current_goal_id)
-        if goal ~= nil then warp_to_level(goal.level, 1, goal.act) end
-        local_runtime.goal_warp_at = -1
-        local_runtime.death_lock = false
-        local_runtime.death_warp_pending = false
-    end
-end
-
-local function local_boss_warp_update(m)
-    if m.playerIndex ~= 0 then return end
-    if not is_round_active() or not is_boss_mode() then
-        local_runtime.boss_warp_at = -1
-        return
-    end
-
-    local round = gGlobalSyncTable.sh5_round or 0
-    if round ~= local_runtime.boss_round_seen then
-        local_runtime.boss_round_seen = round
-        local_runtime.boss_warp_at = get_global_timer() + NEXT_GOAL_DELAY
-        -- A late joiner starts from the current attack sequence. Old attacks
-        -- must not all replay while that player is entering the arena.
-        local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
-        local_runtime.modifier_ready_key = nil
-        reset_local_modifier_state()
-    end
-    if local_runtime.death_warp_pending then
-        -- Respawn only Mario. Reloading the whole level here can recreate or
-        -- transfer ownership of Bowser while the other players are fighting.
-        if gNetworkPlayers[0].currLevelNum == LEVEL_BOWSER_3 then
-            m.pos.x, m.pos.y, m.pos.z = 0, 1307, 0
-            m.vel.x, m.vel.y, m.vel.z = 0, 0, 0
-            m.forwardVel = 0
-            m.health = 0x880
-            m.hurtCounter = 0
-            m.healCounter = 0
-            m.invincTimer = 90
-            set_mario_action(m, ACT_FREEFALL, 0)
-            if m.area ~= nil and m.area.camera ~= nil then soft_reset_camera(m.area.camera) end
-            local_runtime.boss_warp_at = -1
-            local_runtime.death_lock = false
-            local_runtime.death_warp_pending = false
-            reset_local_modifier_state()
-            return
-        end
-        local_runtime.boss_warp_at = get_global_timer()
-    end
-
-    local level = BOSS_LEVELS[gGlobalSyncTable.sh5_boss_level_index or 0]
-    if level ~= nil and local_runtime.boss_warp_at >= 0 and get_global_timer() >= local_runtime.boss_warp_at
-        and not is_transition_playing() then
-        warp_to_level(level, 1, 1)
-        local_runtime.boss_warp_at = -1
-        local_runtime.death_lock = false
-        local_runtime.death_warp_pending = false
-    end
-end
 
 -- Remove the camera Lakitu itself on the castle grounds.  This prevents the
 -- scene instead of merely skipping it after the camera has already appeared.
@@ -281,6 +182,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         boss_health_report = host_read_boss_health_report,
         menu_input = update_config_input,
         freeze_menu_mario = Team.freeze_menu_mario,
+        boss_cutscene = on_before_boss_cutscene,
         goal_warp = local_goal_warp_update,
         chaos_warp = Team.update_chaos_warp,
         boss_warp = local_boss_warp_update,

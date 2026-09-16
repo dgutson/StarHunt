@@ -18,6 +18,8 @@ Spanish text. Candidates that do not compile under luac5.4 are dropped.
 
 Rules applied: comparison flips, and/or swaps, numeric bumps (v+1, v-1, 0), whole-line
 deletion, and swapping one named engine constant for another that the same file uses.
+Whole-line deletion skips a comment-only line, because deleting a comment cannot change
+behaviour: those mutants always survive and say nothing about the tests.
 """
 
 import json
@@ -122,8 +124,11 @@ def candidates(line, masked, constants):
         new = others[sum(ord(ch) for ch in name) % len(others)]
         yield ("const %s->%s" % (name, new), line[:m.start()] + new + line[m.end():])
 
-    # Whole-line deletion, when the line carries anything at all.
-    if line.strip():
+    # Whole-line deletion, when the line carries code.  A comment-only line is
+    # skipped: deleting a comment cannot change behaviour, so the mutant always
+    # survives and says nothing about the tests.  `masked` has comment bodies
+    # blanked but keeps the `--`, so the text before it is the code.
+    if masked.split("--", 1)[0].strip():
         yield ("delete line", "")
 
 

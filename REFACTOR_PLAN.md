@@ -25,15 +25,18 @@ static data and the health pool, then the readers, then the attack queue and the
 that last one once `is_local_player_on_floor` had moved into `core.lua`, the second time a
 shared helper had to move before a module could follow it.
 
-Every module being finished is **not** the same as `main.lua` being empty of them. R-004's
+Every module being finished was **not** the same as `main.lua` being empty of them. R-004's
 audit found eight declarations that the `boss` and `goals` passes were meant to take and left
-behind, and they are R-013. Three of the eight have since moved -- `Team.boss_reserve_bomb_count`,
+behind, and they were R-013. **All eight have now moved** -- `Team.boss_reserve_bomb_count`,
 `Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four
-`local_boss_health_*` locals, all into `boss.lua` -- leaving five. The appendix at the end of
-this document lists the remainder alongside the five that were never assigned to a module at
-all. What stays in `main.lua` permanently is
+`local_boss_health_*` locals into `boss.lua`; `Team.lifetime` and `Team.update_lifetime_sync`
+into `goals.lua`; `Team.pick_second_modifier` into `modifiers.lua`; and
+`on_before_boss_cutscene` with `local_goal_warp_update` and `local_boss_warp_update` into
+`round.lua`. The appendix at the end of this document records each one alongside the five that
+were never assigned to a module at all. What stays in `main.lua` permanently is
 the header, the require wiring, the hook block, the synchronized-table seed and
-`STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains.
+`STARHUNT_TEST_API`, plus the castle-grounds lobby cleanup the appendix explains --
+420 lines, and the grep in the appendix now returns nothing else.
 
 **R-002 is finished.** Its last function, `Team.host_update_chaos_round`, went into
 `round.lua`, and the reason is the one `host_update_boss_round` had before it: a mode's round
@@ -221,18 +224,28 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `sweep_mutations.py` runs the suite against each one in a throwaway copy of the tree. They
    are committed rather than written fresh each session, which is what used to happen, and
    `tools/` is outside `StarHunt/` so nothing there ships with the mod. This check has found a
-   real coverage gap in **twenty of the twenty-two** passes so far. The lifetime star count was
-   the last of them: `Team.update_lifetime_sync` was published in `STARHUNT_TEST_API` and
+   real coverage gap in **twenty-one of the twenty-four** passes so far. The client half of the
+   round loop was the last of them, and it is the clearest case of the pattern: `goal_warp` and
+   `boss_warp` were both published in `STARHUNT_TEST_API` and **called by no test anywhere**,
+   `on_before_boss_cutscene` was not published at all, and `hook_event` in the harness only
+   records a callback without ever running it — so all three were reachable from the suite only
+   through an export nothing used. All 210 mutations of those 99 lines survived a green
+   721-test run: the mod could have failed to warp anyone to their star, replayed a whole
+   fight's worth of Bowser attacks at a late joiner, or revived a dead player with no health,
+   and nothing would have gone red.
+   Before it, the lifetime star count: `Team.update_lifetime_sync` was published in `STARHUNT_TEST_API` and
    called by no test at all, so its whole body could be deleted with 709 tests still passing,
    and so could writing the total into the wrong player's slot or letting a negative stored
    total through the clamp. Before it, the HUD's frame: a ten-mutation spot check caught nothing at all, because `test/suite/hud.lua` reached
    `draw_hud` exactly once inside a `pcall` that only checked no colon had gone to the font,
    `test/suite/menu.lua` tests what the menu does when a button is pressed rather than what it
-   draws, and nothing tested the banner or the winner announcements. **Four of the gaps it
+   draws, and nothing tested the banner or the winner announcements. **Six of the gaps it
    found were reachable only on a client**, which is worth carrying forward: the host fills
    `sh5_round`, `sh5_result_seq` and both team scores in with zero in its load-time block, so
    on a host the `or 0` defaults applied to those fields can never fire.
-   `harness.load(function(c) c.is_server = false end)` is the fixture that reaches them.
+   `harness.load(function(c) c.is_server = false end)` is the fixture that reaches them. Two of
+   the six are in the arena warp: a client that has not yet been told the round number, and one
+   that has not yet been told which level the arena is in.
    The HUD's picture layer is
    the worst of them by a wide margin: **500 of 507 mutations survived**, and the only seven
    the suite caught were caught by the darkness and health-colour tests written for the pass
@@ -256,6 +269,17 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    mutation is caught, and check *which* test catches each one — a mutation caught by the
    wrong test, or showing up as a nil-index error rather than a readable assertion, means the
    intended test is not doing its job.
+   Two practical notes on the sweep itself. **Derive the line range after the last edit to the
+   file, not before**: adding the two imports the client half needed pushed the moved block
+   down three lines, and a range worked out beforehand mutated the tail of the function above
+   it while missing three lines of the block. And a survivor is only worth investigating if
+   the mutation could change behaviour at all — `gen_mutations.py` used to delete comment-only
+   lines, which always survive and say nothing, so six of one sweep's fifty-four survivors
+   were noise. It now skips them.
+   For a block this size the full suite is too slow to sweep against (43s × 202 is over two
+   hours), so sweep against the one suite that covers the code and re-run only the survivors
+   against everything. That was checked rather than assumed here: all 54 survivors of the
+   narrow sweep also survived the full suite.
 3. **Re-diff the module against its original immediately before committing**, not only after
    the move. A mutation was once left applied to `modules/modifiers.lua` and the full suite
    still passed; only this check caught it.
@@ -455,7 +479,10 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   stored total can be any value at or below zero, because it sits inside
   `math.max(0, math.floor(...))`. `or -1` therefore still loads as zero -- verified in the
   interpreter -- while `or 1` is caught, and the clamp itself is caught by the test that stores
-  `-5`. **Leave all twenty exactly as they are.**
+  `-5`. The client half of the round loop added one more: `BOSS_LEVELS[... or -1]` is
+  indistinguishable from `BOSS_LEVELS[... or 0]`, because `BOSS_LEVELS` is a one-entry Lua
+  array and no negative or zero index into it holds anything. **Leave all twenty-one exactly
+  as they are.**
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.
@@ -466,7 +493,7 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   command. Never read the target file while a sweep is running: it will show you a mutant and
   you will believe it.
 
-- **A generated engine stub can silently disable a guard. Seventeen now.** `test/engine_stub.lua`
+- **A generated engine stub can silently disable a guard. Twenty now.** `test/engine_stub.lua`
   returns `nil` from most engine functions, which is right for a function whose return value
   nothing reads and wrong for a predicate. `is_transition_playing()` returning `nil` meant every
   "hold this warp back while the level loads" guard could be deleted with no test noticing;
@@ -499,6 +526,14 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   discarded the rectangle's position and size, so a darkness rectangle ten pixels wide looked
   exactly like one covering the screen, and `djui_hud_set_resolution` discarded the
   resolution; both now record what they were given.
+  Three more came with the client half of the round loop. `get_ttc_speed_setting` returned
+  `nil` and `set_ttc_speed_setting` discarded the write, so `get_ttc_speed_setting() ~=
+  desired_speed` was true whatever the clock was doing and both the guard and the choice
+  between stopped and slow were invisible; `ctl.ttc_speed` is now the setting and
+  `ctl.ttc_speed_writes` counts the writes, which is what tells "set it" from "left it alone"
+  apart. `set_mario_action` and `soft_reset_camera` were no-ops, and they are the half of
+  Boss's in-place death respawn that actually puts Mario back in play, so the suite could see
+  him healed and repositioned but not dropped into a freefall or given his camera back.
   **When a mutation survives, check whether the stub made the branch unreachable before
   concluding the test is wrong.**
 
@@ -615,13 +650,22 @@ keeps reaching them the same way it reaches `Team.update_palettes`. `Team.pick_s
 is now in `modifiers.lua`, which also gained no import: it reads only `Team` fields and the
 goal's own `mods` list, and its one caller, `host_assign_goal` in `round.lua`, already reached
 it through `Team`. It is the one host-side function in that file, so its header now says so.
-The two below remain.
-Lines are as they were when R-004 ran and have shifted since — re-derive them:
 
-| decl | line | goes to | checked |
-|---|---|---|---|
-| `on_before_boss_cutscene` | 266 | `round.lua`, **not** `boss.lua` | it calls `host_end_round`, and the graph already runs `round -> boss`, so an edge back would be a cycle |
-| `local_goal_warp_update`, `local_boss_warp_update` | 280, 317 | `round.lua` | the client half of the round loop. Between them they need `get_goal`, `BOSS_LEVELS` and `reset_local_modifier_state`, and `round.lua` already requires `goals`, `boss` and `modifiers` |
+**All eight are now done.** The last three — `on_before_boss_cutscene`,
+`local_goal_warp_update` and `local_boss_warp_update` — are in `round.lua`'s client half.
+`on_before_boss_cutscene` went there rather than to `boss.lua` despite being Boss code,
+because it calls `host_end_round` and the graph already runs `round -> boss`, so an edge back
+would be a cycle. That pass was **not** a pure relocation, unlike the two before it: all three
+are registered as hooks, so `round.lua` had to export them and `main.lua` had to bind them
+back. The moved bodies were proven byte-identical on their own and the wiring kept as a
+separate, countable diff — five hunks in `main.lua` and four in `round.lua`. `round.lua`
+gained two imports it did not have, `core.NEXT_GOAL_DELAY` and
+`modifiers.reset_local_modifier_state`, and `main.lua` lost two that had no reader left,
+`boss.BOSS_LEVELS` and the same `reset_local_modifier_state`.
+
+So `main.lua` is now what R-013 said it should be: the header, the imports, the hook
+callbacks with a recorded reason, the synchronized-table seed and `STARHUNT_TEST_API`, and
+nothing else. The grep below returns only those.
 
 `on_joined_game` (397) is a ninth leftover that was already decided: the note above records
 that the appendix put it in `i18n` because it calls `translated`, and that it stayed in

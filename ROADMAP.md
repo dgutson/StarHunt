@@ -26,25 +26,16 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-013 — Move the declarations the boss and goals passes left behind
-
-- **Category:** Refactor
-- **What:** R-004 audited every top-level declaration still in `main.lua` and found two groups. The five it was written about stay where they are, with a reason recorded in `REFACTOR_PLAN.md`'s appendix. The other eight were assigned to a module by the original plan and were simply left behind when that module came out. **Six are done** — `Team.boss_reserve_bomb_count`, `Team.host_update_boss_bomb_supply` and `ensure_boss_health_owner` with its four `local_boss_health_*` locals are now in `boss.lua`, `Team.lifetime` with `Team.update_lifetime_sync` are now in `goals.lua`, and `Team.pick_second_modifier` is now in `modifiers.lua`. **One destination remains**, `round.lua`, holding `on_before_boss_cutscene` and the pair `local_goal_warp_update` / `local_boss_warp_update`. Each was checked against the real require graph and **none of them needs a new edge**; the per-declaration table in `REFACTOR_PLAN.md` records what was checked. Note that `on_before_boss_cutscene` goes to `round.lua` rather than `boss.lua` despite being Boss code, because it calls `host_end_round` and the graph already runs `round -> boss`.
-- **Why:** `REFACTOR_PLAN.md` asserted five separate times that a module was "finished", and each time that was true of the block being extracted and not of the file. Eight declarations sat in `main.lua` for several sessions in a file nobody was looking at, which is exactly the decision-by-omission the whole split exists to avoid. The check that catches it is one grep over `main.lua`'s top-level declarations, now written into the plan.
-- **Outcome:** Every top-level declaration in `main.lua` is either the header, an import, a hook callback with a recorded reason, the synchronized-table seed or `STARHUNT_TEST_API`. Each move is proven byte-identical in both directions and mutation-checked, and the suite still passes. The one-module-per-session ceiling applies: one destination remains.
-- **Blocked-by:** —
-- **Enables:** R-010
-
-## Next
-
 ### R-012 — Split `modules/round.lua`, now the largest file in the mod
 
 - **Category:** Refactor
-- **What:** `round.lua` is 966 lines — larger than `modifiers.lua` (841), larger than `goals.lua` (890), larger than `hud.lua` (708), and well over half as long again as `main.lua` (518), which has one R-013 pass left to shrink further. Split it. The free cut is the one the file already documents in its own header: the host half and the client half **never call each other** (re-derive both ranges with grep; they have shifted twice already) — they meet only through the synchronized tables — so they can become `round_host.lua` and `round_client.lua` with no shared state to arrange. Measure that claim again before acting on it rather than trusting this line. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
+- **What:** `round.lua` is 1,079 lines — larger than `goals.lua` (890), larger than `modifiers.lua` (841), larger than `hud.lua` (708), and two and a half times `main.lua` (420), which is now finished. Split it. The cut is the one the file documents in its own header: the host half (89-786) and the client half (787-1079) meet through the synchronized tables and, since R-013, at exactly one other point (re-derive both ranges with grep; they have shifted three times already). So they can become `round_host.lua` and `round_client.lua` with no shared state to arrange, but the cut is **no longer free**: `on_before_boss_cutscene` is in the client half and calls `host_end_round` behind a `network_is_server()` check. `round_client` requiring `round_host` is the obvious answer and adds no cycle — nothing requires `round` — but decide it deliberately rather than discovering it half way through. Measure both the ranges and that one call again before acting on this line. Note also that the cut as it stands does **not** reach the outcome below: the halves are roughly 700 and 290, so getting the host half under 600 needs the second cut described next, in its own verified commit first. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
 - **Why:** The file got large for a reason that no longer applies. Its two halves were extracted in separate passes months apart, and the second one landed in the file the first had created because that was where the name `round` already lived — not because the two belong in one file. They are the two sides of the mod's host-authority rule and share nothing, which is the clearest possible sign they are two units. Being the largest file in the mod also makes it the most expensive one to read at the start of a session, which is the cost the whole split exists to reduce.
-- **Outcome:** Neither half of the round is larger than roughly 600 lines; the host and client sides are separate files; every move is proven byte-identical in both directions and the 670 tests still pass. (`goals.lua` is now 877 lines and the second-largest file in the mod. Whether it wants the same treatment is a separate question this item does not answer.)
+- **Outcome:** Neither half of the round is larger than roughly 600 lines; the host and client sides are separate files; every move is proven byte-identical in both directions and the 767 tests still pass. (`goals.lua` is now 890 lines and the second-largest file in the mod. Whether it wants the same treatment is a separate question this item does not answer.)
 - **Blocked-by:** —
 - **Enables:** —
+
+## Next
 
 ### R-005 — Move the suite onto a Lua test framework
 
@@ -97,9 +88,9 @@ session fills the context window and invites mistakes.
 
 - **Category:** Release
 - **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players.
-- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods, and `PROJECT_STATUS.md` is explicit that the validation does not cover them. The refactor changed how the mod is loaded — one file became thirteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
+- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods, and `PROJECT_STATUS.md` is explicit that the validation does not cover them. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
 - **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
-- **Blocked-by:** R-013
+- **Blocked-by:** —
 - **Enables:** R-011
 
 ### R-011 — Reconcile the release documents and open the pull request

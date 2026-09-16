@@ -8,9 +8,16 @@
 -- and only reads what the host published.  Nothing in the second half decides
 -- anything.
 --
--- The two halves never call each other.  They meet only through the
--- synchronized tables, which is what lets a client join late, or a host
--- migrate, without either side holding a stale local answer.
+-- The two halves meet through the synchronized tables and, with one exception,
+-- nowhere else.  That is what lets a client join late, or a host migrate,
+-- without either side holding a stale local answer.
+--
+-- The exception is `on_before_boss_cutscene`, which calls `host_end_round`
+-- behind a `network_is_server()` check.  It is the fallback for a Bowser whose
+-- defeat some other mod handles its own way: the player who beat him cancels
+-- the victory cinematic locally and, if that player happens to be the host,
+-- ends the round in the same breath.  It is the only call from the second half
+-- into the first, and anything that splits this file has to carry it.
 --
 -- Host state that must survive a whole round lives in four tables near the top
 -- of the host half.  `host_start_round` REPLACES three of them outright, so
@@ -40,6 +47,7 @@ local core = require("core")
 local Team = core.Team
 local local_runtime = core.local_runtime
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
+local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 local clamp = core.clamp
 local is_round_active = core.is_round_active
 local selected_mode = core.selected_mode
@@ -68,7 +76,9 @@ local boss_has_modifier = boss.boss_has_modifier
 local boss_is_desperate = boss.boss_is_desperate
 local host_read_boss_health_report = boss.host_read_boss_health_report
 local CHAOS_REROLL_FRAMES = require("chaos").CHAOS_REROLL_FRAMES
-local grant_infinite_lives = require("modifiers").grant_infinite_lives
+local local_modifiers = require("modifiers")
+local grant_infinite_lives = local_modifiers.grant_infinite_lives
+local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
 
 -- Announce the winner first, then reset scores on the following frame.
 -- This makes the handoff immediate without clearing the result beforehand.
@@ -774,6 +784,106 @@ local function host_update_round()
     if Team.is_mode() then Team.update_scores() end
 end
 
+local function on_before_boss_cutscene(m, incoming_action, _)
+    if m.playerIndex ~= 0 or not is_round_active() or not is_boss_mode() then return end
+    if incoming_action ~= ACT_STAR_DANCE_EXIT and incoming_action ~= ACT_STAR_DANCE_WATER
+        and incoming_action ~= ACT_STAR_DANCE_NO_EXIT and incoming_action ~= ACT_JUMBO_STAR_CUTSCENE then
+        return
+    end
+
+    -- Fallback for unusual Bowser behavior mods: the winning player reports
+    -- the victory and cancels the cinematic on its very first frame.
+    gPlayerSyncTable[0].sh5_boss_victory = (gPlayerSyncTable[0].sh5_boss_victory or 0) + 1
+    if network_is_server() then host_end_round("boss defeated") end
+    return 1
+end
+
+local function local_goal_warp_update(m)
+    if m.playerIndex ~= 0 then return end
+    if is_boss_mode() or Team.is_chaos_mode() then return end
+
+    local current_goal_id = gPlayerSyncTable[0].sh5_goal or 0
+    local current_goal = get_goal(current_goal_id)
+    if is_round_active() and current_goal ~= nil and current_goal.level == LEVEL_TTC then
+        -- Direct warps do not pass through the castle clock face. Keep TTC
+        -- deterministic: slow for traversal stars and stopped for red coins.
+        local desired_speed = current_goal.act == 6 and TTC_SPEED_STOPPED or TTC_SPEED_SLOW
+        if get_ttc_speed_setting() ~= desired_speed then set_ttc_speed_setting(desired_speed) end
+    end
+    if is_round_active() and current_goal_id ~= local_runtime.goal_id then
+        local_runtime.goal_id = current_goal_id
+        local_runtime.goal_warp_at = get_global_timer() + (local_runtime.death_warp_pending and 0 or NEXT_GOAL_DELAY)
+        local_runtime.star_visibility_next = 0
+        local_runtime.modifier_ready_key = nil
+        reset_local_modifier_state()
+    elseif not is_round_active() then
+        local_runtime.goal_id = 0
+        local_runtime.goal_warp_at = -1
+        local_runtime.modifier_ready_key = nil
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
+        reset_local_modifier_state()
+    end
+
+    if is_round_active() and current_goal_id ~= 0 and local_runtime.goal_warp_at >= 0
+        and get_global_timer() >= local_runtime.goal_warp_at and not is_transition_playing() then
+        local goal = get_goal(current_goal_id)
+        if goal ~= nil then warp_to_level(goal.level, 1, goal.act) end
+        local_runtime.goal_warp_at = -1
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
+    end
+end
+
+local function local_boss_warp_update(m)
+    if m.playerIndex ~= 0 then return end
+    if not is_round_active() or not is_boss_mode() then
+        local_runtime.boss_warp_at = -1
+        return
+    end
+
+    local round = gGlobalSyncTable.sh5_round or 0
+    if round ~= local_runtime.boss_round_seen then
+        local_runtime.boss_round_seen = round
+        local_runtime.boss_warp_at = get_global_timer() + NEXT_GOAL_DELAY
+        -- A late joiner starts from the current attack sequence. Old attacks
+        -- must not all replay while that player is entering the arena.
+        local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
+        local_runtime.modifier_ready_key = nil
+        reset_local_modifier_state()
+    end
+    if local_runtime.death_warp_pending then
+        -- Respawn only Mario. Reloading the whole level here can recreate or
+        -- transfer ownership of Bowser while the other players are fighting.
+        if gNetworkPlayers[0].currLevelNum == LEVEL_BOWSER_3 then
+            m.pos.x, m.pos.y, m.pos.z = 0, 1307, 0
+            m.vel.x, m.vel.y, m.vel.z = 0, 0, 0
+            m.forwardVel = 0
+            m.health = 0x880
+            m.hurtCounter = 0
+            m.healCounter = 0
+            m.invincTimer = 90
+            set_mario_action(m, ACT_FREEFALL, 0)
+            if m.area ~= nil and m.area.camera ~= nil then soft_reset_camera(m.area.camera) end
+            local_runtime.boss_warp_at = -1
+            local_runtime.death_lock = false
+            local_runtime.death_warp_pending = false
+            reset_local_modifier_state()
+            return
+        end
+        local_runtime.boss_warp_at = get_global_timer()
+    end
+
+    local level = BOSS_LEVELS[gGlobalSyncTable.sh5_boss_level_index or 0]
+    if level ~= nil and local_runtime.boss_warp_at >= 0 and get_global_timer() >= local_runtime.boss_warp_at
+        and not is_transition_playing() then
+        warp_to_level(level, 1, 1)
+        local_runtime.boss_warp_at = -1
+        local_runtime.death_lock = false
+        local_runtime.death_warp_pending = false
+    end
+end
+
 local local_seen_return_seq = 0
 local local_return_warp_pending = false
 local local_return_warp_retry_at = 0
@@ -941,8 +1051,8 @@ end
 -- of the host half -- the goal pool, the winner tally, the per-player setup and
 -- Boss's own loop -- has no caller outside this file and stays private.
 --
--- main.lua registers every client function as a hook and publishes four of them
--- through STARHUNT_TEST_API.  STARHUNT_DEATH_ACTIONS and the three
+-- main.lua registers every client function as a hook and publishes all ten of
+-- them through STARHUNT_TEST_API.  STARHUNT_DEATH_ACTIONS and the three
 -- local_return_warp_* variables are read nowhere else and stay private.
 return {
     configured_time_range = configured_time_range,
@@ -956,6 +1066,9 @@ return {
     remember_disconnected_player = remember_disconnected_player,
     mark_connected_player_unenrolled = mark_connected_player_unenrolled,
 
+    on_before_boss_cutscene = on_before_boss_cutscene,
+    local_goal_warp_update = local_goal_warp_update,
+    local_boss_warp_update = local_boss_warp_update,
     force_return_to_lobby = force_return_to_lobby,
     on_nametags_render = on_nametags_render,
     update_private_player_visibility = update_private_player_visibility,
