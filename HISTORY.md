@@ -13,6 +13,32 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-16 — R-018: the predicate is `boss_is_held` again, and tests only that
+
+`boss_is_grabbed` returned true both when a player had Bowser in their hands and when he was
+in `BOWSER_ACT.THROWN`. A thrown Bowser is in nobody's hands, so the name asserted something
+false about half its branches, and the comment above it made that worse by claiming a grab
+has two halves — the throw is what follows a grab, not part of one. The reviewer read it and
+said so.
+
+The throw moved out to the two call sites, where three comparisons against `oAction` were
+already sitting. That was the reviewer's own suggestion and it is the better shape: the four
+actions in which Bowser does not attack now read as one list at the place that uses them,
+instead of three in the condition and a fourth hidden behind a name. What is left,
+`boss_is_held`, tests the nil object and `oHeldState`, which is what "held" means.
+
+So the predicate carries the name it had in R-015 again, but not the meaning: R-015's version
+tested only the held state because the throw had not been covered yet, and this one tests
+only the held state because the throw belongs elsewhere.
+
+A rejected alternative, for the record: splitting it into `boss_is_held` and
+`boss_is_thrown`. Both names would have been true, but a one-line predicate called once per
+call site does not earn a name, and an `or` between two helpers hides a list that reads
+better written out.
+
+Behaviour is unchanged — 775 tests, none of them edited — and both sweeps were clean first
+time, 24 of 24 on `boss.lua` and 21 of 21 on `round.lua`.
+
 ### 2026-09-16 — R-017: Bowser's action numbers have names
 
 The mod read Bowser's `oAction` at four places and compared it against five bare numbers — 1,

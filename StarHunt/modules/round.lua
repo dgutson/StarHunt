@@ -75,7 +75,7 @@ local BOSS_ACTIVE_ATTACK_LOOKUP = boss.BOSS_ACTIVE_ATTACK_LOOKUP
 local boss_time_range_for_players = boss.boss_time_range_for_players
 local boss_has_modifier = boss.boss_has_modifier
 local boss_is_desperate = boss.boss_is_desperate
-local boss_is_grabbed = boss.boss_is_grabbed
+local boss_is_held = boss.boss_is_held
 local host_read_boss_health_report = boss.host_read_boss_health_report
 local CHAOS_REROLL_FRAMES = require("chaos").CHAOS_REROLL_FRAMES
 local local_modifiers = require("modifiers")
@@ -639,16 +639,18 @@ local function host_update_boss_round()
                 host_end_round("boss defeated")
                 return
             end
-            -- TEXT_WAIT, INTRO_WALK and WAIT are Bowser's multiplayer intro.
-            -- Hazards must not begin while a player is still trapped in it,
-            -- and must stop again for as long as a player has hold of
-            -- Bowser: every attack spawns at his position, so it would go off
-            -- in the face of whoever is spinning him by the tail, or of
-            -- whoever has just thrown him and cannot move until he lands.
+            -- The same four actions and one held state that stop the
+            -- hazards on each client, and apply_boss_hazards in boss.lua
+            -- carries the reasoning: TEXT_WAIT, INTRO_WALK and WAIT are his
+            -- multiplayer intro, THROWN is the flight at a mine that follows
+            -- a grab, and the held state is the grab itself. An attack
+            -- queued in any of them is aimed at whoever grabbed him, who
+            -- cannot dodge it.
             boss_ready = bowser.oAction ~= BOWSER_ACT.TEXT_WAIT
                 and bowser.oAction ~= BOWSER_ACT.INTRO_WALK
                 and bowser.oAction ~= BOWSER_ACT.WAIT
-                and not boss_is_grabbed(bowser)
+                and bowser.oAction ~= BOWSER_ACT.THROWN
+                and not boss_is_held(bowser)
         end
     end
 

@@ -21,8 +21,8 @@
 --
 -- Three details in here are deliberate and easy to undo by accident. Boss
 -- player modifiers never include one that removes B, because every player has
--- to stay able to grab Bowser by the tail; boss_is_grabbed stops the attacks
--- for as long as one of them has. And the attack queue is eight slots rather
+-- to stay able to grab Bowser by the tail, and the attacks stop for as long
+-- as one of them has him or has just thrown him. And the attack queue is eight slots rather
 -- than a single "latest attack" field, because a single field lost attacks
 -- under lag -- BOSS_ACTIVE_ATTACK_MODIFIERS lists the ones that create an
 -- attack of their own, so that a draw cannot consist entirely of modifiers
@@ -140,24 +140,16 @@ local function boss_is_desperate()
     return boss_has_modifier(12) and (gGlobalSyncTable.sh5_boss_health or Team.boss_max_health()) <= 2
 end
 
--- A player can grab Bowser by the tail and spin him, which is how the fight is
--- won. A grab has two halves and this covers both: HELD_HELD is the spin, and
--- BOWSER_ACT.THROWN is the vanilla thrown update, the second or so of flight
--- at a mine that ends it. HELD_THROWN and HELD_DROPPED are not tested: that
--- same update puts the field back to HELD_FREE on the next frame, so they
--- never last long enough to see.
---
--- StarHunt's own attacks stop for both halves. They all spawn at Bowser's
--- position, so one played during the spin goes off in the face of the player
--- holding him, and one played during the throw reaches a player who is stuck
--- in ACT_RELEASING_BOWSER and cannot dodge. A shockwave is worse than unfair:
--- its stun empties the controller, which releases B and drops Bowser, so the
--- mod's hazard cancels the vanilla mechanic the mode depends on. A Bowser the
--- engine does not answer for reads as free, which leaves the fight as it was
--- rather than silently switching every attack off.
-local function boss_is_grabbed(bowser)
-    return bowser ~= nil
-        and (bowser.oHeldState == HELD_HELD or bowser.oAction == BOWSER_ACT.THROWN)
+-- Whether a player has Bowser in their hands right now, which is the state a
+-- player reaches by grabbing him by the tail and spinning him. The throw that
+-- follows is not this: it is BOWSER_ACT.THROWN, and it is tested where the
+-- other actions are. HELD_THROWN and HELD_DROPPED are not tested either --
+-- the vanilla thrown update puts the field back to HELD_FREE on the very next
+-- frame, so neither value lasts long enough to see. A Bowser the engine does
+-- not answer for reads as not held, which leaves the fight as it was rather
+-- than silently switching every attack off.
+local function boss_is_held(bowser)
+    return bowser ~= nil and bowser.oHeldState == HELD_HELD
 end
 
 local function boss_modifier_text(slot)
@@ -328,15 +320,25 @@ local function apply_boss_hazards(m)
     -- queued attacks intact until the object returns instead of silently
     -- consuming them.
     if bowser == nil then return end
-    -- Through the three intro actions, and for as long as a player has hold
-    -- of him, consume the current sequence without executing it. The intro
-    -- case also protects players who joined after an attack was sent; the
-    -- grabbed case drops the delayed waves and meteors too, so nothing
-    -- already in flight lands on the player doing the grabbing.
+    -- Four actions and one held state, all of them meaning Bowser does not
+    -- attack: the three that make up his multiplayer intro, the throw at a
+    -- mine that follows a grab, and a player having him in their hands.
+    -- Consume the current sequence without executing it. The intro case also
+    -- protects players who joined after an attack was sent; the other two
+    -- drop the delayed waves and meteors as well, so nothing already in
+    -- flight lands on the player who grabbed him.
+    --
+    -- Every attack spawns at Bowser's position. One played during the spin
+    -- goes off in the face of the player holding him, and its stun empties
+    -- the controller, which releases B and drops Bowser -- the mod's own
+    -- hazard cancelling the vanilla mechanic the mode is won by. One played
+    -- during the throw reaches a player stuck in ACT_RELEASING_BOWSER who
+    -- cannot dodge it.
     if bowser.oAction == BOWSER_ACT.TEXT_WAIT
         or bowser.oAction == BOWSER_ACT.INTRO_WALK
         or bowser.oAction == BOWSER_ACT.WAIT
-        or boss_is_grabbed(bowser) then
+        or bowser.oAction == BOWSER_ACT.THROWN
+        or boss_is_held(bowser) then
         local_runtime.boss_hazard_seq = gGlobalSyncTable.sh5_boss_attack_seq or 0
         local_runtime.pending_double_waves = {}
         local_runtime.pending_meteors = {}
@@ -528,7 +530,7 @@ return {
     boss_time_range_for_players = boss_time_range_for_players,
     boss_has_modifier = boss_has_modifier,
     boss_is_desperate = boss_is_desperate,
-    boss_is_grabbed = boss_is_grabbed,
+    boss_is_held = boss_is_held,
     boss_modifier_text = boss_modifier_text,
     host_read_boss_health_report = host_read_boss_health_report,
     apply_boss_hazards = apply_boss_hazards,
