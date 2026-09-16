@@ -26,22 +26,13 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-003 — Finish `modules/hud.lua`
-
-- **Category:** Refactor
-- **What:** Move the last of the HUD out of `main.lua`. Two passes are done: the text layer and the native HUD's visibility, then the picture layer -- `modifier_text`, the panel every card is built from, the health bar, the score/timer strip, the objective panel and the Gun Mod repaint. What remains is eight declarations and roughly 200 lines: `START_BANNER_FRAMES`, `local_seen_round`, `local_seen_result`, `local_start_banner_until`, `draw_start_banner`, `draw_config_menu`, `draw_hud` and `local_round_notifications`. **The banner and the notifications must move in the same pass**, because `local_round_notifications` rebinds `local_start_banner_until` and `draw_start_banner` reads it -- or migrate that local onto `local_runtime` first, in its own verified commit, exactly as `config_selection` was. Re-derive every range with grep and run `tools/module_deps.py` before moving anything; the ranges have shifted with every pass.
-- **Why:** `draw_hud` calls almost everything else in the file, so it was right to leave it until the panels it composes had moved; now they have, and it is the last thing holding the module open. `draw_config_menu` belongs here and that is settled: it draws through `draw_hud_text` and `measure_hud_text`, and `draw_hud` calls it back, so a `menu.lua` that owned it would be half of a require cycle; moving it is what creates the `hud → menu` edge, the only new edge this item still needs.
-- **Outcome:** All of the HUD's drawing lives in `modules/hud.lua`, and `main.lua` keeps only its metadata header, the `require` wiring, the hook block, `STARHUNT_TEST_API` and the handful of declarations R-004 settles.
-- **Blocked-by:** —
-- **Enables:** R-004
-
 ### R-004 — Settle the five declarations that have no module
 
 - **Category:** Refactor
 - **What:** Give the five declarations the planning pass could not assign a deliberate home: `remove_castle_lakitu`, `remove_existing_castle_lakitu`, `local_lakitu_scan_at`, `on_find_water_level` and `gServerSettings.skipIntro`. Staying in `main.lua` is an acceptable answer for a hook callback, but it has to be written down as a decision with a reason, not left by omission. This is also the right moment to write the Lakitu deletion test `DEVELOPMENT_CHECKLIST.md` names as missing — nothing under `test/` mentions Lakitu, and the `obj_has_behavior_id` stub now distinguishes behaviors, so it can be written.
-- **Why:** `modules/menu.lua` is out and the rest of this item is done; what is left is the five declarations. Leaving them where they are by default would be a decision made by omission rather than on purpose, which is the thing the whole split exists to avoid.
+- **Why:** `modules/menu.lua` and `modules/hud.lua` are both out and the rest of this item is done; what is left is the five declarations. Leaving them where they are by default would be a decision made by omission rather than on purpose, which is the thing the whole split exists to avoid.
 - **Outcome:** Every top-level declaration in the released file has a deliberate home and a recorded reason; the split is structurally complete; Lakitu has a test.
-- **Blocked-by:** R-003
+- **Blocked-by:** —
 - **Enables:** R-010
 
 ## Next
@@ -49,7 +40,7 @@ session fills the context window and invites mistakes.
 ### R-012 — Split `modules/round.lua`, now the largest file in the mod
 
 - **Category:** Refactor
-- **What:** `round.lua` is 942 lines — larger than `modifiers.lua` (828), larger than `goals.lua` (877), and larger than `main.lua` will be once `hud` and `menu` leave. Split it. The free cut is the one the file already documents in its own header: the host half and the client half **never call each other** (re-derive both ranges with grep; they have shifted twice already) — they meet only through the synchronized tables — so they can become `round_host.lua` and `round_client.lua` with no shared state to arrange. Measure that claim again before acting on it rather than trusting this line. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
+- **What:** `round.lua` is 966 lines — larger than `modifiers.lua` (823), larger than `goals.lua` (877), larger than `hud.lua` (708), and more than half as long again as `main.lua` (676), which is now finished shrinking. Split it. The free cut is the one the file already documents in its own header: the host half and the client half **never call each other** (re-derive both ranges with grep; they have shifted twice already) — they meet only through the synchronized tables — so they can become `round_host.lua` and `round_client.lua` with no shared state to arrange. Measure that claim again before acting on it rather than trusting this line. Splitting the host half any further is a different job and needs the migration step first: `host_start_round` rebinds `host_used_goals`, `host_seen_done` and `host_seen_forfeit`, which `host_pick_goal`, `host_prepare_player` and `host_update_round` all read, so those three tables have to move onto a shared table before the functions can live in separate files — exactly what was done for `host_player_records` in R-001, and in its own verified commit before anything moves.
 - **Why:** The file got large for a reason that no longer applies. Its two halves were extracted in separate passes months apart, and the second one landed in the file the first had created because that was where the name `round` already lived — not because the two belong in one file. They are the two sides of the mod's host-authority rule and share nothing, which is the clearest possible sign they are two units. Being the largest file in the mod also makes it the most expensive one to read at the start of a session, which is the cost the whole split exists to reduce.
 - **Outcome:** Neither half of the round is larger than roughly 600 lines; the host and client sides are separate files; every move is proven byte-identical in both directions and the 382 tests still pass. (`goals.lua` is now 877 lines and the second-largest file in the mod. Whether it wants the same treatment is a separate question this item does not answer.)
 - **Blocked-by:** —

@@ -13,6 +13,59 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-15 — `modules/hud.lua` is finished: the frame
+
+One commit. `main.lua` fell from 857 to **676** lines, `modules/hud.lua` grew from 510 to
+**708**, and the suite went from 601 to **658** tests. **R-003 is done**, and with it
+`modules/hud.lua`. Every module named in the plan now exists and is complete except
+`round.lua`, which R-012 wants split for being large rather than unfinished.
+
+**Four declarations and three state locals moved as one piece, plus one constant.**
+`draw_start_banner`, `draw_config_menu`, `draw_hud` and `local_round_notifications` were one
+contiguous range in `main.lua` (402-578), and `START_BANNER_FRAMES`, `local_seen_round`,
+`local_seen_result` and `local_start_banner_until` went with them. They had to travel
+together: `draw_hud` calls the banner and the menu, and the notifications rebind the frame
+number the banner reads, so the alternative was migrating that local onto `local_runtime`
+first in its own commit.
+
+**The two new require edges were the last ones the plan predicted.** `module_deps.py` named
+`configured_time_range` and `connected_player_count` from `round`, and `config_option_count`,
+`config_option_kind` and `config_status_text` from `menu`, so `hud.lua` now requires
+`core`, `i18n`, `goals`, `boss`, `round` and `menu`. Neither `round` nor `menu` requires
+`hud` and nothing else does either, so there is no cycle. The scan also reported `boss` as a
+dependency and that was a false positive -- it matched the word inside the string literal
+`"boss defeated"`. `main.lua`'s three `menu` option bindings had no reader left afterwards
+and went with the move.
+
+**The area was almost entirely untested, as expected.** `test/suite/hud.lua` reached
+`draw_hud` exactly once, inside a `pcall` that only checked no colon had gone to the font;
+`test/suite/menu.lua` tests what the menu does when a button is pressed, never what it draws;
+and nothing tested the banner or the winner announcements at all. A first sweep of ten
+mutations caught none of them. `local_round_notifications` was not in `STARHUNT_TEST_API`;
+it and `draw_start_banner` were added.
+
+**A new suite, `test/suite/hud_frame.lua`, with 57 tests, took the sweep to 232 of 238.**
+The first full sweep caught 218 and left 20; fourteen of those were real gaps and every one
+was killed by a test written for it, with the "which test caught it" column read rather than
+the count alone.
+
+**Four of those gaps were only reachable on a client**, which is worth carrying forward: the
+host fills `sh5_round`, `sh5_result_seq` and both team scores in with zero in its load-time
+block, so on a host the `or 0` defaults the notifications apply to those fields can never
+fire. A client runs none of that block and sees nothing until the host's first sync, which is
+exactly what those defaults are for. `harness.load(function(c) c.is_server = false end)` is
+the fixture that reaches them.
+
+**The six survivors are equivalent mutants, each checked rather than argued**, and recorded
+in `REFACTOR_PLAN.md` so the next sweep does not re-investigate them. Four are bare `local`
+declarations whose every branch assigns before anything reads; one is a fallback index into
+`Team.menu_lock_labels` that all three writers of `Team.language` make unreachable; and one
+is the floor of a `math.max` whose two candidate values format to the same `0:00`.
+
+**Baselines held.** 658 tests pass, luacheck stayed at 2 warnings / 0 errors (43 files now),
+and lua-language-server at 10 problems in 2 files. Byte-identity was proven in both
+directions, and re-checked after the sweep before committing.
+
 ### 2026-09-15 — `modules/hud.lua`, second pass: the picture layer
 
 One commit. `main.lua` fell from 1,164 to **857** lines, `modules/hud.lua` grew from 187 to

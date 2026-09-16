@@ -11,7 +11,6 @@
 
 local core = require("modules/core")
 local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
-local START_BANNER_FRAMES = 105
 local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 
 -- Co-op DX reads this setting before starting the Peach/Lakitu opening scene.
@@ -91,9 +90,6 @@ local remember_player_index = local_round.remember_player_index
 local remember_disconnected_player = local_round.remember_disconnected_player
 local mark_connected_player_unenrolled = local_round.mark_connected_player_unenrolled
 local menu = require("modules/menu")
-local config_option_count = menu.config_option_count
-local config_option_kind = menu.config_option_kind
-local config_status_text = menu.config_status_text
 local open_config_menu = menu.open_config_menu
 local update_config_input = menu.update_config_input
 local starhunt_command = menu.starhunt_command
@@ -104,10 +100,9 @@ local draw_centered_hud_text = hud.draw_centered_hud_text
 local apply_counter_visibility = hud.apply_counter_visibility
 local update_native_hud_visibility = hud.update_native_hud_visibility
 local hide_native_hud_before_render = hud.hide_native_hud_before_render
+local draw_hud = hud.draw_hud
+local local_round_notifications = hud.local_round_notifications
 
-local local_seen_round = nil
-local local_seen_result = nil
-local local_start_banner_until = -1
 local local_lakitu_scan_at = 0
 Team.lifetime = math.max(0, math.floor(tonumber(
     mod_storage_load("starhunt_lifetime_stars")) or 0))
@@ -399,184 +394,6 @@ local function on_find_water_level(_, _, water_level)
     return water_level
 end
 
-local function draw_start_banner()
-    if get_global_timer() > local_start_banner_until then return end
-    local text, scale = translated("START!", "EMPIEZA!"), 2.4
-    local y = math.floor(djui_hud_get_screen_height() * 0.62)
-    local x = (djui_hud_get_screen_width() - djui_hud_measure_text(text) * scale) * 0.5
-    djui_hud_set_color(0, 0, 0, 230)
-    djui_hud_print_text(text, x + 3, y + 3, scale)
-    djui_hud_set_color(214, 42, 31, 255)
-    djui_hud_print_text(text, x - 1, y - 1, scale)
-    djui_hud_set_color(255, 222, 60, 255)
-    djui_hud_print_text(text, x, y, scale)
-end
-
-local function draw_config_menu()
-    if not local_runtime.config_open then return end
-    local width = djui_hud_get_screen_width()
-    local height = djui_hud_get_screen_height()
-    local box_w, box_h = 270, network_is_server() and 192 or 108
-    local x = (width - box_w) * 0.5
-    local y = (height - box_h) * 0.5
-    local minimum, maximum = configured_time_range(connected_player_count())
-
-    djui_hud_set_color(0, 0, 0, 180)
-    djui_hud_render_rect(0, 0, width, height)
-    djui_hud_set_color(16, 36, 92, 245)
-    djui_hud_render_rect(x, y, box_w, box_h)
-    djui_hud_set_color(255, 215, 73, 255)
-    djui_hud_render_rect(x, y, box_w, 3)
-
-    draw_centered_hud_text("STARHUNT", y + 10, 0.82, 255, 215, 73)
-    local language_value = Team.language_names[Team.language + 1] or "ENGLISH"
-    local line_y = y + 34
-
-    for index = 1, config_option_count() do
-        local option = config_option_kind(index)
-        local text
-        if option == "start" then
-            text = translated("START ROUND", "INICIAR RONDA")
-        elseif option == "stop" then
-            text = translated("STOP ROUND", "DETENER RONDA")
-        elseif option == "language" then
-            text = translated("LANGUAGE", "IDIOMA") .. " - " .. language_value
-        elseif option == "mode" then
-            local mode_value
-            if selected_mode() == Team.BOSS then
-                mode_value = translated("BOSS", "JEFE")
-            elseif selected_mode() == Team.MODE then
-                mode_value = translated("TEAM", "EQUIPOS")
-            elseif selected_mode() == Team.CHAOS then
-                mode_value = translated("CHAOS", "CAOS")
-            else
-                mode_value = "NORMAL"
-            end
-            if (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
-                and connected_player_count() < 2 then
-                mode_value = mode_value .. " - " .. translated("NEEDS 2 PLAYERS", "NECESITA 2 JUGADORES")
-            end
-            text = translated("GAME MODE", "MODO DE JUEGO") .. " - " .. mode_value
-            if is_round_active() then text = text .. " " .. translated("(LOCKED)", "(BLOQUEADO)") end
-        elseif option == "difficulty" then
-            local names = {
-                translated("EASY", "FACIL"), translated("NORMAL", "NORMAL"),
-                translated("HARD", "DIFICIL"), translated("NIGHTMARE", "PESADILLA"),
-            }
-            local difficulty_value = names[Team.selected_difficulty() + 1]
-            if is_round_active() then difficulty_value = difficulty_value .. " " .. translated("(LOCKED)", "(BLOQUEADO)") end
-            text = translated("DIFFICULTY", "DIFICULTAD") .. " - " .. difficulty_value
-        elseif option == "time" then
-            local minutes = clamp(gGlobalSyncTable.sh5_config_minutes or minimum, minimum, maximum)
-            local time_value = tostring(minutes) .. " " .. translated("MIN", "MIN")
-            if is_round_active() then time_value = translated("LOCKED", "BLOQUEADO") end
-            text = translated("TIME", "TIEMPO") .. " - " .. time_value
-        else
-            text = translated("STATUS", "ESTADO") .. " - " .. config_status_text()
-        end
-
-        if local_runtime.config_selection == index then
-            djui_hud_set_color(255, 255, 255, 45)
-            djui_hud_render_rect(x + 10, line_y - 2, box_w - 20, 16)
-        end
-        local disabled = (selected_mode() == Team.MODE or selected_mode() == Team.CHAOS)
-            and connected_player_count() < 2
-            and (option == "mode" or option == "start")
-        draw_hud_text((local_runtime.config_selection == index and "> " or "  ") .. text,
-            x + 16, line_y, 0.62, 255, 255, 255, disabled and 105 or 255)
-        line_y = line_y + 21
-    end
-
-    local controls
-    if not is_round_active() then
-        controls = Team.menu_lock_labels[Team.language + 1] or Team.menu_lock_labels[1]
-    else
-        controls = translated("UP/DOWN SELECT  A USE  LEFT/RIGHT CHANGE  B CLOSE",
-            "ARRIBA/ABAJO ELEGIR  A USAR  IZQ/DER CAMBIAR  B CERRAR")
-    end
-    draw_centered_hud_text(controls, y + box_h - 16, 0.32, 160, 210, 255)
-    if network_is_server() and not is_round_active() then
-        draw_centered_hud_text(tostring(minimum) .. "-" .. tostring(maximum) .. " " .. translated("MINUTES", "MINUTOS"),
-            y + box_h - 29, 0.38, 190, 190, 190)
-    end
-end
-
-local function draw_hud()
-    djui_hud_set_resolution(RESOLUTION_N64)
-    djui_hud_set_font(FONT_HUD)
-
-    apply_counter_visibility()
-    if not is_round_active() then
-        draw_config_menu()
-        return
-    end
-    local goal = get_local_goal()
-    local modifiers = Team.get_local_modifiers()
-    local modifier_data = modifiers[1]
-    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or get_global_timer()) - get_global_timer())
-    local score = gPlayerSyncTable[0].sh5_score or 0
-    Team.draw_gun_mod_hud_compatibility()
-    Team.draw_round_status_panels(remaining, score)
-    Team.draw_objective_panel(goal, modifier_data, modifiers[2])
-    draw_start_banner()
-    draw_config_menu()
-end
-
-local function local_round_notifications()
-    local round = gGlobalSyncTable.sh5_round or 0
-    if local_seen_round == nil then
-        local_seen_round = round
-    elseif round ~= local_seen_round then
-        local_seen_round = round
-        local_start_banner_until = get_global_timer() + START_BANNER_FRAMES
-    end
-
-    local result = gGlobalSyncTable.sh5_result_seq or 0
-    if local_seen_result == nil then
-        local_seen_result = result
-    elseif result ~= local_seen_result then
-        local_seen_result = result
-        local winner = gGlobalSyncTable.sh5_result_winner or "Nobody"
-        local score = gGlobalSyncTable.sh5_result_score or 0
-        local winner_message
-        local result_mode = gGlobalSyncTable.sh5_result_mode or Team.NORMAL
-        if result_mode == Team.BOSS then
-            local reason = gGlobalSyncTable.sh5_result_reason or ""
-            if reason == "boss defeated" then
-                winner_message = translated("BOWSER DEFEATED! TEAM STARHUNT WINS!", "BOWSER DERROTADO! EL EQUIPO STARHUNT GANA!")
-            elseif reason == "stopped by host" then
-                winner_message = translated("BOSS ROUND STOPPED BY THE HOST.", "RONDA BOSS DETENIDA POR EL HOST.")
-            else
-                winner_message = translated("TIME UP! BOWSER WINS!", "TIEMPO AGOTADO! BOWSER GANA!")
-            end
-        elseif result_mode == Team.MODE then
-            local red_score = gGlobalSyncTable.sh5_result_red_score or 0
-            local blue_score = gGlobalSyncTable.sh5_result_blue_score or 0
-            if winner == "RED TEAM" then
-                winner_message = translated("RED TEAM WINS! ", "GANA EL EQUIPO ROJO! ")
-            elseif winner == "BLUE TEAM" then
-                winner_message = translated("BLUE TEAM WINS! ", "GANA EL EQUIPO AZUL! ")
-            else
-                winner_message = translated("TEAM TIE! ", "EMPATE DE EQUIPOS! ")
-            end
-            winner_message = winner_message .. "RED " .. tostring(red_score)
-                .. " - BLUE " .. tostring(blue_score)
-        elseif result_mode == Team.CHAOS then
-            if (gGlobalSyncTable.sh5_result_reason or "") == "chaos last standing" then
-                winner_message = translated("CHAOS WINNER: ", "GANADOR DE CAOS: ") .. winner
-            else
-                winner_message = translated("CHAOS ENDED WITHOUT A WINNER.",
-                    "CAOS TERMINO SIN GANADOR.")
-            end
-        else
-            winner_message = translated("STARHUNT WINNER: ", "GANADOR DE STARHUNT: ")
-                .. winner .. " - " .. tostring(score) .. translated(" STAR(S)!", " ESTRELLA(S)!")
-        end
-        djui_chat_message_create(winner_message)
-        djui_popup_create(winner_message, 2)
-    end
-end
-
 local function on_joined_game()
     Team.update_config_menu_lock()
     if is_round_active() then
@@ -670,7 +487,9 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         draw_player_health_bar = hud.draw_player_health_bar,
         modifier_text = hud.modifier_text,
         draw_hud_panel = Team.draw_hud_panel,
-        draw_config_menu = draw_config_menu,
+        draw_start_banner = hud.draw_start_banner,
+        draw_config_menu = hud.draw_config_menu,
+        round_notifications = local_round_notifications,
         health_wedges = Team.health_wedges,
         health_color = Team.health_color,
         draw_round_status_panels = Team.draw_round_status_panels,

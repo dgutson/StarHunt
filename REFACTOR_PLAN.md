@@ -8,12 +8,14 @@ not track progress.
 - **What has already been done, and what it cost:** `HISTORY.md`.
 - **What must not be broken while doing it:** `DEVELOPMENT_CHECKLIST.md`.
 
-All thirteen modules now exist. `hud.lua` is the only one still unfinished, and it has come
-out in two passes so far: its text layer and the native HUD's visibility first, then its
-picture layer -- `modifier_text`, the panel every card is built from, the health bar, the
-score/timer strip, the objective panel and the Gun Mod repaint. What is left of it is the
+All thirteen modules now exist and **every one of them is finished.** `hud.lua` was the last,
+and it came out in three passes: its text layer and the native HUD's visibility first, then
+its picture layer -- `modifier_text`, the panel every card is built from, the health bar, the
+score/timer strip, the objective panel and the Gun Mod repaint -- and finally its frame: the
 start banner, the config menu's drawing, `draw_hud` itself and the round notifications.
-Nothing else in `main.lua` belongs to a module that exists. `round.lua` is finished: its client half
+Nothing else in `main.lua` belongs to a module that exists; what is still there is the five
+declarations R-004 has to give a home, plus the header, the require wiring, the hook block and
+`STARHUNT_TEST_API`, which stay there permanently. `round.lua` is finished: its client half
 came out first, and its host half -- the clock, the goal pool, the winner tally, the player
 records and the per-frame loop -- followed once Boss's readers had moved. `team.lua` is
 finished too: its roster totals, late assignment, score publishing and reroll-button label
@@ -82,12 +84,20 @@ so the file gained `i18n`, `goals` and `boss` alongside `core`, and no cycle: no
 requires `hud`. `main.lua`'s `local BOSS_MODIFIER_FIELDS` had no reader left afterwards and
 went with it.
 
-What is left of the HUD is the start banner, `draw_config_menu`, `draw_hud` itself and
-`local_round_notifications`. **The banner and the notifications have to move in the same
-pass**, because `local_round_notifications` rebinds `local_start_banner_until` and
-`draw_start_banner` reads it; either they travel together or that local is migrated onto
-`local_runtime` first, in its own commit, the way `config_selection` was. That is the one
-piece of sequencing the first pass settled and the next one should not re-derive.
+**The third pass took the frame and finished the module.** `draw_start_banner`,
+`draw_config_menu`, `draw_hud` and `local_round_notifications` were one contiguous range in
+`main.lua` and moved as one piece, with `START_BANNER_FRAMES` and the three state locals
+`local_seen_round`, `local_seen_result` and `local_start_banner_until`. They had to travel
+together: `draw_hud` calls the banner and the menu, and the notifications rebind the frame
+the banner reads, so the alternative was migrating that local onto `local_runtime` first in
+its own commit, the way `config_selection` was. The scan named five new dependencies and they
+added the two edges the plan had predicted -- `configured_time_range` and
+`connected_player_count` from `round`, and the three option functions from `menu` -- so
+`hud.lua` requires `core`, `i18n`, `goals`, `boss`, `round` and `menu`, and there is still no
+cycle because nothing requires `hud`. It also reported `boss` as a dependency, which was a
+false positive: `module_deps.py` matched the word inside the string literal
+`"boss defeated"`. `main.lua`'s three `menu` option bindings had no reader left afterwards
+and went with the move.
 
 ## The rule that makes the split safe
 
@@ -166,8 +176,11 @@ is gone.
    modifiers -> goals              so goals may not require modifiers
    goals     -> core, i18n, save, boss
    menu      -> core, i18n, round  so round may not require menu
-   hud       -> core, i18n, goals, boss   and nothing requires hud, so it may import anything
+   hud       -> core, i18n, goals, boss, round, menu
    ```
+
+   Nothing requires `hud`, which is why it could take the two edges above without a cycle
+   and why it is the only module that may import anything.
 
    That is why `run_static_modifier_checks` could not live in `goals.lua` even though it walks
    `GOALS`: it also reads `NORMAL_MODIFIER_CATALOG`, `MODIFIER_AUDIT` and
@@ -196,7 +209,16 @@ A green test run is not evidence an extraction is correct. Three checks, in this
    `main.lua` from that commit minus the deleted ranges plus the added `require` line, and
    assert it equals the new file. The second direction is what proves nothing else moved.
 2. **Mutation.** Mutate the moved code and check the suite notices. This has found a real
-   coverage gap in **seventeen of the nineteen** passes so far. The HUD's picture layer is
+   coverage gap in **eighteen of the twenty** passes so far. The HUD's frame was the last of
+   them: a ten-mutation spot check caught nothing at all, because `test/suite/hud.lua` reached
+   `draw_hud` exactly once inside a `pcall` that only checked no colon had gone to the font,
+   `test/suite/menu.lua` tests what the menu does when a button is pressed rather than what it
+   draws, and nothing tested the banner or the winner announcements. **Four of the gaps it
+   found were reachable only on a client**, which is worth carrying forward: the host fills
+   `sh5_round`, `sh5_result_seq` and both team scores in with zero in its load-time block, so
+   on a host the `or 0` defaults applied to those fields can never fire.
+   `harness.load(function(c) c.is_server = false end)` is the fixture that reaches them.
+   The HUD's picture layer is
    the worst of them by a wide margin: **500 of 507 mutations survived**, and the only seven
    the suite caught were caught by the darkness and health-colour tests written for the pass
    before it. Three more engine stubs were hiding it: `djui_hud_render_rect` kept only the
@@ -364,6 +386,20 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   argued: each of the four mutants agrees with the original on `nil` and on every integer
   from -5,000 to 20,000. The redundancy is deliberate belt and braces around a health value
   that arrives from the engine, so **leave all four exactly as they are**.
+  The HUD's frame produced six more out of 238, and they fall into three shapes. Four are
+  bare `local` declarations with no initializer -- `local text` and `local mode_value` in
+  `draw_config_menu`, `local controls` below them, and `local winner_message` in
+  `local_round_notifications`. Deleting one turns the name into a global, but every branch of
+  the chain beneath it assigns the variable before anything reads it (each chain ends in an
+  `else`), so no reachable state can tell the difference. The fifth is the fallback index in
+  `Team.menu_lock_labels[Team.language + 1] or Team.menu_lock_labels[1]`: all three writers of
+  `Team.language` keep it inside 0 to 5 -- `i18n.lua` clamps with `math.max`/`math.min`, the
+  menu uses `% #Team.language_codes`, and the test API's `set_language` clamps -- and
+  `menu_lock_labels` has six entries, so the lookup never misses and the fallback is
+  unreachable. The sixth is the floor of `math.max(0, ...)` on the frames remaining in
+  `draw_hud`: the value reaches nothing but `format_remaining_time`, and that returns `"0:00"`
+  for both 0 and 1, so raising the floor changes nothing on screen. **Leave all six exactly as
+  they are.**
   The HUD's text layer produced three more out of 80, and all three are guards or seeds that
   no reachable state reaches. `local_hud_flags_before_round` starts as `nil` and is released
   back to `nil`, and the only expression that reads it,
@@ -451,15 +487,18 @@ planned layout closely.
 
 The HUD, as measured on the released file, was 31 declarations and about 601 lines -- 30 of
 them really, since one of the 31 turned out to be a translation table that had gone to
-`i18n.lua` passes earlier. Thirteen of those declarations and 131 lines are now in
-`modules/hud.lua`; the rest is still in `main.lua`:
+`i18n.lua` passes earlier. All 30 are now in `modules/hud.lua`, which came out in three
+passes:
 
-| part of hud | decls | ~lines | where |
-|---|---|---|---|
-| text layer and native-HUD visibility | 13 | 131 | `modules/hud.lua` |
-| banner, panels, config menu, `draw_hud`, notifications | 17 | ~470 | `main.lua` |
+| part of hud | decls | ~lines |
+|---|---|---|
+| text layer and native-HUD visibility | 13 | 131 |
+| panels: health bar, status strip, objective, Gun Mod repaint | 9 | ~306 |
+| frame: banner, config menu, `draw_hud`, notifications | 8 | ~181 |
 
-The part still to move has the heavy couplings; the part that came out had none of them:
+The heavy couplings the graph predicted were all in the last two passes, and none of them
+needed a new mechanism -- `i18n`, `goals` and `boss` arrived with the panels, and `round` and
+`menu` with the frame:
 
 ```
 hud   -> i18n       51
@@ -467,15 +506,19 @@ hud   -> team       26
 hud   -> modifiers  22
 ```
 
-## Appendix: per-symbol assignment for the two remaining modules
+`team` and `modifiers` never became require edges at all: everything the HUD reads from them
+is a field on the shared `Team` table, which every module reaches by reference.
+
+## Appendix: per-symbol assignment for the one remaining module
 
 **Machine-derived, not hand-verified**: seeded label propagation over the reference graph,
 constrained so each state cluster stays whole. Line numbers refer to the **released** v1.1
 file and are stale — re-derive every range with grep. Treat this as a starting point, never as
 settled; `tools/module_deps.py` is what actually decides.
 
-The appendix sections for the eleven extracted modules were deleted once those modules existed.
-They are in git history if ever needed.
+The appendix sections for the thirteen extracted modules were deleted once those modules
+existed. They are in git history if ever needed. What is left is the five declarations that
+were never assigned to one, which is R-004.
 
 Two things to know when reading it:
 
@@ -483,43 +526,13 @@ Two things to know when reading it:
   `is_boss_mode`, `Team.is_chaos_mode`, `Team.selected_difficulty` and `Team.periodic_window`
   each have most of their graph neighbours outside their own module, because they are used
   everywhere. They belong where they are semantically. 46 declarations show this pattern.
-- **Known seed artifacts still to correct:** `on_joined_game` landed in `i18n` because it
-  calls `translated`, but it is a hook callback and belongs with the hook block in `main.lua`.
-  Two others are now settled: `draw_config_menu` stays in `hud`, because the HUD's own text
-  helpers and its `draw_hud` are on both sides of it; and `Team.freeze_menu_mario`, which the
-  appendix suggested reconsidering against `modifiers`, went to `menu` -- it pins Mario only
-  while the config menu is open, reads nothing from `modifiers`, and has no caller but the
-  menu and the hook block.
-
-### `modules/hud.lua` — 8 of its declarations are still in `main.lua`
-
-Twenty-two came out in the first two passes and are listed after the table. Everything below
-is still in `main.lua`; the line numbers are from the **released** file and are stale, so
-re-derive every range with grep.
-
-```
-   13-13    local_var       START_BANNER_FRAMES        (read by local_round_notifications)
-  893-893   local_var       local_seen_round
-  894-894   local_var       local_seen_result
-  898-898   local_var       local_start_banner_until   REBOUND by local_round_notifications
- 4418-4429  local_function  draw_start_banner
- 4431-4518  local_function  draw_config_menu
- 4761-4780  local_function  draw_hud
- 4782-4835  local_function  local_round_notifications
-```
-
-Already in `modules/hud.lua`, from the first pass: `format_remaining_time`,
-`measure_hud_text`, `draw_hud_text`, `draw_centered_hud_text`,
-`Team.objective_text_max_width`, `Team.draw_scaled_centered_text`,
-`apply_counter_visibility`, `local_hud_flags_before_round`, `local_counter_round_active`,
-`native_hud_hidden`, `update_native_hud_visibility`, `Team.draw_darkness_behind` and
-`hide_native_hud_before_render`; and from the second, `Team.darkness_active`,
-`modifier_text`, `Team.draw_hud_panel`, `Team.health_wedges`, `Team.health_color`,
-`draw_player_health_bar`, `Team.draw_round_status_panels`, `Team.draw_objective_panel` and
-`Team.draw_gun_mod_hud_compatibility`.
-
-One more seed artifact is now corrected: the appendix listed `Team.menu_lock_labels` under
-`hud`, and it is a translation table that went to `i18n.lua` several passes ago.
+- **The seed artifacts are all settled now.** `on_joined_game` landed in `i18n` because it
+  calls `translated`, but it is a hook callback and stayed with the hook block in `main.lua`.
+  `draw_config_menu` stayed in `hud`, because the HUD's own text helpers and its `draw_hud`
+  are on both sides of it. And `Team.freeze_menu_mario`, which the appendix suggested
+  reconsidering against `modifiers`, went to `menu` -- it pins Mario only while the config
+  menu is open, reads nothing from `modifiers`, and has no caller but the menu and the hook
+  block.
 
 ### Unassigned — 5 declarations, need a decision during extraction
 
