@@ -122,6 +122,157 @@ return function(t, harness)
         end
     end)
 
+    s.test("the eighteen world names are the ones the mod ships", function()
+        -- Catches the two columns being swapped, which nothing else does: every
+        -- goal carries both an English and a Spanish world name, and both are
+        -- non-empty either way round.
+        local expected = {
+            LEVEL_BOB = { "BOB-OMB BATTLEFIELD", "CAMPO DE BATALLA BOB-OMB" },
+            LEVEL_WF = { "WHOMP'S FORTRESS", "FORTALEZA DE WHOMP" },
+            LEVEL_JRB = { "JOLLY ROGER BAY", "BAHIA DEL PIRATA" },
+            LEVEL_CCM = { "COOL, COOL MOUNTAIN", "MONTANA ESCALOFRIANTE" },
+            LEVEL_BBH = { "BIG BOO'S HAUNT", "MANSION DE BIG BOO" },
+            LEVEL_HMC = { "HAZY MAZE CAVE", "CUEVA DEL LABERINTO" },
+            LEVEL_LLL = { "LETHAL LAVA LAND", "FOSO DE LAVA LETAL" },
+            LEVEL_SSL = { "SHIFTING SAND LAND", "ARENAS MOVEDIZAS" },
+            LEVEL_DDD = { "DIRE, DIRE DOCKS", "MUELLE DIRE, DIRE" },
+            LEVEL_SL = { "SNOWMAN'S LAND", "TIERRA DEL HOMBRE DE NIEVE" },
+            LEVEL_WDW = { "WET-DRY WORLD", "MUNDO MOJADO-SECO" },
+            LEVEL_TTM = { "TALL, TALL MOUNTAIN", "MONTANA ALTA, ALTA" },
+            LEVEL_THI = { "TINY-HUGE ISLAND", "ISLA PEQUENA-GIGANTE" },
+            LEVEL_TTC = { "TICK TOCK CLOCK", "RELOJ TIC TAC" },
+            LEVEL_RR = { "RAINBOW RIDE", "PASEO POR EL ARCOIRIS" },
+            LEVEL_TOTWC = { "TOWER OF THE WING CAP", "TORRE DE LA GORRA ALADA" },
+            LEVEL_COTMC = { "CAVERN OF THE METAL CAP", "CUEVA DE LA GORRA METALICA" },
+            LEVEL_VCUTM = { "VANISH CAP UNDER THE MOAT", "GORRA INVISIBLE BAJO EL FOSO" },
+        }
+        local by_level = {}
+        for name, pair in pairs(expected) do by_level[_G[name]] = pair end
+
+        local seen = {}
+        for i, goal in ipairs(api.goals) do
+            local pair = by_level[goal.level]
+            t.ok(pair ~= nil, "goal " .. i .. " is in an unknown level")
+            t.eq(goal.world, pair[1], "goal " .. i .. " world name")
+            t.eq(goal.world_es, pair[2], "goal " .. i .. " Spanish world name")
+            seen[goal.level] = true
+        end
+        for name in pairs(expected) do
+            t.ok(seen[_G[name]], "no goal in " .. name)
+        end
+    end)
+
+    s.test("the catalog data is byte-for-byte what v1.1 shipped", function()
+        -- PROJECT_STATUS.md declares v1.1 closed to balance changes, so the star
+        -- list and its hand-tuned modifier values are fixed data. This digest is
+        -- the one check that notices a star being silently retitled, reordered or
+        -- retuned -- including an English and Spanish column swapped over.
+        --
+        -- If you changed the catalog ON PURPOSE, the run prints the new digest:
+        -- read the diff first, then paste the number in below.
+        local function fnv1a(text)
+            local h = 0xcbf29ce484222325
+            for i = 1, #text do
+                h = (h ~ text:byte(i)) * 0x100000001b3
+            end
+            return h
+        end
+
+        local parts = {}
+        for _, goal in ipairs(api.goals) do
+            parts[#parts + 1] = table.concat({
+                goal.level, goal.act, goal.world, goal.world_es,
+                goal.title, goal.title_es, goal.power or "-",
+            }, "|")
+            for _, m in ipairs(goal.mods) do
+                -- Only the hand-tuned entries are catalog data. The rest are
+                -- catalog defaults that modules/audit.lua fills in.
+                if m.hand_tuned then
+                    parts[#parts + 1] = "  " .. m.kind .. "=" .. tostring(m.value)
+                end
+            end
+        end
+        local actual = string.format("%016x", fnv1a(table.concat(parts, "\n")))
+        t.eq(actual, "e5cd39707be1e49f", "the goal catalog changed")
+    end)
+
+    -- reading a goal ---------------------------------------------------------
+    -- These four decide whether the star a player just touched is the one they
+    -- were sent for. Extracting them into modules/goals.lua found the lot
+    -- uncovered: shifting the star-ID field, dropping the act comparison and
+    -- matching any star at all all left the suite green.
+
+    s.test("a goal is looked up by its position in the catalog", function()
+        for _, id in ipairs({ 1, 2, 47, 93 }) do
+            t.eq(api.get_goal(id), api.goals[id], "goal " .. id)
+        end
+        t.eq(api.get_goal(0), nil, "slot 0 is not a goal")
+        t.eq(api.get_goal(94), nil, "past the end of the catalog")
+    end)
+
+    s.test("the local player's goal follows their synchronized slot", function()
+        local live = harness.load()
+        gPlayerSyncTable[0].sh5_goal = 12
+        t.eq(live.get_local_goal(), live.goals[12], "slot 12")
+        gPlayerSyncTable[0].sh5_goal = 1
+        t.eq(live.get_local_goal(), live.goals[1], "slot 1")
+        gPlayerSyncTable[0].sh5_goal = 0
+        t.eq(live.get_local_goal(), nil, "no goal assigned yet")
+    end)
+
+    s.test("a star object matches only its own act", function()
+        -- SM64 keeps the star's zero-based ID in the top byte of oBehParams,
+        -- so Act 1 is object ID 0. An off-by-one here credits the player for
+        -- the star next to the one they were sent for.
+        local function star_object(act)
+            return { oBehParams = (act - 1) << 24 }
+        end
+        for _, act in ipairs({ 1, 3, 6 }) do
+            local goal = { act = act }
+            t.ok(api.goal_matches_star_object(goal, star_object(act)),
+                "act " .. act .. " did not match its own star")
+            for _, other in ipairs({ 1, 2, 3, 4, 5, 6 }) do
+                if other ~= act then
+                    t.ok(not api.goal_matches_star_object(goal, star_object(other)),
+                        "act " .. act .. " matched the act " .. other .. " star")
+                end
+            end
+        end
+        t.ok(not api.goal_matches_star_object({ act = 1 }, nil), "nil object matched")
+    end)
+
+    s.test("a player is in the goal's area only in the right level AND act", function()
+        local live, ctl = harness.load()
+        ctl.player_count = 1
+        local goal = { level = LEVEL_CCM, act = 3 }
+
+        gNetworkPlayers[0].currLevelNum = LEVEL_CCM
+        gNetworkPlayers[0].currActNum = 3
+        t.ok(live.goal_matches_player_area(goal, 0), "the right level and act did not match")
+
+        gNetworkPlayers[0].currActNum = 4
+        t.ok(not live.goal_matches_player_area(goal, 0), "the wrong act still matched")
+
+        gNetworkPlayers[0].currLevelNum = LEVEL_BOB
+        gNetworkPlayers[0].currActNum = 3
+        t.ok(not live.goal_matches_player_area(goal, 0), "the wrong level still matched")
+    end)
+
+    s.test("a goal names its world and star in the chosen language", function()
+        -- Catches the two arguments being handed over the wrong way round,
+        -- which would show Spanish to English players and English to everyone
+        -- else -- translated() itself would look perfectly healthy.
+        local live = harness.load()
+        local goal = live.goals[1]
+        live.set_language(0)
+        t.eq(live.goal_world_text(goal), goal.world, "English world name")
+        t.eq(live.goal_title_text(goal), goal.title, "English star name")
+        live.set_language(1)
+        t.eq(live.goal_world_text(goal), goal.world_es, "Spanish world name")
+        t.eq(live.goal_title_text(goal), goal.title_es, "Spanish star name")
+        live.set_language(0)
+    end)
+
     s.test("the mod registers one chat command and one pause-menu button", function()
         local _, ctl = harness.load()
         t.eq(#ctl.chat_commands, 1, "exactly one /help entry")

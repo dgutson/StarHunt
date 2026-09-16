@@ -3,3 +3,4 @@ graphify-out/
 # language-server / linter scratch
 .luals-log/
 *.log
+HANDOFF.md

@@ -119,4 +119,66 @@ return function(t, harness)
             end
         end
     end)
+
+    -- The four tests above only ever inspect pairs that were formed. The
+    -- opposite case -- nothing is compatible, so there is no second modifier to
+    -- hand out -- is unreachable with the real 93 goals, because every one of
+    -- them has a legal Nightmare pair and the test above asserts exactly that.
+    -- These three reach the guard with small goals built from a real one, which
+    -- keeps the level and act that the audit reads.
+    local function goal_with_mods(source, mods)
+        local copy = {}
+        for key, value in pairs(source) do copy[key] = value end
+        copy.mods = mods
+        return copy
+    end
+
+    -- A real goal and two of its modifiers that the audit approves at Nightmare
+    -- and that are allowed to pair. Searched for rather than written down, so
+    -- retuning a star cannot quietly turn these tests into no-ops.
+    local function audited_pair()
+        for _, goal in ipairs(api.goals) do
+            for i = 1, #goal.mods do
+                for j = 1, #goal.mods do
+                    if i ~= j and api.chaos_pair_allowed(goal.mods[i], goal.mods[j])
+                        and api.effective_modifier_for_goal(goal, goal.mods[i]) ~= nil
+                        and api.effective_modifier_for_goal(goal, goal.mods[j]) ~= nil then
+                        return { goal = goal, first = goal.mods[i], second = goal.mods[j] }
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    s.test("a goal with a single modifier offers no second", function()
+        gGlobalSyncTable.sh5_difficulty = api.nightmare
+        local found = audited_pair()
+        if found == nil then t.fail("no goal has an audited, compatible pair") return end
+        local goal = goal_with_mods(found.goal, { found.first })
+        t.eq(api.pick_second_modifier(goal, 1), 0,
+            "the only modifier was offered as its own partner")
+    end)
+
+    s.test("a goal whose only alternative conflicts offers no second", function()
+        gGlobalSyncTable.sh5_difficulty = api.nightmare
+        local found = audited_pair()
+        if found == nil then t.fail("no goal has an audited, compatible pair") return end
+        -- The same modifier in both slots: chaos_pair_allowed refuses a kind
+        -- paired with itself, so the one candidate is rejected.
+        local goal = goal_with_mods(found.goal, { found.first, found.first })
+        t.eq(api.pick_second_modifier(goal, 1), 0,
+            "a conflicting modifier was handed out as the second")
+    end)
+
+    s.test("a goal with exactly one legal alternative returns that one", function()
+        gGlobalSyncTable.sh5_difficulty = api.nightmare
+        local found = audited_pair()
+        if found == nil then t.fail("no goal has an audited, compatible pair") return end
+        local goal = goal_with_mods(found.goal, { found.first, found.second })
+        t.eq(api.pick_second_modifier(goal, 1), 2,
+            "the single compatible alternative was not the one returned")
+        t.eq(api.pick_second_modifier(goal, 2), 1,
+            "the same pair was not offered in the other direction")
+    end)
 end
