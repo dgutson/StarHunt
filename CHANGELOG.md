@@ -40,6 +40,11 @@ que copiar `main.lua` solo no alcanza.
 
 ## Cambios de v1.1
 
+- Mantenimiento del 17 de septiembre: en Dire, Dire Docks los jugadores se ven,
+  se tocan y pelean entre sí aunque tengan actos distintos. El submarino, su
+  puerta y los nueve postes aparecen o desaparecen según la partida guardada,
+  que es la misma para todos los jugadores de la sesión, así que el curso se ve
+  igual desde cualquier acto; lo único que depende del acto es la manta raya.
 - Mantenimiento del 17 de septiembre: cuando el mod oculta a otro jugador
   porque su acto carga otra geometría, ahora además se atraviesan. Antes el
   jugador oculto seguía siendo un cuerpo sólido: se chocaba con él y hasta se

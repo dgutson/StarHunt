@@ -33,6 +33,20 @@ return function(t, harness)
         ctl.begin_round(api, mode or api.normal_mode, api.medium)
     end
 
+    --- The Mario object the engine hands the interaction hook for a body.
+    -- The engine stamps the owner onto the object every frame, and the mod
+    -- reads that field rather than walking the player list, so the fixture has
+    -- to carry it too.
+    local function body_of(index)
+        if gMarioStates[index].marioObj == nil then
+            -- A stub stands in for the engine's Object, as everywhere else in
+            -- test/: only the one field the mod reads off it is real.
+            --- @diagnostic disable-next-line: missing-fields
+            gMarioStates[index].marioObj = { globalPlayerIndex = gNetworkPlayers[index].globalIndex }
+        end
+        return gMarioStates[index].marioObj
+    end
+
     s.test("nobody shares a world outside a round", function()
         local api, ctl = fresh()
         place(api, ctl, LEVEL_BOB, 1, 1)
@@ -115,6 +129,37 @@ return function(t, harness)
         t.ok(not api.players_have_private_variant(0, 1), "one WDW act isolated from itself")
     end)
 
+    s.test("Dire Dire Docks is one world for every act", function()
+        -- The manta ray is the only act-gated object in the course
+        -- (levels/ddd/script.c:31). The submarine and the nine poles come and go
+        -- on SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR
+        -- (ddd_sub.inc.c:4, ddd_pole.inc.c:3), and every client reads the host's
+        -- save file, so the geometry is the same for everybody whatever act they
+        -- were sent to.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_DDD, 1, 3)
+        -- The submarine, its door and the poles are all in area 2.
+        for i = 0, 1 do
+            gNetworkPlayers[i].currAreaIndex = 2
+            body_of(i)
+        end
+        t.ok(not api.players_have_private_variant(0, 1),
+            "two DDD acts were isolated where the submarine sits")
+        t.ok(api.players_can_share_world(0, 1),
+            "two DDD acts standing together could not see each other")
+
+        for i = 0, 1 do gMarioStates[i].pos = { x = 5760, y = 1005, z = 360 } end
+        t.ok(api.players_can_share_world(0, 1),
+            "two DDD acts were isolated at the outermost pole")
+
+        -- Deep water in DDD, and also inside the box is_jrb_ship_zone tests.
+        -- A zone belongs to the level whose rule names it and must not be
+        -- reached from another course.
+        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = -2000, z = -2000 } end
+        t.ok(api.players_can_share_world(0, 1),
+            "two DDD acts were isolated by another level's zone")
+    end)
+
     s.test("Jolly Roger Bay is private only around the ship", function()
         -- The two ship layouts conflict, but the rest of the bay does not, so
         -- players stay visible until one of them reaches the ship.
@@ -149,19 +194,6 @@ return function(t, harness)
                 "mode " .. mode .. " shared a world across two areas")
         end
     end)
-    --- The Mario object the engine hands the interaction hook for a body.
-    -- The engine stamps the owner onto the object every frame, and the mod
-    -- reads that field rather than walking the player list, so the fixture has
-    -- to carry it too.
-    local function body_of(index)
-        if gMarioStates[index].marioObj == nil then
-            -- A stub stands in for the engine's Object, as everywhere else in
-            -- test/: only the one field the mod reads off it is real.
-            --- @diagnostic disable-next-line: missing-fields
-            gMarioStates[index].marioObj = { globalPlayerIndex = gNetworkPlayers[index].globalIndex }
-        end
-        return gMarioStates[index].marioObj
-    end
 
     s.test("a player hidden for an incompatible world is not a body to walk into", function()
         -- Hiding the model was only half of it. interact_player is the engine's

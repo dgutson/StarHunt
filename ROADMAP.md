@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-033
+Next ID: R-034
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -27,15 +27,6 @@ session fills the context window and invites mistakes.
 ---
 
 ## Now
-
-### R-031 — Dire Dire Docks is isolated for a divergence that cannot happen
-
-- **Category:** Bugfix
-- **What:** `players_have_private_variant` treats two players on different DDD acts as incompatible whenever either is near the origin, through `is_ddd_sub_zone`. Nothing in DDD is act-gated except the manta ray. The submarine, the sub door and the nine poles are gated on save flags — `bhv_bowsers_sub_loop` and `bhv_ddd_pole_init` both test `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` — and save state is common to the whole session, because `packet_join.c:103-129` sends the host's entire EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer rather than its own file, and `save_file.c:712-732` broadcasts every later flag change. So every player in DDD sees the same submarine and the same poles. Delete `is_ddd_sub_zone` and the DDD branch. (The zone was also mismeasured: the pole cluster reaches x = 5760, outside the 4600 radius it tests.)
-- **Why:** The rule costs players visibility and PvP in a course for nothing. More than that, it is the cheapest live test of the claim R-028 is built on — that the act is the only axis on which two players' worlds differ. If removing this rule causes no trouble in a real session, the premise holds and the volume table is sound; if it does cause trouble, the premise is wrong and R-028 needs rethinking before it is written rather than after.
-- **Outcome:** Two players on different DDD acts see each other and can fight anywhere in the course. `test/suite/world.lua` asserts it. A real session in DDD with two players on different acts shows the same submarine state to both.
-- **Blocked-by:** —
-- **Enables:** R-028
 
 ### R-029 — Wet-Dry World is isolated for a reason that does not exist, and its real divergence is unhandled
 
@@ -65,7 +56,7 @@ session fills the context window and invites mistakes.
   Deliberately excluded, because they change no surface anyone can stand on: BOB's cannon, CCM's snowman bottom (act 5), JRB's jet stream and whirlpool.
 - **Engine facts already verified against `coop-deluxe/sm64coopdx`,** so the next session does not have to re-derive them:
   - `src/engine/level_script.c:534` gates every `OBJECT_WITH_ACTS` on `1 << (gCurrActNum - 1)`, evaluated per client when the area loads. That is the whole reason two players see different geometry.
-  - **Save-file progression is not a divergence.** `packet_join.c:103-129` sends the host's entire 512-byte EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer instead of its own file, and `save_file.c:712-732` broadcasts every later flag change. This is the premise the whole volume table rests on: the act is the only axis on which two players' worlds can differ. R-031 removes the DDD rule, which is the cheapest live test of exactly that claim.
+  - **Save-file progression is not a divergence.** `packet_join.c:103-129` sends the host's entire 512-byte EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer instead of its own file, and `save_file.c:656-666` and `:707-721` broadcast every later flag change. This is the premise the whole volume table rests on: the act is the only axis on which two players' worlds can differ. DDD is no longer isolated on that basis, so a real session there with two players on different acts is the cheapest live test of the claim — if they see the same submarine, the premise holds.
   - `is_jrb_ship_zone` is wrong today. Its box (x within +/-2600, y -2600..1000, z -4200..-350) is in **area 2** coordinates — the ship interior — while both hulls are in area 1 at x around 4880-5385, z around 2375-2428. It never fires where it matters. The volume table replaces it, so fixing it separately would be wasted work.
   - **Do not read `gNetworkPlayers[i].currActNum`** to learn a player's act. It is fed from `gCurrActStarNum` (`level_update.c:558`), which only the star-select menu sets and which is reset to 0 when the level transition ends (`level_update.c:1480`). It is 0 during ordinary play. `sh5_goal` is the right source.
   - **Contact suppression is already in place.** R-030 refused `INTERACT_PLAYER` in `on_allow_interact` for the isolation that exists today, and added `player_index_of_body` to name the player an interaction object belongs to. This item reuses both rather than writing its own.
@@ -75,8 +66,8 @@ session fills the context window and invites mistakes.
   - **What happens where a divergence is not a volume.** TTC acts 1-5 versus act 6 change the speed of every moving platform in the course; StarHunt sets it itself at `round.lua:822` per player and the engine also syncs `gTTCSpeedSetting` through `packet_level.c:33`, so no box can express it and the existing course-wide rule either stays as a second tier or is dropped deliberately. BBH's only divergent surface is the staircase, so replacing "isolate anywhere indoors" with three boxes means BBH players on different acts will now fight indoors.
   - **Precedence when both conditions hold.** A player on the raised ship deck both occupies a divergent volume and is occluded by it. The rule above makes occupancy win, so they read as a silhouette rather than vanishing. Confirm or overrule.
 - **Why:** StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so two players can stand in one course and area with different acts and therefore different geometry — the Jolly Roger Bay hull sits at y = -5520 in act 1 and y = +820 in acts 2-6. Today NORMAL answers this by hiding the other player outright, which deletes the encounter, and TEAM answers it by ignoring the problem, which lets two players fight through a ship only one of them has. Neither is a fair fight, and a fair fight between different acts is what the mode is for. The zone tests that stand in for this today are also aimed at the wrong places: the JRB box is in the wrong area entirely and the DDD rule guards against a divergence that cannot occur.
-- **Outcome:** Two players on different acts of one course see each other, damage each other and collide with each other everywhere the geometry agrees, and are cleanly separated only where it does not — occluded by a divergent volume, or standing in one. `is_jrb_ship_zone` and `is_ddd_sub_zone` are gone, replaced by the volume table. `test/suite/world.lua` covers each volume and each of the three per-pair outcomes, and the three documented checks stay at their baselines. Not covered, as ever: a real multiplayer session, which is the only thing that can confirm the measured half-extents and what the silhouette actually looks like.
-- **Blocked-by:** R-031
+- **Outcome:** Two players on different acts of one course see each other, damage each other and collide with each other everywhere the geometry agrees, and are cleanly separated only where it does not — occluded by a divergent volume, or standing in one. `is_jrb_ship_zone` is gone, replaced by the volume table. `test/suite/world.lua` covers each volume and each of the three per-pair outcomes, and the three documented checks stay at their baselines. Not covered, as ever: a real multiplayer session, which is the only thing that can confirm the measured half-extents and what the silhouette actually looks like.
+- **Blocked-by:** —
 - **Enables:** —
 
 ### R-014 — Take the bug reports and turn them into roadmap items
@@ -98,6 +89,19 @@ session fills the context window and invites mistakes.
 - **Enables:** —
 
 ## Next
+
+### R-033 — Leave nothing for the checkers to report, so a report means something
+
+- **Category:** CI
+- **What:** Twelve reports survive every run today, and the `starhunt-testing` skill carries a list of them so a reader can tell them from a real one. Remove the list by removing the reports, each treated on its own terms rather than by disabling a rule globally.
+  - `StarHunt/modules/hud.lua:94` — `shadowing upvalue argument alpha on line 92`. The inner `draw_layer` takes an `alpha` parameter inside `draw_hud_text`, which has one too. Rename the inner one; nothing else is wrong with it.
+  - `StarHunt/modules/modifiers.lua:507` — `empty if branch`. The branch is deliberate: `coin_toll` and `darkness_pulse` are applied in star interaction and the HUD rather than in `apply_local_modifier`. Either invert the condition so the empty arm disappears, or keep it and silence that one line with `-- luacheck: ignore` and the reason.
+  - `StarHunt/modules/save.lua:39` and `:53` — `Cannot assign boolean to parameter integer` for `save_file_do_save(file, true)`. The call is correct: `smlua_to_integer` converts a boolean itself, `true` to 1 (`src/pc/lua/smlua_utils.c:95-98`). The annotation is narrower than the binding, so this is a `---@diagnostic disable-next-line: param-type-mismatch` on each call with that citation beside it.
+  - `test/harness.lua:139,144,147,148,150,152` — seven `missing-fields` and one `assign-type-mismatch` (`marioObj = nil`). The stub supplies the fields the mod reads, not whole engine structs, and completing `MarioState` alone would mean about sixty fields no test touches. A file-level `---@diagnostic disable: missing-fields` at the top of the stub, with a sentence saying why, is the honest answer; the `marioObj` one needs its own line.
+- **Why:** A check whose clean state is "these twelve, and no others" makes every reader compare output against a list, and that list is itself something to maintain and get wrong. At zero, the rule is `0 warnings, 0 problems` and any output at all is a real signal. It also removes the last hand-maintained numbers from the skill.
+- **Outcome:** `luacheck StarHunt/ test/` reports `0 warnings / 0 errors` and `lua-language-server --check` reports no problems. Every suppression is inline and names its reason; `.luarc.json`'s `diagnostics.disable` list gains nothing, because a globally disabled rule hides the next real case too. The `starhunt-testing` skill drops the paragraphs describing the expected reports and says the checks come back clean.
+- **Blocked-by:** —
+- **Enables:** —
 
 ### R-012 — Split `modules/round.lua`, now the largest file in the mod
 

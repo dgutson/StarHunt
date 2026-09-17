@@ -13,6 +13,44 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — R-031: Dire Dire Docks is one world, whatever act a player was sent to
+
+`players_have_private_variant` hid two players from each other, and refused the contact
+between their bodies, whenever they held different DDD acts and either one was within 4600
+units of the submarine. Nothing in the course is act-gated except the manta ray
+(`levels/ddd/script.c:31`). The submarine, its door and the nine poles all test
+`SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` — `bhv_bowsers_sub_loop`
+(`src/game/behaviors/ddd_sub.inc.c:4`) deletes the submarine once the flag is set and
+`bhv_ddd_pole_init` (`src/game/behaviors/ddd_pole.inc.c:3`) deletes each pole until it is —
+and the save file is common to the session: `packet_join.c:103-129` sends the host's whole
+512-byte EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that
+buffer instead of its own file, and `save_file.c:656-666` and `:707-721` broadcast every later
+flag change. So every player in DDD sees the same submarine and the same poles.
+
+`is_ddd_sub_zone` and the DDD branch are gone. The zone was also measured for geometry that
+lives elsewhere: the submarine and the poles are in area 2, and the pole cluster reaches
+x = 5760, outside the 4600-unit radius the zone tested.
+
+`test/suite/world.lua` gained "Dire Dire Docks is one world for every act", which fails
+against the previous code. Its last assertion also holds a DDD pair in deep water at
+coordinates inside the box `is_jrb_ship_zone` tests, so a zone belonging to one level cannot
+be reached from another.
+
+`test/live/` gained a fourth case, `ddd`, which is the same claim in a real session: two clients
+holding different DDD acts, the second standing in the first's act, meeting 300 units under the
+water surface in the column the level's own `MARIO_POS` drops Mario down. Both report
+`ddd_gate=0` for `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR`, the predicate answers
+false and the engine pushes the two apart — drift 30 and 47 against a threshold of 20. Run
+against the code before the fix, the case goes red with `fail reason=wrong_pair_state`, because
+that meeting point is inside the region `is_ddd_sub_zone` covered. The pair meets at a fixed
+point rather than on searched-for floor because the course is flooded and the shaft ends in a
+whirlpool whose current separates a pair by 190 units and more, which reads as a push.
+
+786 passed / 0 failed, luacheck 2 warnings / 0 errors in 47 files, lua-language-server 10
+problems in 2 files, `test/live/run.sh` PASSED with its eight verdicts. Mutation sweep over
+`players_have_private_variant`: 46 of 110 caught, against 44 of 119 on `main` — the survivors
+are the BBH, WF and JRB branches, untested before and after, which R-028 replaces.
+
 ### 2026-09-17 — R-032: the live harness measures a collision, and says what it is measuring
 
 `test/live/` booted, loaded StarHunt, started a real round and warped both players, but its

@@ -541,13 +541,21 @@ end
 -- Whether two players are looking at the same world.
 --
 -- Two players in the same level on different acts may be standing in geometry
--- that does not agree -- JRB's two ship layouts, DDD's submarine, WDW's water
--- level, BBH's interior rooms, Whomp's tower, TTC's stopped clock. Where the
--- conflict is local to one region, only that region is private and the rest of
--- the course stays shared; where the whole course differs between acts, the
--- whole course is private. Team and Chaos are PvP races rather than parallel
--- runs, so they share a world whenever the players are genuinely in the same
--- place and skip the per-act geometry rules entirely.
+-- that does not agree -- JRB's two ship layouts, WDW's water level, BBH's
+-- interior rooms, Whomp's tower, TTC's stopped clock. Where the conflict is
+-- local to one region, only that region is private and the rest of the course
+-- stays shared; where the whole course differs between acts, the whole course
+-- is private. Team and Chaos are PvP races rather than parallel runs, so they
+-- share a world whenever the players are genuinely in the same place and skip
+-- the per-act geometry rules entirely.
+--
+-- Geometry that turns on a save flag rather than on the act is the same for
+-- everybody and is never private: sm64coopdx hands each joiner the host's whole
+-- save file (`packet_join.c`), has the client read from that copy
+-- (`ultra_reimplementation.c`) and broadcasts every later flag change
+-- (`save_file.c`). Dire Dire Docks is the course this covers -- its submarine,
+-- sub door and nine poles all test SAVE_FLAG_HAVE_KEY_2 |
+-- SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, and only its manta ray is act-gated.
 --
 -- Both answers feed visibility, nametags and whether PvP damage lands.
 -- JRB has two incompatible ship layouts. When a player reaches the ship
@@ -558,18 +566,6 @@ local function is_jrb_ship_zone(m)
     return m.pos.x > -2600 and m.pos.x < 2600
         and m.pos.y > -2600 and m.pos.y < 1000
         and m.pos.z > -4200 and m.pos.z < -350
-end
-
-local function is_ddd_sub_zone(m)
-    if m == nil or m.marioObj == nil then return false end
-    local submarine = obj_get_first_with_behavior_id(id_bhvBowsersSub)
-    if submarine ~= nil then
-        local distance = dist_between_objects(submarine, m.marioObj)
-        return distance ~= nil and distance < 4600
-    end
-    -- The vanilla submarine geometry is centered at the DDD origin. This
-    -- fallback covers clients whose selected act has already removed it.
-    return math.abs(m.pos.x) < 4200 and math.abs(m.pos.z) < 4200 and m.pos.y > -2600
 end
 
 local function is_wf_tower_zone(m)
@@ -599,11 +595,6 @@ local function players_have_private_variant(a, b)
     if first.level == LEVEL_TTC and second.level == LEVEL_TTC
         and (first.act == 6) ~= (second.act == 6) then
         return true
-    end
-    -- DDD's submarine is private only near the conflicting geometry. Players
-    -- remain visible and can fight throughout the rest of the course.
-    if first.level == LEVEL_DDD and second.level == LEVEL_DDD and first.act ~= second.act then
-        return is_ddd_sub_zone(gMarioStates[a]) or is_ddd_sub_zone(gMarioStates[b])
     end
     -- Wet-Dry World may load a different global water/geometry state for each
     -- act, so different acts are private throughout that course.
