@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-033
+Next ID: R-034
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -89,6 +89,19 @@ session fills the context window and invites mistakes.
 - **Enables:** —
 
 ## Next
+
+### R-033 — Leave nothing for the checkers to report, so a report means something
+
+- **Category:** CI
+- **What:** Twelve reports survive every run today, and the `starhunt-testing` skill carries a list of them so a reader can tell them from a real one. Remove the list by removing the reports, each treated on its own terms rather than by disabling a rule globally.
+  - `StarHunt/modules/hud.lua:94` — `shadowing upvalue argument alpha on line 92`. The inner `draw_layer` takes an `alpha` parameter inside `draw_hud_text`, which has one too. Rename the inner one; nothing else is wrong with it.
+  - `StarHunt/modules/modifiers.lua:507` — `empty if branch`. The branch is deliberate: `coin_toll` and `darkness_pulse` are applied in star interaction and the HUD rather than in `apply_local_modifier`. Either invert the condition so the empty arm disappears, or keep it and silence that one line with `-- luacheck: ignore` and the reason.
+  - `StarHunt/modules/save.lua:39` and `:53` — `Cannot assign boolean to parameter integer` for `save_file_do_save(file, true)`. The call is correct: `smlua_to_integer` converts a boolean itself, `true` to 1 (`src/pc/lua/smlua_utils.c:95-98`). The annotation is narrower than the binding, so this is a `---@diagnostic disable-next-line: param-type-mismatch` on each call with that citation beside it.
+  - `test/harness.lua:139,144,147,148,150,152` — seven `missing-fields` and one `assign-type-mismatch` (`marioObj = nil`). The stub supplies the fields the mod reads, not whole engine structs, and completing `MarioState` alone would mean about sixty fields no test touches. A file-level `---@diagnostic disable: missing-fields` at the top of the stub, with a sentence saying why, is the honest answer; the `marioObj` one needs its own line.
+- **Why:** A check whose clean state is "these twelve, and no others" makes every reader compare output against a list, and that list is itself something to maintain and get wrong. At zero, the rule is `0 warnings, 0 problems` and any output at all is a real signal. It also removes the last hand-maintained numbers from the skill.
+- **Outcome:** `luacheck StarHunt/ test/` reports `0 warnings / 0 errors` and `lua-language-server --check` reports no problems. Every suppression is inline and names its reason; `.luarc.json`'s `diagnostics.disable` list gains nothing, because a globally disabled rule hides the next real case too. The `starhunt-testing` skill drops the paragraphs describing the expected reports and says the checks come back clean.
+- **Blocked-by:** —
+- **Enables:** —
 
 ### R-012 — Split `modules/round.lua`, now the largest file in the mod
 
