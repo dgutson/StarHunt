@@ -149,4 +149,72 @@ return function(t, harness)
                 "mode " .. mode .. " shared a world across two areas")
         end
     end)
+    --- The Mario object the engine hands the interaction hook for a body.
+    -- The engine stamps the owner onto the object every frame, and the mod
+    -- reads that field rather than walking the player list, so the fixture has
+    -- to carry it too.
+    local function body_of(index)
+        if gMarioStates[index].marioObj == nil then
+            -- A stub stands in for the engine's Object, as everywhere else in
+            -- test/: only the one field the mod reads off it is real.
+            --- @diagnostic disable-next-line: missing-fields
+            gMarioStates[index].marioObj = { globalPlayerIndex = gNetworkPlayers[index].globalIndex }
+        end
+        return gMarioStates[index].marioObj
+    end
+
+    s.test("a player hidden for an incompatible world is not a body to walk into", function()
+        -- Hiding the model was only half of it. interact_player is the engine's
+        -- one route into resolve_player_collision, so until the interaction was
+        -- refused the hidden player stayed an invisible wall to bump into and
+        -- stand on.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_TTC, 6, 1)
+        t.ok(api.players_have_private_variant(0, 1), "the fixture stopped being a private pair")
+        t.ok(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER) == false,
+            "walked into a player the mod had hidden")
+        -- Both directions: the engine moves whichever player it is processing,
+        -- and a remote body landing on the local one squishes it, so the same
+        -- contact has to be refused when the remote player is the one asking.
+        t.ok(api.allow_interact(gMarioStates[1], body_of(0), INTERACT_PLAYER) == false,
+            "a hidden player walked into the local one")
+    end)
+
+    s.test("players who share a world still touch each other", function()
+        -- The refusal is not a blanket one: two players the mod has not hidden
+        -- from each other keep the ordinary bumping, standing and PvP contact.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_TTC, 1, 2)
+        t.ok(not api.players_have_private_variant(0, 1), "the fixture became a private pair")
+        t.ne(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER), false,
+            "two players on compatible acts were made intangible to each other")
+    end)
+
+    s.test("bodies stop passing through each other when the round ends", function()
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_TTC, 6, 1)
+        gGlobalSyncTable.sh5_active = 0
+        t.ne(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER), false,
+            "the private-world rule outlived the round it belongs to")
+    end)
+
+    s.test("an object that is nobody's body is left alone", function()
+        -- The hook answers for whatever object carries the flag, and the owner
+        -- field it reads is 0 on every ordinary object, so an object that is
+        -- not a player's body would otherwise read as the host's and be refused
+        -- on the hidden player's behalf.
+        local api, ctl = fresh()
+        place(api, ctl, LEVEL_TTC, 6, 1)
+        body_of(0)
+        body_of(1)
+        t.ne(api.allow_interact(gMarioStates[1], { globalPlayerIndex = 0 }, INTERACT_PLAYER), false,
+            "an object carrying player 0's owner index but not player 0's body was refused")
+        t.ne(api.allow_interact(gMarioStates[0], {}, INTERACT_PLAYER), false,
+            "an object belonging to no player was refused")
+        -- The engine never hands the hook a missing object, but the mod's own
+        -- callers do, and reading a field off it would be a crash rather than a
+        -- refusal.
+        t.ne(api.allow_interact(gMarioStates[0], nil, INTERACT_PLAYER), false,
+            "a missing object was refused")
+    end)
 end

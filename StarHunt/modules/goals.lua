@@ -748,6 +748,18 @@ local function has_interaction(interaction, interaction_flag)
     return interaction_flag ~= nil and (interaction & interaction_flag) ~= 0
 end
 
+-- Which player's body an object is. The engine writes the owner onto every
+-- Mario object itself, once per frame in bhv_mario_update, so this is a lookup
+-- and not a walk over the player list. Comparing back against that player's own
+-- marioObj is what makes it an answer rather than an assumption: an ordinary
+-- object carries globalPlayerIndex 0 and would otherwise read as the host.
+local function player_index_of_body(object)
+    if object == nil then return nil end
+    local index = SH.local_index_from_global(object.globalPlayerIndex)
+    if index == nil or gMarioStates[index].marioObj ~= object then return nil end
+    return index
+end
+
 -- A spawned star can receive later object-sync updates. Once the player has
 -- attempted an object that did not belong to the current goal, paying COIN
 -- TOLL must not turn that same rejected object into a valid target.
@@ -771,6 +783,19 @@ local function on_allow_interact(m, object, interaction)
     end
 
     if not is_round_active() then return true end
+
+    -- A player hidden for an incompatible world must not stay solid either.
+    -- interact_player is the engine's only route into resolve_player_collision,
+    -- and this hook gates it, so refusing the contact here is what stops the
+    -- hidden player from being an invisible wall to bump into and stand on.
+    -- HOOK_ALLOW_PVP_ATTACK already refuses the damage; this is the touching
+    -- itself, refused in both directions because the engine moves whichever
+    -- player it is processing.
+    if has_interaction(interaction, INTERACT_PLAYER) then
+        local other = player_index_of_body(object)
+        return other == nil or not players_have_private_variant(m.playerIndex, other)
+    end
+
     if is_boss_mode() then return true end
     if SH.is_chaos_mode() then
         return not has_interaction(interaction, INTERACT_STAR_OR_KEY)
