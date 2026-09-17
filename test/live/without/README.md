@@ -3,9 +3,9 @@
 A green run is worth exactly what its ability to go red is worth, so the harness has to be
 able to run against a StarHunt with one fix taken out. It does that **without touching the
 working tree**: `run.sh` already copies `StarHunt/` into each instance's own `mods/` folder,
-so `--without <name>` edits those copies, after the copy and before the game starts. The same
-rule `tools/sweep_mutations.py` follows, and for the same reason — a run killed halfway
-through has repeatedly left a half-applied edit behind when it worked in place.
+so `--without <name>` edits those copies, after the copy and before the game starts.
+`tools/sweep_mutations.py` follows the same rule for the same reason — a run killed halfway
+through leaves a half-applied edit behind when it edits in place.
 
 Each `<name>.txt` here is one named removal:
 
@@ -22,4 +22,4 @@ prevent.
 | `r030` | the `INTERACT_PLAYER` branch of `on_allow_interact` | `hidden` |
 
 To add one: write the block into `<name>.txt`, then give `run.sh` the case it is expected to
-break, in the `WITHOUT_BREAKS` table beside the verdict block.
+break, in the `WITHOUT_CASE` table beside the verdict block.

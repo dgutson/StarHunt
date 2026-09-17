@@ -47,8 +47,7 @@ explanation. With it the game prints `could not find valid vanilla us sm64 rom` 
 ## Three processes, and why a headless host cannot be one of the two players
 
 The obvious arrangement is a headless host and one client bumping into each other. It cannot
-work, and it took a control case that also failed to show why. A process started with
-`--headless --server` sets `gServerSettings.headlessServer`
+work. A process started with `--headless --server` sets `gServerSettings.headlessServer`
 (`gCLIOpts.headless && inNetworkType == NT_SERVER`, `src/pc/network/network.c:140`), and that
 one flag makes its own player inert in two separate places:
 
@@ -111,8 +110,7 @@ deliberately: a vanish cap makes `interact_player` return before it reaches
   `warp_to_level(level, 1, act)` sets `gCurrActStarNum`, which becomes the player's `currActNum`,
   and `is_player_active` refuses a remote player whose course, act, level or area does not match
   the local one. The engine keeps them apart by itself, and the run records that rather than
-  claiming credit for it. The first version of this harness had only this case and mistook it
-  for a passing test of R-030.
+  claiming credit for it.
 - **hidden** — the same two goals, but the second player warps itself back into act 6 without its
   goal changing. Both `currActNum` now agree, so the engine is willing;
   `players_have_private_variant` still calls the pair private, because it reads the assigned
@@ -161,9 +159,9 @@ PROBE gates role=player1 case=hidden dist=20.0 drift=0.0 active_me=1 active_them
 ```
 
 It names every gate in `interact_player` and `resolve_player_collision` that can be read from
-Lua, and it is what cracked each dead end in building this: `active_them=0` is the engine
-refusing, `collided=false` means the bodies never touched, `their_pos_valid=false` means the
-positions are not being exchanged. Add to it rather than removing from it.
+Lua. `active_them=0` is the engine refusing, `collided=false` means the bodies never touched,
+`their_pos_valid=false` means the positions are not being exchanged at all. Read it before
+forming a theory, and add to it rather than removing from it.
 
 ## Verifying the harness still measures something
 
@@ -177,9 +175,9 @@ It takes the `INTERACT_PLAYER` branch out of `on_allow_interact` and requires th
 to fail while the control still holds — exit 0 means the harness can fail, and a green ordinary
 run therefore means something. **The working tree is never edited.** `run.sh` already copies
 `StarHunt/` into each instance's own `mods/` folder, so the removal is applied to those copies
-after the copy and before the game starts; the tree hash is the same before and after. That is
-the rule `tools/sweep_mutations.py` already follows, and for the same reason — a run killed
-halfway through has repeatedly left a half-applied edit behind when it worked in place.
+after the copy and before the game starts; the tree hash is the same before and after.
+`tools/sweep_mutations.py` follows the same rule for the same reason — a run killed halfway
+through leaves a half-applied edit behind when it edits in place.
 
 `test/live/without/README.md` says how to add another one, and why `run.sh` dies rather than
 continues when the block it means to remove is no longer there.
@@ -191,6 +189,6 @@ mod — the probe plays every part and none of them is a person. It is three pro
 machine over the loopback, so it says nothing about latency or packet loss, and a real session
 with real players remains the last check before a release.
 
-One thing the runs settled in passing: `gServerSettings.playerInteractions` reads 2 on the server
-and 1 on each client, so it is not synchronised. Neither value is `NONE`, so the contact still
+`gServerSettings.playerInteractions` reads 2 on the server and 1 on each client, so it is not
+synchronised. Neither value is `NONE`, so the contact still
 happens, but the mod's PvP setting is host-only.

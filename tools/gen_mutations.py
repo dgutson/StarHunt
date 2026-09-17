@@ -2,8 +2,8 @@
 """Generate source mutations for a range of lines, for mutation-testing the suite.
 
 This project's process requires that code moved by a refactor pass is mutation-checked:
-change the moved code in small ways and confirm the test suite notices. That check has
-found a real coverage gap in nineteen of twenty-one passes so far, so it is not optional.
+change the moved code in small ways and confirm the test suite notices. The check is not
+optional: a move onto lines no test reaches passes every other check in the project.
 
     tools/gen_mutations.py StarHunt/modules/goals.lua 100,140 812,820
 

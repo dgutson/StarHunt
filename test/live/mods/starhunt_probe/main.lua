@@ -31,8 +31,7 @@ end
 -- **Three instances, and the two that collide are both clients.**
 --
 -- The obvious arrangement -- a headless host and one client, bumping into each
--- other -- cannot work, and it took a working control case to see why. A
--- process started with `--headless --server` sets
+-- other -- cannot work. A process started with `--headless --server` sets
 -- `gServerSettings.headlessServer` (src/pc/network/network.c:140), and that one
 -- flag makes its own player inert in two separate places:
 --
@@ -70,8 +69,7 @@ local SEPARATED = PUSH_DISTANCE - 4.0
 -- Placed exactly on top of each other, marioRelX and marioRelZ are both 0, the
 -- whole term is 0 and nobody moves however hard the engine tries. A pair that
 -- overlaps perfectly is therefore indistinguishable from a pair the engine
--- refused, which is a trap worth naming: the first version of this probe
--- teleported one player onto the other's exact position.
+-- refused, so the pair is never placed at a single point.
 local PLACE_OFFSET = 20.0
 
 -- How far a player has to have moved from where it was put down for that to
@@ -87,8 +85,7 @@ local PUSHED_DRIFT = 20.0
 --               does: the engine refuses the contact by itself, because
 --               is_player_active compares the two players' currActNum and a
 --               remote player on another act is not active. The case is kept
---               because it records that, and because it is what the first
---               version of this harness mistook for a passing test of R-030.
+--               because it records that rather than claiming credit for it.
 --
 --  2. hidden -- the same two goals, but this player walks back into the act the
 --               other one is standing in, so both currActNum agree and the
@@ -248,10 +245,9 @@ local function assign(first, second)
 end
 
 --- Everything a pair that refuses to collide could be refusing over.
--- `is_player_active` is the decisive one and the reason this harness was
--- rebuilt: interact_player asks it about both bodies, and it is false for a
--- headless server's player and for any remote player whose course, act, level
--- or area does not match the local one.
+-- `is_player_active` is the decisive one: interact_player asks it about both
+-- bodies, and it is false for a headless server's player and for any remote
+-- player whose course, act, level or area does not match the local one.
 local function gates(other_mario, distance)
     local me = gMarioStates[0]
     local mine = me.marioObj ~= nil and me.marioObj.collidedObjInteractTypes or 0

@@ -1,316 +1,241 @@
 ---
 name: starhunt-testing
-description: Everything about verifying a change to StarHunt — the five checks in order with their exact commands and recorded baselines, the two expected false positives, the mutation sweep, and test/live/run.sh, the harness that runs the mod inside real headless sm64coopdx processes. **CLAUDE.md deliberately no longer carries any of this, so this skill is the only place the commands and baselines exist** — load it rather than guessing a command or a number. Use it whenever a change to StarHunt has to be verified, before opening a pull request, when asked to run the tests, the suite, luacheck, lua-language-server, a mutation sweep or "check this works in the real game", when any check reports different numbers from the baselines, and when adding a case to the offline suite or the live harness. Use it even when testing was never mentioned, because every edit under StarHunt/ or test/ ends in these checks. Also use it whenever the live harness fails, times out, hangs or reports numbers that look wrong, because nearly all of its failure modes are sm64coopdx behaviour rather than bugs in the mod, and the dead ends it records have each already cost a session.
+description: >-
+  How to verify any change to StarHunt. Holds the five checks in order with their exact
+  commands and recorded baselines (785 offline tests, 2 luacheck warnings, 10 type
+  problems), the reports that are correct code rather than bugs, the mutation sweep, and
+  test/live/run.sh, which runs the mod inside real headless sm64coopdx processes. These
+  commands and numbers exist nowhere else in the repository — CLAUDE.md and
+  DEVELOPMENT_CHECKLIST.md both point here — so load this skill instead of guessing a
+  command, a flag or a baseline. Use it whenever a change to StarHunt has to be verified,
+  before opening a pull request, when asked to run the tests, the suite, luacheck,
+  lua-language-server, a mutation sweep, or to check that something works in the real game,
+  and when adding a case to the offline suite or the live harness. Use it even when testing
+  was never mentioned, because every edit under StarHunt/ or test/ ends in these checks. Use
+  it too whenever a check reports numbers that differ from the baselines, or the live
+  harness fails, times out or hangs, because nearly every failure mode there is sm64coopdx
+  behaviour rather than a bug in the mod, and this skill names those with the engine source
+  lines that settle them.
 ---
 
 # Testing StarHunt
 
-Five checks, cheapest first. A change is verified when the four static ones hold their recorded
-baselines and, for anything that touches players meeting each other, the live harness is green.
+Run every command from the repository root, `/home/dfg/src/StarHunt_v1.1`.
 
-Run everything from the repository root, `/home/dfg/src/StarHunt_v1.1`.
+Five checks, cheapest first. The four static ones apply to every change. The live harness
+applies when a change touches what two players share — collision, warping, the sync tables,
+loading, the module `require` graph. A change is verified when each check holds its number.
 
-## The baselines
+| # | check | command | expected | takes |
+|---|---|---|---|---|
+| 1 | syntax | `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` | no output | instant |
+| 2 | suite | `lua5.4 test/run.lua` | `785 passed, 0 failed` | ~46s |
+| 3 | lint | `luacheck StarHunt/ test/` | `2 warnings / 0 errors in 47 files` | ~2s |
+| 4 | types | `lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log` | `10 problems in 2 files` | ~15s |
+| 5 | live | `test/live/run.sh` | `PASSED`, 6 `PROBE verdict` lines | ~2.5 min |
 
-**A rise in any of these is a regression.** Quote them in the pull request.
+**Any rise in those numbers is a regression.** Quote what the run printed in the pull
+request. A change that adds or moves code also needs the mutation sweep, below — a green
+suite says nothing about lines no test reaches.
 
-| check | expected | takes |
-|---|---|---|
-| `lua5.4 test/run.lua` | 785 passed, 0 failed | ~46s |
-| `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 47 files | ~2s |
-| `lua-language-server --check` | 10 problems in 2 files | ~40s |
-| `test/live/run.sh` | PASSED, 6 `PROBE verdict` lines | ~2.5 min |
-
-The two luacheck warnings are `hud.lua:93` shadowing the upvalue `alpha`, and an empty `if`
-branch in `modifiers.lua`. The ten type problems are in `save.lua` (2) and `test/harness.lua` (8).
-
-## 1. Syntax, and why it must be lua5.4
+## 1. Syntax, with lua5.4 and never lua
 
 ```bash
 lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 ```
 
-`lua` on this machine is the 5.1 alternative and cannot parse the `|`, `&` and `~` operators in
-`hud.lua` and `save.lua`. Always `lua5.4`. This checks `main.lua` alone; the modules are checked
-by the suite below.
+`lua` on this machine is the 5.1 alternative. It cannot parse the `|`, `&` and `~` operators
+`hud.lua` and `save.lua` use, so it reports a syntax error in correct code. This loads
+`main.lua` alone; the modules are parsed by the suite.
 
 ## 2. The offline suite
 
 ```bash
-lua5.4 test/run.lua                      # 785 tests
-lua5.4 test/run.lua audit difficulty     # only matching suites
+lua5.4 test/run.lua                    # all 785
+lua5.4 test/run.lua audit difficulty   # only matching suites, for a quick loop
 ```
 
-It loads the mod outside the game against a generated stub of exactly the engine surface the mod
-uses, and drives it through `STARHUNT_TEST_API`. `test/README.md` has the layout and what each
-suite guards. The suite was mutation-checked, so a green run means something.
+It loads the mod outside the game against `test/engine_stub.lua` — a generated stand-in for
+exactly the engine surface the mod uses, with the constants' real in-game values — and drives
+it through `STARHUNT_TEST_API`. `test/README.md` lists what each suite guards and how the
+harness reproduces the game's `require`.
 
-A new test needs its function exported from its own module **and** added to `STARHUNT_TEST_API`
-in `main.lua`. The harness references functions by name there, so reordering hooks cannot
-silently test the wrong one. **Being in that table does not mean a function is tested** — eight
-times now a published function turned out to be called by no test at all. `grep` for the key
-before assuming coverage.
+**A function a test calls must be exported from its own module and added to
+`STARHUNT_TEST_API` in `main.lua`.** The harness reaches functions by name in that table, so
+reordering hooks cannot silently move a test onto a different function.
 
-## 3. The two static checkers
+**Publication in that table is not coverage.** `grep` the key across `test/suite/` before
+believing a function is tested; a function can be published and called by nothing.
+
+**A stub that answers `nil`, `0` or `false` where the real engine answers something
+meaningful hides everything that depends on it.** `dist_between_objects` answering 0 for
+every pair makes every distance test pass. When a mutation survives, check whether the stub
+made the branch unreachable before concluding the test is wrong.
+
+Regenerate the stub when the game's API moves, after the refresh in check 4:
+
+```bash
+python3 tools/gen_engine_stub.py
+```
+
+## 3. luacheck
 
 ```bash
 luacheck StarHunt/ test/
+```
+
+The two expected warnings are an inner `draw_layer` in `hud.lua` shadowing its enclosing
+`draw_hud_text`'s `alpha` argument, and the empty `if` branch in `modifiers.lua` for
+`coin_toll` and `darkness_pulse`, whose effects are applied in star interaction and the HUD
+rather than in `apply_local_modifier`.
+
+Inside `goals.lua`, local variables named `goal` shadow the file-local `goal()` constructor,
+so a mistyped `goal(...)` call in such a scope is a runtime error rather than a lint error.
+Luacheck will not catch it.
+
+## 4. lua-language-server
+
+```bash
 lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log
 ```
 
-Pass lua-language-server the **directory**. Given a file path it silently reports "no problems
-found" whatever the code contains.
+**Pass the directory.** Given a file path it reports "no problems found" whatever the code
+contains, which reads exactly like a pass.
 
-lua-language-server reports no undefined global, undefined field or arity problem, which also
-confirms every engine symbol the mod uses still exists in current sm64coopdx. `.luarc.json`
-disables `different-requires`, because the engine's own definitions and the mod both define names
-the checker would otherwise pair up.
+The ten expected problems are two in `StarHunt/modules/save.lua` and eight in
+`test/harness.lua`. `.luarc.json` disables `different-requires`, because the engine's
+definitions and the mod both define names the checker would otherwise pair up.
 
-### Two reports that are expected and are not bugs
+A clean run also confirms something the suite cannot: every engine symbol the mod uses still
+exists in the sm64coopdx being targeted, because both checkers read a generated copy of the
+engine's own API.
 
-Both were confirmed against the engine's binding code, not just its annotations.
+### Judging a type report against the engine, not the annotation
 
-- `save_file_do_save(file, true)` — "cannot assign `boolean` to parameter `integer`". The
-  annotation says `integer`, but `smlua_to_integer` explicitly converts booleans (`true` → 1).
-- `spawn_non_sync_object(..., nil)` — "cannot assign `nil` to parameter `function`".
-  `smlua_to_lua_function` special-cases `LUA_TNIL` and returns 0; `nil` is the intended way to
-  pass no setup function.
+Both `save.lua` reports are `save_file_do_save(file, true)` — "cannot assign `boolean` to
+parameter `integer`". The annotation says `integer`, but `smlua_to_integer` converts a
+boolean itself, `true` to 1 (`src/pc/lua/smlua_utils.c:95-98`). The call is correct.
 
-Inside `goals.lua`, local variables named `goal` still shadow the file-local `goal()` constructor
-at line 61, so a typo'd `goal(...)` call in such a scope is a runtime error rather than a lint
-error. Luacheck will not catch it.
+The eight in `test/harness.lua` are the stub's partial `MarioState`, `Area`, `Controller`,
+`MarioBodyState`, `PlayerCameraState` and `Camera` tables, plus `marioObj = nil`. The stub
+supplies the fields the mod reads, not the whole struct, so completing them would be work
+with no test behind it.
 
-### When a checker suddenly reports undefined globals
+Read the binding code before treating a new report as a bug, since the annotations are
+narrower than the conversions. `smlua_to_lua_function` returns 0 for `LUA_TNIL`
+(`src/pc/lua/smlua_utils.c:144-147`), so passing `nil` where a `function` is annotated — as
+`boss.lua` does for a setup callback — is the intended way to pass none.
 
-It is the engine definitions that are stale, not the mod. Both checkers read a generated copy of
-sm64coopdx's API from `~/.local/share/sm64coopdx/`, so after the game is rebuilt from a newer
-upstream, regenerate it and re-run:
+### An undefined global means stale definitions, not a broken mod
 
 ```bash
 ~/.local/share/sm64coopdx/refresh.sh
 ```
 
-`references/engine-api.md` explains what that generates and why it lives outside the repository.
-Read it only if the refresh does not settle it.
+Both checkers read the generated API under `~/.local/share/sm64coopdx/`, so a game rebuilt
+from a newer upstream needs this before either check means anything. Read
+`references/engine-api.md` only if the refresh does not settle it.
 
-`selene` is installed and **unusable**: its 0.31.0 Linux release only compiles the `lua51` and
-`luau` grammars, so it cannot parse this project's 5.4 syntax. Do not add a `selene.toml`.
-
-## 4. The mutation sweep
-
-Run this over the lines a change touched, or the change is unverified however green the suite is.
-
-```bash
-python3 tools/gen_mutations.py StarHunt/modules/round.lua 787,885
-WORKERS=2 python3 tools/sweep_mutations.py round_client     # one suite, fast
-ONLY=2,5,6-8 WORKERS=2 python3 tools/sweep_mutations.py     # re-run named survivors
-```
-
-Run the sweep in the **foreground** with `WORKERS=2`: background sweeps have been killed here for
-low memory. Derive the line range **after** the last edit to the file, or it is off by the lines
-that were added.
+`selene` is installed and cannot be used here: its 0.31.0 Linux release compiles only the
+`lua51` and `luau` grammars, so it cannot parse this project's 5.4 syntax. Do not add a
+`selene.toml`.
 
 ## 5. The live harness
 
 ```bash
-test/live/run.sh --load-only    # one process: does the mod load, do the modules resolve (~40s)
-test/live/run.sh                # a referee and two players: the collision cases (~2.5 min)
+test/live/run.sh --load-only     # one instance: does the mod load, do the modules resolve (~40s)
+test/live/run.sh                 # a referee and two players: the collision cases (~2.5 min)
+test/live/run.sh --without r030  # prove the run can go red; must exit 0
 ```
 
-Exit 0 pass, 1 fail, 2 the game or the ROM is missing. It prints every `PROBE` line and leaves the
-full logs in the directory it names. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `JOIN_DELAY`, `PAIR_DELAY`
-and `WORK` override the binary, the ROM, the port, the deadline, the two join delays and the
-scratch directory.
+Exit 0 is a pass, 1 a failure, 2 a missing game or ROM. It prints every `PROBE` line and
+names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `JOIN_DELAY`,
+`PAIR_DELAY` and `WORK` override the binary, the ROM, the port, the deadline, the two join
+delays and the scratch directory; on this machine the defaults are already right.
 
-A full run should end with `PASSED:` and six `PROBE verdict` lines: `split passed_through=true`,
-`hidden passed_through=true`, `shared passed_through=false`, once for each of the two players.
-
-`test/live/README.md` is the long version. What follows is what a session needs in its head.
-
-### What it needs, and how to rebuild it if it is gone
-
-On this machine both are already in place and are the script's defaults, so no variables are
-normally needed:
-
-- the game at `~/src/sm64coopdx/build/us_pc/sm64coopdx`,
-- the ROM at `~/.local/share/sm64coopdx/baserom.us.z64`, md5 `20b854b239203baf6c961b850a4a51a2`.
-
-Building the game needs **no** ROM and takes about 20 minutes; `libglew-dev` and `libz-dev` were
-the only packages missing here:
-
-```bash
-git clone https://github.com/coop-deluxe/sm64coopdx ~/src/sm64coopdx
-sudo -A apt install build-essential python3 libglew-dev libsdl2-dev libz-dev libcurl4-openssl-dev
-make -C ~/src/sm64coopdx -j"$(nproc)"
-```
-
-The **ROM is needed at run time**, not at build time: Co-op DX does not bundle the game's assets,
-it reads them out of the ROM the first time each instance runs (`main_rom_handler`,
-`src/pc/rom_checker.cpp`), scanning the instance's own folder for a `.z64` whose MD5 it knows.
-Nobody can supply one for the user. Three game processes want about 1.2 GB between them.
-
-`/home/dfg/src/sm64coopdx` is also the source to read when a claim about the engine has to be
-checked. Every fact in this skill came out of it rather than out of the documentation.
-
-### Three processes, and why not two
-
-A process started with `--headless --server` sets `gServerSettings.headlessServer`, and that one
-flag makes its own player inert: it never sends its position (`network_update_player`,
-`src/pc/network/packets/packet_player.c:430`) and `is_player_active` returns false for it on every
-instance (`src/game/obj_behaviors.c:547`), which is the first question `interact_player` asks
-about both bodies. A headless host can referee but can never touch anybody. So the harness runs a
-dedicated headless server and **two** headless clients, and the collision it measures is between
-the two clients.
-
-### What the three cases mean
-
-- **split** — the two players hold goals for different acts of Tick Tock Clock and each stands in
-  its own act. It **tests nothing the mod does**: a player's goal act becomes its `currActNum`,
-  and `is_player_active` rejects a remote player whose act differs, so the engine refuses the
-  contact by itself. Kept as a record, and because an earlier version of the harness mistook
-  exactly this for a passing test of R-030.
-- **hidden** — the same goals, but one player warps itself back into the other's act without its
-  goal changing. Both acts now agree so the engine is willing, while
-  `players_have_private_variant`, which reads the assigned goals rather than the loaded act, still
-  calls the pair private. **This is the only case that says anything about StarHunt**, and the
-  only one that can fail. It is a real state, not a contrivance: `NEXT_GOAL_DELAY` is 90 frames,
-  so a player just given a different act of the level they are standing in sits in it for three
-  seconds.
-- **shared** — both players hold the same goal, so the mod leaves the contact alone and the engine
-  must push them apart to about 74. **This is the control.** If it fails, nothing else in the run
-  means anything.
+A full run ends with `PASSED:` and six `PROBE verdict` lines — `split passed_through=true`,
+`hidden passed_through=true` and `shared passed_through=false`, once per player.
 
 ### Before citing a green run as evidence
 
-A harness that stays green with the fix removed is worse than no harness, because it gets quoted.
-Proving it can go red is one command:
-
 ```bash
-test/live/run.sh --without r030     # must exit 0
+test/live/run.sh --without r030
 ```
 
-It removes the `INTERACT_PLAYER` branch of `on_allow_interact` and then **requires** the `hidden`
-case to fail while the control still holds; exit 0 means the removal was noticed. **Never edit
-`StarHunt/` to do this by hand.** `run.sh` applies the removal to each instance's own copy of the
-mod, so the working tree is untouched and its hash is unchanged — the rule
-`tools/sweep_mutations.py` already follows, because an interrupted run that edits in place leaves
-a half-applied change behind.
+A harness that stays green with the fix removed is worse than none, because it gets quoted.
+This removes the `INTERACT_PLAYER` branch of `on_allow_interact` in `modules/goals.lua` and
+inverts the run: it requires the `hidden` case to go red while the control still holds, so
+exit 0 means the removal was noticed.
 
-Adding a removal for a new case: write the block to delete into `test/live/without/<name>.txt`,
-first line the path inside `StarHunt/`, and name the case it must break in `WITHOUT_CASE` in
-`run.sh`. `run.sh` aborts if the block is not found exactly once, because a removal that silently
-does nothing turns the check into a tautology.
+**Never edit `StarHunt/` by hand to do this.** `run.sh` applies the removal to each
+instance's own copy of the mod, after the copy and before the game starts, so the working
+tree and its hash are untouched — the same rule `tools/sweep_mutations.py` follows, because
+an interrupted run that edits in place leaves a half-applied change behind.
 
 ### Reading a failure
 
-The `gates` line, printed halfway through each measurement, names every gate in `interact_player`
-and `resolve_player_collision` that Lua can read. It is what cracked each dead end; add to it
-rather than removing from it.
+The `gates` line, printed halfway through each measurement, names every gate in
+`interact_player` and `resolve_player_collision` that Lua can read. Read it before forming a
+theory, and add to it rather than removing from it.
 
 | what you see | what it means |
 |---|---|
 | `active_them=0` | the engine refused before StarHunt was asked — compare `my_act` with `their_act` and `my_area` with `their_area` |
 | `collided=false` with `active_them=1` | the bodies never touched; check `dist` and whether the placement worked |
-| `their_pos_valid=false` | positions are not being exchanged at all, so `their_xz` is stale and any distance to that body is meaningless |
+| `their_pos_valid=false` | positions are not being exchanged, so `their_xz` is stale and any distance to that body is meaningless |
 | `dy` above 160 | one hitbox height apart vertically, which `resolve_player_collision` refuses outright |
-| `drift=0.0` in `shared` | the control did not collide; the run proves nothing |
-| every gate open but no push | look at where they are standing: a push whose landing point has no floor is abandoned, and the Tick Tock Clock entrance platform is too small |
+| `drift=0.0` in `shared` | the control did not collide; the run proves nothing about the other two |
+| every gate open but no push | look at where they are standing — a push whose landing point has no floor is abandoned |
 
-**If the run times out with no verdicts at all**, the game did not get as far as the probe. Read
-`$WORK/*.log` — the path is printed — rather than the `PROBE` lines:
+**If the run times out with no verdicts at all**, the game never reached the probe. Read
+`$WORK/*.log`, whose path `run.sh` prints, rather than the `PROBE` lines:
 
 - `could not find valid vanilla us sm64 rom` — the ROM is missing or is not a vanilla US copy.
 - the log stops after three config lines — the mods did not load; check the folder names under
   `$WORK/<name>/mods/` against the `--enable-mod` arguments.
-- `PROBE waiting ... reason=...` repeating — the probe is alive and stuck; the reason names where.
-- nothing at all after the banner — an instance died. `pkill -x sm64coopdx` cleans up orphans
-  (`pkill -f` matches the shell running it and kills your own session).
+- `PROBE waiting ... reason=...` repeating — the probe is alive and stuck, and the reason names
+  where.
+- nothing after the banner — an instance died. Clean up orphans with `pkill -x sm64coopdx`;
+  `pkill -f` matches the shell running it and would kill your own session.
 
-### Dead ends already ruled out
+**Nearly every other way this run misbehaves is sm64coopdx behaviour rather than a bug in the
+mod.** `references/live-harness.md` holds those: why the harness needs three processes, what
+each case measures, the engine constraints that fix its shape, and the traps already worked
+around in `run.sh` and the probe. Read it before changing anything under `test/live/`, and
+before concluding the mod is at fault.
 
-Each of these cost a session, so do not spend another one on them. All were read out of the
-engine's source.
+## The mutation sweep
 
-- **`torsoPos` is not a render-path product that headless misses.** `resolve_player_collision`
-  compares torso positions, and the render path is what normally fills them in — but
-  `bhv_mario_update` copies `pos` into `torsoPos` whenever the render path did not run that frame
-  (`src/game/object_list_processor.c:259-263`, `src/game/mario_misc.c:494`). Headless is fine here.
-- **A Lua teleport *is* transmitted.** `network_update_player` sends whatever moved a player at
-  least every third tick (`sTicksSinceSend > 2`), so writing `m.pos` is not why a remote body
-  looks frozen. A frozen remote means either the headless-server flag or a level/act mismatch.
-- **Vertical separation, invincibility, intangible actions and the vanish cap** are all visible in
-  the `gates` line. Read it before theorising.
-- **The no-floor guard is real but was not the cause.** `resolve_player_collision` abandons a push
-  whose landing point has no floor, and the Tick Tock Clock entrance platform really is too small
-  — which is why the probe searches for open ground first. Fixing that alone changed nothing.
-
-If a future case needs contact to come from real movement rather than placement, the controller
-fields (`buttonDown`, `stickX`, `stickY`, `stickMag`) are writable from Lua
-(`src/pc/lua/smlua_cobject_autogen.c:690-701`). Nothing needs them today.
-
-### Running an instance by hand
-
-`run.sh` does this for you; it matters only when debugging one process on its own. The build links
-`libdiscord_game_sdk.so` and ships it beside the binary rather than installing it, so the loader
-has to be told where it is:
+Run this over the lines a change touched, or the change is unverified however green the suite
+is. A surviving mutation means the line is untested or the mutation cannot change behaviour;
+both need a decision.
 
 ```bash
-LD_LIBRARY_PATH="$(dirname "$COOPDX")" "$COOPDX" --headless --savepath ... 
+python3 tools/gen_mutations.py StarHunt/modules/round.lua 787,885
+WORKERS=2 python3 tools/sweep_mutations.py round_client     # one suite, much faster
+ONLY=2,5,6-8 WORKERS=2 python3 tools/sweep_mutations.py     # re-run named survivors
 ```
 
-### Adding a case
+Derive the line range **after** the last edit to the file, or it is off by the lines that were
+added. Run the sweep in the **foreground** with `WORKERS=2`: a background sweep on this machine
+gets killed for low memory, and each worker copies the tree, so the working tree is never
+mutated.
 
-The roadmap items that touch `players_have_private_variant` — the DDD, WDW and cross-act PvP ones
-— are exactly the ones that want a new live case. Five places, in this order:
+`REFACTOR_PLAN.md` lists the mutations already judged equivalent, so a sweep does not
+re-investigate them.
 
-1. `CASE` in `test/live/mods/starhunt_probe/main.lua` — add the name. Order is the run order.
-2. `WANT_PRIVATE` — what `players_have_private_variant` must answer for that pair. The probe fails
-   the run if the predicate disagrees, which catches a case that is not set up the way it reads.
-3. `open_case` in the server half — which goals the two players get. `pick_ttc_goals` is
-   Tick Tock Clock specific; a case in another course needs its own picker. **A case that must not
-   re-warp a player must not reassign its goal**, because a client re-warps whenever `sh5_goal`
-   changes; `hidden` is the worked example.
-4. `settle` in the player half — any per-case setup before the pair is placed, such as the
-   self-warp that makes `hidden`.
-5. `run.sh` — `want=` is the verdict count, two per case, and the verdict block needs a `grep -c`
-   line and a failure message for the new case. Both are literal numbers, not derived.
+## Adding a case
 
-The `say()` prefixes are an interface `run.sh` greps. Treat them as fixed.
+To the offline suite: a file in `test/suite/`, the function exported from its module and added
+to `STARHUNT_TEST_API`. `test/README.md` has the conventions.
 
-### Traps that cost whole sessions, already worked around
-
-Each of these is handled in `run.sh` or the probe. They are listed so a change does not undo one.
-
-- **A perfect overlap produces no push at all.** `resolve_player_collision` moves along the vector
-  between the two torsos, so at distance zero the term is zero. The pair is placed 20 units apart.
-- **Two players on different acts never exchange positions.** `network_receive_player` drops a
-  packet whose course, act, level or area does not match, so a player cannot aim at where it sees
-  the other one. The meeting point travels through the probe's sync table as plain coordinates.
-- **Every mod gets its own `_ENV`, and reads fall through while writes do not.** The probe writes
-  `_G.STARHUNT_TEST_MODE`; StarHunt publishes `_G.STARHUNT_TEST_API`.
-- **Every mod gets its own sync tables.** StarHunt's are reached through `api.global_sync` and
-  `api.player_sync`, never through the probe's own `gGlobalSyncTable`.
-- **Mods load in alphabetical order of the uncoloured `-- name:` header.** The probe is called
-  `AAA StarHunt Probe` so it runs before StarHunt, which reads the flag once at load time.
-  Renaming it breaks the harness silently.
-- **`--enable-mod` is lost on a first run.** `configfile_load_internal` creates the missing config
-  and returns above the loop that queues the enables, so `run.sh` writes `config.txt` itself.
-- **`--client <ip> <port>` drops the port when it ends the command line**, and the client quietly
-  dials 7777. `run.sh` puts `--playername` after the caller's arguments.
-- **Stdout is block-buffered and never flushed**, so a killed process loses its output. Every
-  instance runs under `stdbuf -oL -eL`.
-- **`host_start_round` does not assign goals.** It ends at `sh5_active = 1`; `host_update_round`
-  hands them out a frame or two later, so an override written any earlier is undone.
-- **`gServerSettings.playerInteractions` is not synchronised** — 2 on the server, 1 on each
-  client. Neither is `NONE` so contact still happens, but the mod's PvP setting is host-only.
-
-If the game is rebuilt from a newer upstream and the harness starts behaving differently, re-read
-the cited engine lines before changing the probe, and run `refresh.sh` so the static checkers
-match the engine being targeted.
+To the live harness: five places in a fixed order, described in `references/live-harness.md`.
+A live case is only worth writing for something the stubs cannot reach — two real players
+meeting, a warp, the mod loading. Everything else belongs offline, where it costs seconds.
 
 ## What none of this reaches
 
-Rendering, the HUD, anything a person has to look at, real latency, packet loss, and any
-third-party mod. Three processes on one machine over the loopback is not a real session. A real
-multiplayer session with real people remains the last check before a release, and every pull
-request should say so rather than implying the checks covered it.
+Rendering, the HUD, anything a person looks at, real latency, packet loss, and every
+third-party mod. Three processes on one machine over the loopback is not a real session. A
+real multiplayer session with real people is still the last check before a release, and a
+pull request should say so rather than implying the checks covered it.
