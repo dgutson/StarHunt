@@ -171,6 +171,13 @@ longer shadow anything. Inside `goals.lua` itself they still do, which still mea
 `lua51` and `luau` grammars, so it cannot parse this file's 5.4 syntax. Do not add a
 `selene.toml`; use luacheck and lua-language-server instead.
 
+### The skill that holds the testing workflow
+
+`.claude/skills/starhunt-testing/SKILL.md` is the one document to read before verifying a change.
+It carries the five checks in order, the recorded baselines, how to read a live-harness failure,
+and the traps in running the game headless that have each cost a session. Invoke it as
+`/starhunt-testing`, or read the file.
+
 ### The test suite
 
 `test/` loads the mod outside the game against a generated stub of exactly the engine surface
