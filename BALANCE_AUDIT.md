@@ -1,7 +1,5 @@
 # StarHunt v1.1 — Modifier and difficulty audit
 
-**Final project audit — development closed on 2026-07-30.**
-
 ## Coverage
 
 - 93 goals: all 15 main courses plus the three Cap courses.
@@ -271,10 +269,10 @@ These checks are a conservative compatibility matrix, not an automated playthrou
   Day/Night installation is an external dependency mismatch, not a StarHunt
   round-state error.
 
-## Known limits at project closure
+## Known limits
 
-The automated suite is complete for the final release, but it does not claim
-that the following real-game scenarios were visually verified:
+The automated suite does not claim that the following real-game scenarios were
+visually verified:
 
 - Human difficulty and route margin for every approved pair.
 - Real network ownership transfer with multiple machines.

@@ -1,7 +1,5 @@
 # StarHunt v1.1
 
-**Versión final del proyecto — desarrollo cerrado el 30 de julio de 2026.**
-
 ## ¿De qué se trata?
 
 StarHunt convierte SM64CoopDX en una colección de desafíos multijugador con 93

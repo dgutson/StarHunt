@@ -1,13 +1,5 @@
 # StarHunt — nota de desarrollo obligatoria
 
-**Estado del proyecto: FINALIZADO. Versión final: v1.1 (2026-07-30).**
-
-No hay versiones nuevas planificadas. Solo se aceptan actualizaciones de
-mantenimiento sobre v1.1. La excepción que hubo, la división de `main.lua` en
-catorce archivos sin cambiar comportamiento, **ya está terminada y fusionada en
-`main`**; las etiquetas `v1.1-monolithic` y `v1.1-modular` marcan el antes y el
-después. El trabajo a partir de aquí es corrección de errores.
-
 Esta nota debe revisarse **antes de programar cualquier cambio** en StarHunt.
 Su objetivo es evitar arreglos rápidos que rompan HUD, guardado, red, OMM o
 una estrella ya probada.

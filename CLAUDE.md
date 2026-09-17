@@ -37,11 +37,6 @@ So a stray `.lua` **at the root of `StarHunt/`** would be executed as part of th
 inside `modules/` would be registered but not run unless something required it. Tests and
 tooling stay outside the folder either way.
 
-Most of the work here is corrective maintenance. A new feature is worth raising as a question
-before implementing it — one moves the audited modifier matrix, the six languages and the
-synchronized fields at once — but it is not refused on principle. `ROADMAP.md` says what is
-agreed.
-
 ## Working process required by this project
 
 `DEVELOPMENT_CHECKLIST.md` defines a process that is mandatory before editing `main.lua`, and

@@ -79,10 +79,18 @@ Everything else was already somewhere better: the installation rule is in `CLAUD
 `CHANGELOG.md`, the per-update notes are in `CHANGELOG.md`, and the limits of the automated
 validation are in `CLAUDE.md`, `test/README.md` and roadmap item R-010.
 
-The closure statement itself was not moved anywhere, which is the point of removing the file:
-the project is governed by `ROADMAP.md` and `HISTORY.md`, and a feature request is a question
-to raise rather than one to refuse on principle. `CLAUDE.md`, `ROADMAP.md` (R-014 and R-010)
-and `test/suite/catalog.lua` cited the file and now state the fact instead.
+`CLAUDE.md`, `ROADMAP.md` (R-014 and R-010) and `test/suite/catalog.lua` cited the file and
+now state the fact instead.
+
+The closure statement was not moved anywhere. StarHunt is under active development and takes
+both bug fixes and new features; what it is working on is `ROADMAP.md`, and what it has done
+is this file. Every statement of a development status is therefore gone from the documents
+that carried one: the closure paragraph in `CLAUDE.md`, the *Estado del proyecto: FINALIZADO*
+header and the no-new-versions paragraph in `DEVELOPMENT_CHECKLIST.md`, the *Versión final del
+proyecto* line in `CHANGELOG.md`, the *Final project audit* line and the *Known limits at
+project closure* heading in `BALANCE_AUDIT.md`, and the two sentences in R-014 that described
+the project's phase rather than the practice being asked for. Dated entries in this file that
+record what was declared at the time are left as written.
 
 ### 2026-09-17 — R-030: a player hidden for an incompatible world is no longer solid
 

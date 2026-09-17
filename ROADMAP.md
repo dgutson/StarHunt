@@ -82,8 +82,8 @@ session fills the context window and invites mistakes.
 ### R-014 — Take the bug reports and turn them into roadmap items
 
 - **Category:** Bugfix
-- **What:** The refactor is finished and merged, and the next work on this mod is corrective maintenance. There is no bug list yet — the intent is that the reports arrive at the start of a session. For each one, write a roadmap item with What / Why / Outcome, find the affected system in `DEVELOPMENT_CHECKLIST.md`'s `Mapa del código` to learn which module it lives in, and **read `Errores ya encontrados y solución que no se debe deshacer` before touching anything**: several already-fixed bugs look like redundant code and are not.
-- **Why:** Corrective maintenance is most of what this mod takes, so a bug report is the usual starting point for a session. Writing each one down before fixing it is what stops a session from fixing the symptom it happened to notice rather than the bug that was reported.
+- **What:** There is no bug list yet — the intent is that the reports arrive at the start of a session. For each one, write a roadmap item with What / Why / Outcome, find the affected system in `DEVELOPMENT_CHECKLIST.md`'s `Mapa del código` to learn which module it lives in, and **read `Errores ya encontrados y solución que no se debe deshacer` before touching anything**: several already-fixed bugs look like redundant code and are not.
+- **Why:** A bug report is the usual starting point for a session. Writing each one down before fixing it is what stops a session from fixing the symptom it happened to notice rather than the bug that was reported.
 - **Outcome:** Each reported bug is a roadmap item under Now, with the module it affects named. This item stays here and is worked through repeatedly rather than being completed once.
 - **Blocked-by:** —
 - **Enables:** —
