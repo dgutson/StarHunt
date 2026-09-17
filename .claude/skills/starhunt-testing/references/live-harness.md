@@ -54,8 +54,8 @@ between the two clients. The server still runs StarHunt as the host: it picks th
 
 ## What each case measures
 
-The first three use Tick Tock Clock, the fourth Dire Dire Docks and the fifth Wet-Dry World.
-Every goal used is cap-free deliberately — a vanish cap makes `interact_player` return before it reaches
+`split`, `hidden` and `shared` are played in Tick Tock Clock, `ddd` in Dire Dire Docks and
+`wdw` in Wet-Dry World. Every goal used is cap-free deliberately — a vanish cap makes `interact_player` return before it reaches
 `resolve_player_collision`, which would pass for the wrong reason.
 
 - **split** — the two players hold goals for different acts and each stands in its own act,
@@ -170,10 +170,12 @@ controller fields (`buttonDown`, `stickX`, `stickY`, `stickMag`) are writable fr
 
 ## Adding a case
 
-The `say()` prefixes are an interface `run.sh` greps; treat them as fixed. Five places, in
-this order — the first four are in `test/live/mods/starhunt_probe/main.lua`:
+The `say()` prefixes are an interface `run.sh` greps; treat them as fixed. In this order,
+in `test/live/mods/starhunt_probe/main.lua`:
 
-1. `CASE` — add the name. The order of that list is the run order.
+1. `CASE` — add the name. The order of that list is the run order, and `run.sh` waits for
+   the referee's `end` line rather than for a verdict count, so nothing there needs changing
+   to match its length.
 2. `WANT_PRIVATE` — what `players_have_private_variant` must answer for the pair. The probe
    fails the run when the predicate disagrees, which catches a case that is not set up the way
    it reads.
@@ -187,8 +189,9 @@ this order — the first four are in `test/live/mods/starhunt_probe/main.lua`:
 4. the `settle` state in `update_player` — any per-case setup before the pair is placed, such as
    the self-warp that makes `hidden`. A `SHARED_COURSE` entry already gets that self-warp, and
    an optional `meet` function on it replaces the floor search with a fixed point.
-5. `run.sh` — `want=` is the total verdict count, two per case, and the verdict block needs a
-   `grep -c` line and a failure message for the new case. Both are literal numbers, not derived.
+5. `run.sh` — the verdict block needs a `grep -c` line for the new case and a failure message
+   naming what its being red means. That block is the only place outside the probe that has to
+   learn the case exists.
 
 ## Adding a `--without` removal
 

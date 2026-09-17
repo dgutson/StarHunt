@@ -77,50 +77,51 @@ local PLACE_OFFSET = 20.0
 -- drift, so anything above a few units is the engine.
 local PUSHED_DRIFT = 20.0
 
--- Five cases per run. Three of them are about StarHunt; the other two are the
--- engine on its own and the control.
+-- What each case asks, keyed by the name CASE lists it under. `split` records
+-- what the engine does without the mod and `shared` is the control; the rest
+-- are about StarHunt. CASE also fixes the order they run in.
 --
---  1. split  -- the two players hold TTC goals for acts 6 and 1 and are each
---               standing in their own act. This is what an ordinary StarHunt
---               round produces, and it is **not** a test of anything the mod
---               does: the engine refuses the contact by itself, because
---               is_player_active compares the two players' currActNum and a
---               remote player on another act is not active. The case is kept
---               because it records that rather than claiming credit for it.
+--  split  -- the two players hold TTC goals for acts 6 and 1 and are each
+--            standing in their own act. This is what an ordinary StarHunt round
+--            produces, and it is **not** a test of anything the mod does: the
+--            engine refuses the contact by itself, because is_player_active
+--            compares the two players' currActNum and a remote player on
+--            another act is not active. The case is kept because it records
+--            that rather than claiming credit for it.
 --
---  2. hidden -- the same two goals, but this player walks back into the act the
---               other one is standing in, so both currActNum agree and the
---               engine is willing. players_have_private_variant still says the
---               pair is private, because it reads the assigned goals rather
---               than the loaded act. R-030's refusal in on_allow_interact is
---               now the only thing between the two bodies. **This is the case
---               that fails when that branch is deleted.**
+--  hidden -- the same two goals, but this player walks back into the act the
+--            other one is standing in, so both currActNum agree and the engine
+--            is willing. players_have_private_variant still says the pair is
+--            private, because it reads the assigned goals rather than the
+--            loaded act. R-030's refusal in on_allow_interact is now the only
+--            thing between the two bodies. **This is the case that fails when
+--            that branch is deleted.**
 --
---  3. shared -- both players hold the act 6 goal, so the predicate is false and
---               the mod leaves the contact alone. The engine must push these
---               two apart. Without this control a run where the bodies never
---               touch at all reports every other case as a pass.
+--  shared -- both players hold the act 6 goal, so the predicate is false and
+--            the mod leaves the contact alone. The engine must push these two
+--            apart. Without this control a run where the bodies never touch at
+--            all reports every other case as a pass.
 --
---  4. ddd    -- two Dire Dire Docks goals on different acts, with the second
---               player walking back into the first's act the way "hidden" does.
---               Here the predicate must answer **false**: the only act-gated
---               object in that course is the manta ray, and the submarine, its
---               door and the nine poles read SAVE_FLAG_HAVE_KEY_2 |
---               SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR out of a save file every
---               client receives from the host. So the engine has to push these
---               two apart, and each client reports the flags it reads for the
---               run to check that they agree. **This is the case that fails if
---               DDD is isolated by act again.**
+--  ddd    -- two Dire Dire Docks goals on different acts, with the second
+--            player walking back into the first's act the way "hidden" does.
+--            Here the predicate must answer **false**: the only act-gated
+--            object in that course is the manta ray, and the submarine, its
+--            door and the nine poles read SAVE_FLAG_HAVE_KEY_2 |
+--            SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR out of a save file every client
+--            receives from the host. So the engine has to push these two apart,
+--            and each client reports the flags it reads for the run to check
+--            that they agree. **This is the case that fails if DDD is isolated
+--            by act again.**
 --
---  5. wdw    -- two Wet-Dry World goals on different acts, played exactly the
---               way "ddd" is. The predicate must answer **false** here too:
---               every object in both areas of levels/wdw/script.c is ALL_ACTS,
---               and the water level -- the one state two clients can disagree
---               on -- is not derived from the act and reaches every player who
---               can meet another, because the engine's area sync matches on the
---               same four fields is_player_active does (packet_area.c:52,
---               :155-157; network_player.c:129-142). **This is the case that
---               fails if WDW is isolated by act again.**
+--  wdw    -- two Wet-Dry World goals on different acts, played exactly the way
+--            "ddd" is. The predicate must answer **false** here too: every
+--            object in both areas of levels/wdw/script.c is ALL_ACTS, and the
+--            water level -- the one state two clients can disagree on -- is not
+--            derived from the act and reaches every player who can meet
+--            another, because the engine's area sync matches on the same four
+--            fields is_player_active does (packet_area.c:52, :155-157;
+--            network_player.c:129-142). **This is the case that fails if WDW is
+--            isolated by act again.**
 local CASE = { "split", "hidden", "shared", "ddd", "wdw" }
 
 -- Which cases players_have_private_variant has to answer true for.

@@ -143,7 +143,7 @@ That "hidden" arrangement is not an artificial one. When a player's goal changes
 been given a different act of the level they are standing in is in exactly this state for that
 whole window, next to whoever else is there.
 
-The `ddd` pair does not stand where the other four do. Dire Dire Docks is flooded from end to
+The `ddd` pair does not stand where the others do. Dire Dire Docks is flooded from end to
 end, so there is no patch of floor to look for, and the shaft the players drop into ends in a
 whirlpool — hitbox radius 200, height 500 at `-3174, -4915, 102`
 (`sWhirlpoolHitbox`, `src/game/behaviors/whirlpool.inc.c`) — whose current carries a pair placed

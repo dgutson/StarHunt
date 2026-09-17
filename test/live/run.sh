@@ -162,18 +162,15 @@ if [[ $LOAD_ONLY -eq 0 ]]; then
     PIDS="$PIDS $(launch p2 --client 127.0.0.1 "$PORT")"
 fi
 
-# What counts as finished: both players have printed a verdict for every case,
-# or one instance failed. The referee prints no verdict; it has no body in the
-# measurement. Two players, five cases each: ten verdicts in all.
-want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 10)
+# What counts as finished: the referee has closed the last case, or an instance
+# failed. The referee prints `end` once every player has reported every entry in
+# the probe's CASE list, so nothing here has to know what is in it.
 deadline=$((SECONDS + TIMEOUT))
+done_line="^PROBE end role=server"
+if [[ $LOAD_ONLY -eq 1 ]]; then done_line="^PROBE load"; fi
 while (( SECONDS < deadline )); do
     if grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then break; fi
-    if [[ $LOAD_ONLY -eq 1 ]]; then
-        (( $(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE load") >= 1 )) && break
-    else
-        (( $(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE verdict") >= want )) && break
-    fi
+    if grep -qh "$done_line" "$WORK"/*.log 2>/dev/null; then break; fi
     sleep 2
 done
 
@@ -195,7 +192,7 @@ elif [[ $LOAD_ONLY -eq 1 ]]; then
         echo "FAILED: StarHunt did not load. See $WORK/server.log"
     fi
 else
-    # Five questions, and the order they are answered in matters.
+    # What the run asks, and the order the answers are read in matters.
     #
     #   shared -- the control. Two players the mod does not hide from each other
     #             must be pushed apart by the engine. If this fails, nothing else
