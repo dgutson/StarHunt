@@ -155,10 +155,12 @@ names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `
 delays and the scratch directory; on this machine the defaults are already right.
 
 A full run ends with `PASSED:` and one `PROBE verdict` line per player per case:
-`split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false` and
-`ddd passed_through=false`. Both players also print a `PROBE saveflags` line, and the two must
-carry the same `ddd_gate` value. `run.sh` counts the verdicts it needs itself, so a case added
-to the probe and not to `run.sh` shows up as a run that never finishes.
+`split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false`,
+`ddd passed_through=false` and `wdw passed_through=false`. Both players also print a
+`PROBE saveflags` line, and the two must carry the same `ddd_gate` value. `run.sh` waits for
+the referee's `PROBE end role=server`, which it prints once every player has reported every
+case, and then checks each case by name — so a case added to the probe and not to the verdict
+block in `run.sh` runs, prints its verdict and is never judged.
 
 ### Before citing a green run as evidence
 

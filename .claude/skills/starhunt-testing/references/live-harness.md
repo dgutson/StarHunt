@@ -54,8 +54,8 @@ between the two clients. The server still runs StarHunt as the host: it picks th
 
 ## What each case measures
 
-The first three use Tick Tock Clock and the fourth Dire Dire Docks. Every goal used is cap-free
-deliberately — a vanish cap makes `interact_player` return before it reaches
+`split`, `hidden` and `shared` are played in Tick Tock Clock, `ddd` in Dire Dire Docks and
+`wdw` in Wet-Dry World. Every goal used is cap-free deliberately — a vanish cap makes `interact_player` return before it reaches
 `resolve_player_collision`, which would pass for the wrong reason.
 
 - **split** — the two players hold goals for different acts and each stands in its own act,
@@ -87,6 +87,17 @@ deliberately — a vanish cap makes `interact_player` return before it reaches
   190 units and more — a false push. The point used is the column the level's `MARIO_POS`
   drops Mario down, 300 units under the water surface, which is still water and also inside
   the region such a rule would have covered.
+- **wdw** — the same claim for Wet-Dry World, set up the same way. Every object in both of its
+  areas is `ALL_ACTS`, and its water level does not come from the act:
+  `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:305`) derives it from
+  `gPaintingMarioYEntry`. Every pair that can meet holds the same level, because the engine's
+  area sync matches on the same four fields `is_player_active` does and the area packet carries
+  it (`packet_area.c:52`, `:155-157`; `network_player.c:129-142`). **This is the case that fails
+  if that course is isolated by act again**, with `fail reason=wrong_pair_state`.
+  No instance in the harness ever enters a painting, so `gPaintingMarioYEntry` stays at its
+  initial `0.0` (`src/game/moving_texture.c:119`) and the course is drained to 31 units in
+  every run. The pair therefore meets on searched-for floor like the Tick Tock Clock cases,
+  with no meeting point of its own.
 
 ## How the pair is placed
 
@@ -159,21 +170,28 @@ controller fields (`buttonDown`, `stickX`, `stickY`, `stickMag`) are writable fr
 
 ## Adding a case
 
-The `say()` prefixes are an interface `run.sh` greps; treat them as fixed. Five places, in
-this order — the first four are in `test/live/mods/starhunt_probe/main.lua`:
+The `say()` prefixes are an interface `run.sh` greps; treat them as fixed. In this order,
+in `test/live/mods/starhunt_probe/main.lua`:
 
-1. `CASE` — add the name. The order of that list is the run order.
+1. `CASE` — add the name. The order of that list is the run order, and `run.sh` waits for
+   the referee's `end` line rather than for a verdict count, so nothing there needs changing
+   to match its length.
 2. `WANT_PRIVATE` — what `players_have_private_variant` must answer for the pair. The probe
    fails the run when the predicate disagrees, which catches a case that is not set up the way
    it reads.
-3. the `open_case` state in `update_server` — which goals the two players get. `pick_ttc_goals`
-   is Tick Tock Clock specific, so a case in another course needs its own picker. **A case that
-   must not re-warp a player must not reassign its goal**, because a client re-warps whenever
+3. the `open_case` state in `update_server` — which goals the two players get. A case whose
+   claim is that a course is *not* private by act needs nothing written here: add it to
+   `SHARED_COURSE` with its level, the act both bodies stand in and the act the other goal
+   names, and `pick_act_pair` finds the two goals. A case in a course that needs neither, like
+   Tick Tock Clock's, needs its own picker — `pick_ttc_goals` is that. **A case that must not
+   re-warp a player must not reassign its goal**, because a client re-warps whenever
    `sh5_goal` changes; `hidden` is the worked example.
 4. the `settle` state in `update_player` — any per-case setup before the pair is placed, such as
-   the self-warp that makes `hidden`.
-5. `run.sh` — `want=` is the total verdict count, two per case, and the verdict block needs a
-   `grep -c` line and a failure message for the new case. Both are literal numbers, not derived.
+   the self-warp that makes `hidden`. A `SHARED_COURSE` entry already gets that self-warp, and
+   an optional `meet` function on it replaces the floor search with a fixed point.
+5. `run.sh` — the verdict block needs a `grep -c` line for the new case and a failure message
+   naming what its being red means. That block is the only place outside the probe that has to
+   learn the case exists.
 
 ## Adding a `--without` removal
 
