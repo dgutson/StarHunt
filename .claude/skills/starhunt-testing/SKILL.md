@@ -1,6 +1,6 @@
 ---
 name: starhunt-testing
-description: Everything about verifying a change to StarHunt — the five checks in order with their exact commands and recorded baselines, the two expected false positives, the mutation sweep, and the live harness that runs the mod inside real headless sm64coopdx processes. Use whenever a change has to be verified, before opening a pull request, when asked to run the tests or lint or "check this works in the real game", when a check reports different numbers from the baselines, and when adding a case to either the offline suite or the live harness. Also use when the live harness fails, times out or reports numbers that look wrong, because most of its failure modes are engine behaviour rather than bugs in the mod. This is step 5 of the process in DEVELOPMENT_CHECKLIST.md.
+description: Everything about verifying a change to StarHunt — the five checks in order with their exact commands and recorded baselines, the two expected false positives, the mutation sweep, and test/live/run.sh, the harness that runs the mod inside real headless sm64coopdx processes. **CLAUDE.md deliberately no longer carries any of this, so this skill is the only place the commands and baselines exist** — load it rather than guessing a command or a number. Use it whenever a change to StarHunt has to be verified, before opening a pull request, when asked to run the tests, the suite, luacheck, lua-language-server, a mutation sweep or "check this works in the real game", when any check reports different numbers from the baselines, and when adding a case to the offline suite or the live harness. Use it even when testing was never mentioned, because every edit under StarHunt/ or test/ ends in these checks, and it is step 5 of the process in DEVELOPMENT_CHECKLIST.md. Also use it whenever the live harness fails, times out, hangs or reports numbers that look wrong, because nearly all of its failure modes are sm64coopdx behaviour rather than bugs in the mod, and the dead ends it records have each already cost a session.
 ---
 
 # Testing StarHunt
@@ -229,6 +229,38 @@ rather than removing from it.
 - `PROBE waiting ... reason=...` repeating — the probe is alive and stuck; the reason names where.
 - nothing at all after the banner — an instance died. `pkill -x sm64coopdx` cleans up orphans
   (`pkill -f` matches the shell running it and kills your own session).
+
+### Dead ends already ruled out
+
+Each of these cost a session, so do not spend another one on them. All were read out of the
+engine's source.
+
+- **`torsoPos` is not a render-path product that headless misses.** `resolve_player_collision`
+  compares torso positions, and the render path is what normally fills them in — but
+  `bhv_mario_update` copies `pos` into `torsoPos` whenever the render path did not run that frame
+  (`src/game/object_list_processor.c:259-263`, `src/game/mario_misc.c:494`). Headless is fine here.
+- **A Lua teleport *is* transmitted.** `network_update_player` sends whatever moved a player at
+  least every third tick (`sTicksSinceSend > 2`), so writing `m.pos` is not why a remote body
+  looks frozen. A frozen remote means either the headless-server flag or a level/act mismatch.
+- **Vertical separation, invincibility, intangible actions and the vanish cap** are all visible in
+  the `gates` line. Read it before theorising.
+- **The no-floor guard is real but was not the cause.** `resolve_player_collision` abandons a push
+  whose landing point has no floor, and the Tick Tock Clock entrance platform really is too small
+  — which is why the probe searches for open ground first. Fixing that alone changed nothing.
+
+If a future case needs contact to come from real movement rather than placement, the controller
+fields (`buttonDown`, `stickX`, `stickY`, `stickMag`) are writable from Lua
+(`src/pc/lua/smlua_cobject_autogen.c:690-701`). Nothing needs them today.
+
+### Running an instance by hand
+
+`run.sh` does this for you; it matters only when debugging one process on its own. The build links
+`libdiscord_game_sdk.so` and ships it beside the binary rather than installing it, so the loader
+has to be told where it is:
+
+```bash
+LD_LIBRARY_PATH="$(dirname "$COOPDX")" "$COOPDX" --headless --savepath ... 
+```
 
 ### Adding a case
 
