@@ -37,12 +37,10 @@ So a stray `.lua` **at the root of `StarHunt/`** would be executed as part of th
 inside `modules/` would be registered but not run unless something required it. Tests and
 tooling stay outside the folder either way.
 
-The project has no closure statement any more. `PROJECT_STATUS.md`, which declared v1.1
-final on 2026-07-30 and accepted corrective maintenance only, was removed on 2026-09-17; what
-it held that was worth keeping is in `HISTORY.md`. Most of the work here is still corrective
-maintenance, and a new feature is still worth raising as a question — it changes the audited
-modifier matrix, the six languages and the synchronized fields all at once — but it is no
-longer refused on principle. `ROADMAP.md` says what is agreed.
+Most of the work here is corrective maintenance. A new feature is worth raising as a question
+before implementing it — one moves the audited modifier matrix, the six languages and the
+synchronized fields at once — but it is not refused on principle. `ROADMAP.md` says what is
+agreed.
 
 ## Working process required by this project
 
@@ -66,11 +64,9 @@ both directions, a mutation check on the moved code, and a re-diff against the o
 immediately before committing. `DEVELOPMENT_CHECKLIST.md` states them; `REFACTOR_PLAN.md`
 explains how.
 
-`HISTORY.md` keeps the SHA-256 of the released single-file `main.lua`
-(`EBC76DBE…A906B883`) as a historical fact of what shipped as v1.1, and the file-set hash of
-v1.1.1 (`E4677DF5…1024F53`) beside it, under *Lo que se publicó, y su hash*. **A single file's
-hash no longer identifies the mod**, so the recorded identifier is the SHA-256 of the sorted
-list of every shipped file's hash:
+**A single file's hash no longer identifies the mod**, so its identifier is the SHA-256 of the
+sorted list of every shipped file's hash. `HISTORY.md` records the value of each published
+build:
 
 ```bash
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
