@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-032
+Next ID: R-033
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -91,7 +91,7 @@ session fills the context window and invites mistakes.
 ### R-010 — Verify the split mod in a real sm64coopdx multiplayer session
 
 - **Category:** Release
-- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **This one needs you at the keyboard**; no part of it can be done from a session. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
+- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **The parts that need you at the keyboard are what is left**: `test/live/run.sh --load-only` now answers the load question without a person, so what remains is the playing. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
 - **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods; `CLAUDE.md` and `test/README.md` both say so. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
 - **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
 - **Blocked-by:** —

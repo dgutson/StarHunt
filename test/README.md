@@ -70,9 +70,9 @@ clients, warping, collision, palettes, and interaction with other mods. The
 project documents are explicit that automated checks do not replace a real
 multiplayer session in sm64coopdx, and that is still true.
 
-The suite was mutation-checked: breaking the save conversion, the Easy pulse
-width, the symmetric pair check, the Hard bomb count, and the HUD colon rule
-each made it fail, with the failure naming the right thing.
+The suite is mutation-checked: breaking the save conversion, the Easy pulse
+width, the symmetric pair check, the Hard bomb count or the HUD colon rule each
+makes it fail, with the failure naming the right thing.
 
 The table above is **not complete**: `core`, `i18n`, `team`, `world` and
 `modifiers` run in `test/run.lua` and have no row here.
@@ -90,10 +90,10 @@ and two early returns are equivalent to falling through to the check below them.
 re-investigate them.
 
 A stub that answers `nil`, `0` or `false` where the real engine answers something
-meaningful can hide a whole area. Ten have been found so far. The most recent
-three came with Bowser's hazards: `dist_between_objects` answered 0 for every
-pair, so a shockwave stunned the player from any distance; `obj_scale` discarded
-its arguments, so every flame was the same size; and `atan2s` answered `nil`,
-which crashed hunter fire rather than merely disabling it. When a mutation
+meaningful can hide a whole area: a `dist_between_objects` that answers 0 for
+every pair lets a shockwave stun the player from any distance, an `obj_scale`
+that discards its arguments makes every flame the same size, and an `atan2s`
+that answers `nil` crashes hunter fire rather than merely disabling it. When a
+mutation
 survives, check whether a stub made the branch unreachable before concluding the
 test is wrong.

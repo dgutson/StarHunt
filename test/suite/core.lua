@@ -228,4 +228,17 @@ return function(t, harness)
         t.is_nil(rawget(api.mod_namespace, "Color"),
             "the colour axis moved to SH")
     end)
+
+    s.test("the test API hands over the two sync tables themselves", function()
+        -- test/live runs a second mod beside this one inside a real
+        -- sm64coopdx, and every mod there gets its own gGlobalSyncTable and
+        -- gPlayerSyncTable (smlua_sync_table_init_globals, called per mod).
+        -- The probe therefore cannot reach StarHunt's round state as a global
+        -- and has to be handed the references; without them it silently reads
+        -- and writes its own empty tables, which is how the first live run
+        -- reported every goal as 0 while the players were plainly warping.
+        local loaded = harness.load()
+        t.eq(loaded.global_sync, gGlobalSyncTable, "global_sync is not the real global sync table")
+        t.eq(loaded.player_sync, gPlayerSyncTable, "player_sync is not the real player sync table")
+    end)
 end
