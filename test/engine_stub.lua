@@ -7,7 +7,7 @@
 local stub = {}
 
 -- --------------------------------------------------------------------
--- constants (118)
+-- constants (119)
 -- --------------------------------------------------------------------
 id_bhvBowser = 72 --- @type BehaviorId
 id_bhvBowserBomb = 74 --- @type BehaviorId
@@ -28,6 +28,7 @@ INTERACT_STAR_OR_KEY = (1 << 12) --- @type InteractionType
 INTERACT_WARP = (1 << 13) --- @type InteractionType
 INTERACT_CANNON_BASE = (1 << 14) --- @type InteractionType
 INTERACT_FLAME = (1 << 18) --- @type InteractionType
+INTERACT_PLAYER = (1 << 31) --- @type InteractionType
 LEVEL_BBH = 4 --- @type LevelNum
 LEVEL_CCM = 5 --- @type LevelNum
 LEVEL_CASTLE = 6 --- @type LevelNum

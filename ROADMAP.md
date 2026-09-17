@@ -28,15 +28,6 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-030 — A player hidden for an incompatible world is still solid
-
-- **Category:** Bugfix
-- **What:** When `players_have_private_variant` says two players are in incompatible worlds, `update_private_player_visibility` (`modules/round.lua:946`) sets `GRAPH_RENDER_INVISIBLE` on the remote Mario and `on_allow_pvp_attack` (`modules/team.lua:251`) refuses the damage — but nothing stops the two bodies touching. `interact_player` still reaches `resolve_player_collision` whenever `gServerSettings.playerInteractions` is not `NONE`, and `modules/round.lua:511` sets it to `PLAYER_INTERACTIONS_PVP` for the whole round. So the hidden player is an invisible wall you can bump into and stand on. Refuse the contact in `on_allow_interact` (`modules/goals.lua:755`), which already hooks `HOOK_ALLOW_INTERACT`: the engine calls that hook for `INTERACT_PLAYER` and explicitly lets remote players through (`src/game/interaction.c:2386-2395`), so the one hook the mod already owns is enough.
-- **Why:** It is a defect in released v1.1, reachable today in Normal mode wherever the mod hides a player — an invisible body that blocks movement is worse than either showing the player or removing them. It is also the exact code R-028 needs for its own suppression, and R-028 is the first thing in this mod to depend on `HOOK_ALLOW_INTERACT` reaching `INTERACT_PLAYER`. That path is verified in the engine's source but has never been exercised in a real session, so proving it in a small change first is worth more than proving it inside a large one.
-- **Outcome:** Two players the mod has hidden from each other pass through each other. `test/suite/world.lua` or `test/suite/interact.lua` covers the refusal, and the three documented checks stay at their baselines. A real session confirms the pass-through, which no test can.
-- **Blocked-by:** —
-- **Enables:** R-028
-
 ### R-031 — Dire Dire Docks is isolated for a divergence that cannot happen
 
 - **Category:** Bugfix
@@ -77,7 +68,7 @@ session fills the context window and invites mistakes.
   - **Save-file progression is not a divergence.** `packet_join.c:103-129` sends the host's entire 512-byte EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer instead of its own file, and `save_file.c:712-732` broadcasts every later flag change. This is the premise the whole volume table rests on: the act is the only axis on which two players' worlds can differ. R-031 removes the DDD rule, which is the cheapest live test of exactly that claim.
   - `is_jrb_ship_zone` is wrong today. Its box (x within +/-2600, y -2600..1000, z -4200..-350) is in **area 2** coordinates — the ship interior — while both hulls are in area 1 at x around 4880-5385, z around 2375-2428. It never fires where it matters. The volume table replaces it, so fixing it separately would be wasted work.
   - **Do not read `gNetworkPlayers[i].currActNum`** to learn a player's act. It is fed from `gCurrActStarNum` (`level_update.c:558`), which only the star-select menu sets and which is reset to 0 when the level transition ends (`level_update.c:1480`). It is 0 during ordinary play. `sh5_goal` is the right source.
-  - **Contact suppression arrives with R-030**, which fixes the same gap for the isolation that exists today. This item reuses that code rather than writing its own.
+  - **Contact suppression is already in place.** R-030 refused `INTERACT_PLAYER` in `on_allow_interact` for the isolation that exists today, and added `player_index_of_body` to name the player an interaction object belongs to. This item reuses both rather than writing its own.
   - **A translucent render is reachable.** `marioBodyState.modelState = MODEL_STATE_NOISE_ALPHA` (0x180: bit 0x100 plus alpha 0x80) makes `mario_misc.c:415` draw that Mario at that alpha. The engine clears `modelState` to 0 every frame at `mario.c:1819`, so it has to be re-applied after the per-player update — the same ordering problem `SH.apply_post_moveset_limits` already solves.
 - **Open decisions, to settle before writing code:**
   - **What the silhouette is.** Three reachable forms: a translucent Mario through `modelState`; a flat single colour through `network_player_set_override_palette_color`, the mechanism `team.lua` already uses for team colours; or a filled shape in HUD space through `djui_hud_world_pos_to_screen_pos`, which has no depth and would draw through walls, undoing the thing this item builds. The first two together are the closest to a silhouette that keeps correct depth.
@@ -85,7 +76,7 @@ session fills the context window and invites mistakes.
   - **Precedence when both conditions hold.** A player on the raised ship deck both occupies a divergent volume and is occluded by it. The rule above makes occupancy win, so they read as a silhouette rather than vanishing. Confirm or overrule.
 - **Why:** StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so two players can stand in one course and area with different acts and therefore different geometry — the Jolly Roger Bay hull sits at y = -5520 in act 1 and y = +820 in acts 2-6. Today NORMAL answers this by hiding the other player outright, which deletes the encounter, and TEAM answers it by ignoring the problem, which lets two players fight through a ship only one of them has. Neither is a fair fight, and a fair fight between different acts is what the mode is for. The zone tests that stand in for this today are also aimed at the wrong places: the JRB box is in the wrong area entirely and the DDD rule guards against a divergence that cannot occur.
 - **Outcome:** Two players on different acts of one course see each other, damage each other and collide with each other everywhere the geometry agrees, and are cleanly separated only where it does not — occluded by a divergent volume, or standing in one. `is_jrb_ship_zone` and `is_ddd_sub_zone` are gone, replaced by the volume table. `test/suite/world.lua` covers each volume and each of the three per-pair outcomes, and the three documented checks stay at their baselines. Not covered, as ever: a real multiplayer session, which is the only thing that can confirm the measured half-extents and what the silhouette actually looks like.
-- **Blocked-by:** R-030, R-031
+- **Blocked-by:** R-031
 - **Enables:** —
 
 ### R-014 — Take the bug reports and turn them into roadmap items
@@ -162,7 +153,7 @@ session fills the context window and invites mistakes.
 - **What:** `core.lua` requires nothing, so it is the one module that can move on its own. Convert it to `core.tl` and declare the mode, difficulty and team axes as three Teal enums, which are nominal and mutually unassignable. R-019 already split the names apart — they are `SH.Mode`, `SH.Difficulty` and `Team.Color` — so a name off the wrong axis reads as `nil`, but the three stay sets of plain integers: nothing stops a difficulty *value* being passed where a mode is expected. That last step is what the compiler adds.
 - **Why:** This is the largest single win the language offers this codebase, and `core.lua` is where it lives. It is also the smallest possible first migration, which is what makes it the right one to learn the build on.
 - **The catch, which this item must resolve rather than discover:** Teal enums are **string** values only — confirmed against the current documentation, not recalled. The mod's modes and difficulties are integers that are synchronized between players and used arithmetically (`% 4` when cycling, `+ 1` as a table index, `clamp(..., 0, 3)`). So either the wire format changes to strings, which breaks a mixed-version lobby, or the sync tables keep carrying integers and the enum is converted at the boundary, which means two representations and a conversion that can itself be wrong. Decide this before writing any `.tl`.
-- **Outcome:** `core.tl` compiles to a `core.lua` byte-identical in behaviour, the three axes are distinct enum types, the 780 tests pass against the compiled output, and the wire format question is answered in writing.
+- **Outcome:** `core.tl` compiles to a `core.lua` byte-identical in behaviour, the three axes are distinct enum types, the whole test suite passes against the compiled output, and the wire format question is answered in writing.
 - **Blocked-by:** R-020
 - **Enables:** R-023, R-024, R-025
 

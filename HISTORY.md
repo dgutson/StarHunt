@@ -13,6 +13,47 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — R-030: a player hidden for an incompatible world is no longer solid
+
+StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so
+two players can stand in one course and area on different acts, with geometry that does not
+agree. `players_have_private_variant` decides when that is true, and the mod answered it in two
+places: `update_private_player_visibility` set `GRAPH_RENDER_INVISIBLE` on the other player's
+Mario, and `on_allow_pvp_attack` refused the damage. Nothing stopped the two bodies touching.
+`modules/round.lua:511` sets `gServerSettings.playerInteractions` to `PLAYER_INTERACTIONS_PVP`
+for the whole round, so `interact_player` still reached `resolve_player_collision` and the
+hidden player stayed an invisible wall to bump into and stand on.
+
+The refusal went into `on_allow_interact` in `modules/goals.lua`, which already hooks
+`HOOK_ALLOW_INTERACT`. Verified in the engine's own source rather than its documentation:
+`interact_player` (`src/game/interaction.c`) is the only caller of `resolve_player_collision`,
+and `mario_process_interactions` calls the hook for `INTERACT_PLAYER` before the handler and
+lets remote players reach it. The check sits immediately after the round-active test, above the
+per-mode branches, so the collision answer and the visibility answer come from the same
+predicate for the same pair; Boss and Chaos exempt themselves through the predicate, Boss
+because a boss round leaves every `sh5_goal` at 0.
+
+`player_index_of_body` names the player an interaction object belongs to. The first version
+walked `gMarioStates` comparing `marioObj`, the way the engine itself finds the other player;
+the reviewer asked whether the walk was worth its cost, and it was not: the engine writes the
+owner onto every Mario object once per frame in `bhv_mario_update`, and
+`network_local_index_from_global` is arithmetic rather than a search, so
+`SH.local_index_from_global(object.globalPlayerIndex)` answers in constant time. The single
+comparison back against that player's own `marioObj` is what keeps it exact, because an
+ordinary object carries `globalPlayerIndex` 0 and would otherwise read as the host's body. The
+constant-time version also mutation-tested better: the walk left six survivors, all in its loop
+bounds; the lookup left none.
+
+The defect shipped in released v1.1 — `v1.1-monolithic` contains the predicate and its two
+consumers and no mention of `INTERACT_PLAYER` — so it was not introduced by the modular split.
+
+Four tests in `test/suite/world.lua` cover it: a hidden pair refused in both directions, a
+shared pair still touching, the refusal ending with the round, and an object that is no
+player's body left alone. 784 passed / 0 failed, luacheck 2 warnings / 0 errors in 46 files,
+lua-language-server 10 problems in 2 files. The mutation sweep over the changed lines caught
+13 of 13. Not covered, as ever: a real multiplayer session, which is the only thing that can
+confirm two hidden players actually pass through each other.
+
 ### 2026-09-16 — R-019: three axes, two name spaces, one table too few
 
 `modules/core.lua` declared `NORMAL = 0, BOSS = 1, MODE = 2, CHAOS = 3, EASY = 0, MEDIUM = 1,

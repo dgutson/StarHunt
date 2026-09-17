@@ -42,6 +42,12 @@ que copiar `main.lua` solo no alcanza.
 
 ## Cambios de v1.1
 
+- Mantenimiento del 17 de septiembre: cuando el mod oculta a otro jugador
+  porque su acto carga otra geometría, ahora además se atraviesan. Antes el
+  jugador oculto seguía siendo un cuerpo sólido: se chocaba con él y hasta se
+  podía quedar parado encima, en el aire. El daño entre los dos ya estaba
+  desactivado; lo que faltaba era el contacto. Donde el mod no oculta a nadie
+  los jugadores se siguen empujando y pisando como siempre.
 - Mantenimiento del 16 de septiembre: en Boss, agarrar a Bowser de la cola
   detiene sus ataques mientras se lo sujeta. Antes seguían saliendo desde su
   propia posición, es decir encima del jugador que lo tenía agarrado, y el
