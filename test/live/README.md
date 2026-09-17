@@ -96,14 +96,14 @@ their stdout.
 - **Stdout is block-buffered and the game never flushes it**, so a killed process loses its
   output. `run.sh` runs each instance under `stdbuf -oL -eL`.
 
-## What the three cases do
+## What the four cases do
 
 The server starts a Normal round and waits for the mod to hand out goals — `host_start_round`
 only opens the round and leaves every goal at 0; `host_update_round` assigns them a frame or two
 later, so an override written any earlier is simply undone. It then replaces the two players'
-goals with a chosen Tick Tock Clock pair and each client warps itself. Both goals are cap-free
-deliberately: a vanish cap makes `interact_player` return before it reaches
-`resolve_player_collision`.
+goals with a chosen pair — Tick Tock Clock for the first three cases, Dire Dire Docks for the
+fourth — and each client warps itself. Every goal used is cap-free deliberately: a vanish cap
+makes `interact_player` return before it reaches `resolve_player_collision`.
 
 - **split** — the two players hold the act 6 and act 1 goals and each stands in its own act,
   which is what an ordinary StarHunt round produces. This case **tests nothing the mod does**:
@@ -120,11 +120,29 @@ deliberately: a vanish cap makes `interact_player` return before it reaches
 - **shared** — both players hold the act 6 goal, so the predicate is false, the mod leaves the
   contact alone and the engine must push them apart. **This case is the control**; without it a
   setup where the bodies never touch reports the other two as passes, fix or no fix.
+- **ddd** — two Dire Dire Docks goals on different acts, with the second player walking back into
+  the first's act the way `hidden` does. Here the predicate must answer **false**: the only
+  act-gated object in that course is the manta ray (`levels/ddd/script.c:31`), and the submarine,
+  its door and the nine poles read `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` out
+  of a save file every client is given by the host. So the two must be pushed apart, and both
+  report the flags they read for `run.sh` to check that they agree. **This is the case that fails
+  if Dire Dire Docks is isolated by act again**; it goes red against the code that did, with
+  `fail reason=wrong_pair_state`.
 
 That "hidden" arrangement is not an artificial one. When a player's goal changes, StarHunt waits
 `NEXT_GOAL_DELAY` — 90 frames, three seconds — before warping them, and a player who has just
 been given a different act of the level they are standing in is in exactly this state for that
 whole window, next to whoever else is there.
+
+The `ddd` pair does not stand where the other three do. Dire Dire Docks is flooded from end to
+end, so there is no patch of floor to look for, and the shaft the players drop into ends in a
+whirlpool — hitbox radius 200, height 500 at `-3174, -4915, 102`
+(`sWhirlpoolHitbox`, `src/game/behaviors/whirlpool.inc.c`) — whose current carries a pair placed
+beside it apart at 190 units and more, which reads exactly like a push. The case therefore uses a
+fixed meeting point: the column the level's own `MARIO_POS` drops Mario down, 300 units below the
+water surface, where the water is still and two players sink together instead of falling. That
+point is also inside the region a rule isolating the course by act would have covered, which is
+what lets the case go red when one comes back.
 
 ## How the pair is placed, and two traps in doing it
 

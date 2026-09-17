@@ -77,7 +77,8 @@ local PLACE_OFFSET = 20.0
 -- drift, so anything above a few units is the engine.
 local PUSHED_DRIFT = 20.0
 
--- Three cases per run, and only the middle one is about StarHunt at all.
+-- Four cases per run. Two of them are about StarHunt; the other two are the
+-- engine on its own and the control.
 --
 --  1. split  -- the two players hold TTC goals for acts 6 and 1 and are each
 --               standing in their own act. This is what an ordinary StarHunt
@@ -99,15 +100,39 @@ local PUSHED_DRIFT = 20.0
 --               the mod leaves the contact alone. The engine must push these
 --               two apart. Without this control a run where the bodies never
 --               touch at all reports every other case as a pass.
-local CASE = { "split", "hidden", "shared" }
+--
+--  4. ddd    -- two Dire Dire Docks goals on different acts, with the second
+--               player walking back into the first's act the way "hidden" does.
+--               Here the predicate must answer **false**: the only act-gated
+--               object in that course is the manta ray, and the submarine, its
+--               door and the nine poles read SAVE_FLAG_HAVE_KEY_2 |
+--               SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR out of a save file every
+--               client receives from the host. So the engine has to push these
+--               two apart, and each client reports the flags it reads for the
+--               run to check that they agree. **This is the case that fails if
+--               DDD is isolated by act again.**
+local CASE = { "split", "hidden", "shared", "ddd" }
 
 -- Which cases players_have_private_variant has to answer true for.
-local WANT_PRIVATE = { split = true, hidden = true, shared = false }
+local WANT_PRIVATE = { split = true, hidden = true, shared = false, ddd = false }
 
 -- The act both players stand in for "hidden" and "shared". Act 6 is the one
 -- that stops the clock, so it is the side of the TTC divergence the predicate
 -- keys on; the other player's goal keeps whatever act pick_ttc_goals found.
 local SHARED_ACT = 6
+
+-- The two DDD acts. The first is the one both players end up standing in, the
+-- second is the act the other player's goal names. Both are cap-free, for the
+-- same reason the TTC pair is; DDD acts 4 and 6 carry Metal and Metal+Vanish.
+local DDD_ACT = 1
+local DDD_OTHER_ACT = 3
+
+-- The save flags the submarine, its door and the nine poles read:
+-- bhv_bowsers_sub_loop (src/game/behaviors/ddd_sub.inc.c:4) deletes the
+-- submarine once either is set, bhv_ddd_pole_init (ddd_pole.inc.c:3) deletes
+-- each pole until one is. Every client is given the host's save file, so both
+-- must report the same value.
+local DDD_SAVE_GATE = SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR
 
 local state = "wait_api"
 local since = 0
@@ -118,11 +143,13 @@ local phase = 0
 ---@type any
 local api = nil
 local ttc = { act_6 = nil, act_other = nil }
+local ddd = { stay = nil, other = nil }
 local placed_at = nil
 local drift = 0
 local reach = 0
 local samples = 0
 local rewarped = false
+local moved = false
 
 --- The two TTC goals the cases need: act 6, and any other act.
 -- Act 6 stops the clock while the others run it, which is the divergence
@@ -134,6 +161,21 @@ local function pick_ttc_goals()
     for id, goal in ipairs(api.goals) do
         if goal.level == LEVEL_TTC and (goal.power == nil or goal.power == 0) then
             if goal.act == 6 then a = id elseif b == nil then b = id end
+        end
+    end
+    return a, b
+end
+
+--- The two DDD goals the "ddd" case needs: DDD_ACT and DDD_OTHER_ACT.
+-- Cap-free for the same reason as the TTC pair: a vanish cap makes
+-- interact_player return before it reaches resolve_player_collision, which
+-- would report a pass for the wrong reason.
+local function pick_ddd_goals()
+    local a, b
+    for id, goal in ipairs(api.goals) do
+        if goal.level == LEVEL_DDD and (goal.power == nil or goal.power == 0) then
+            if goal.act == DDD_ACT then a = id
+            elseif goal.act == DDD_OTHER_ACT then b = id end
         end
     end
     return a, b
@@ -210,6 +252,26 @@ local function open_ground_near(m)
         end
     end
     return nil
+end
+
+--- Where the "ddd" pair meets, in Dire Dire Docks area 1.
+-- Fixed rather than searched, for two reasons. The shaft the players drop into
+-- ends in a whirlpool -- hitbox radius 200, height 500 at -3174, -4915, 102
+-- (`sWhirlpoolHitbox`, src/game/behaviors/whirlpool.inc.c) -- and a pair placed
+-- on the floor beside it is carried apart by the current, which reads exactly
+-- like a push. And the point has to sit where a rule isolating DDD by act would
+-- have fired, or the case cannot go red when one comes back.
+--
+-- x and z are the column the level's own MARIO_POS drops Mario down
+-- (levels/ddd/script.c, `MARIO_POS(1, 180, -3071, 3000, 500)`), so it is open
+-- water from the surface to the floor. The depth is taken from the water
+-- surface, so two players sink together at the same rate instead of falling.
+local DDD_SPOT_X = -3071.0
+local DDD_SPOT_Z = 500.0
+local DDD_SPOT_DEPTH = 300.0
+
+local function ddd_meeting_point()
+    return DDD_SPOT_X, find_water_level(DDD_SPOT_X, DDD_SPOT_Z) - DDD_SPOT_DEPTH, DDD_SPOT_Z
 end
 
 local function place_at(m, x, y, z)
@@ -292,6 +354,12 @@ local function update_server()
             enter("done")
             return
         end
+        ddd.stay, ddd.other = pick_ddd_goals()
+        if ddd.stay == nil or ddd.other == nil then
+            say("fail", "reason=no_ddd_goal_pair")
+            enter("done")
+            return
+        end
         api.global_sync.sh5_mode = 0        -- SH.Mode.NORMAL
         api.global_sync.sh5_difficulty = 1  -- SH.Difficulty.MEDIUM
         if not api.host_start(10) then
@@ -322,6 +390,9 @@ local function update_server()
         -- exists to avoid. The second player moves itself instead.
         local first = ttc.act_6
         local second = (CASE[phase] == "shared") and ttc.act_6 or ttc.act_other
+        -- "ddd" hands out a fresh pair, so both clients warp into that course;
+        -- the anchor's goal is the act they will both end up standing in.
+        if CASE[phase] == "ddd" then first, second = ddd.stay, ddd.other end
         if CASE[phase] ~= "hidden" and not assign(first, second) then
             say("fail", "reason=players_left")
             enter("done")
@@ -377,29 +448,48 @@ local function update_player()
         end
         phase = want
         rewarped = false
+        moved = false
         gPlayerSyncTable[0].sh_probe_ready = 0
         gPlayerSyncTable[0].sh_probe_placed = 0
         enter("settle")
 
     elseif state == "settle" then
         local mine, theirs = gNetworkPlayers[0], gNetworkPlayers[OTHER]
-        -- **The "hidden" case is made here, and it is made by moving rather
-        -- than by reassigning.** This player keeps the goal StarHunt gave it --
-        -- so players_have_private_variant still calls the pair private -- but
-        -- walks back into the act the other one is standing in, so the engine's
-        -- own act comparison stops refusing the contact. That leaves R-030's
-        -- branch in on_allow_interact as the only thing that can keep the two
-        -- bodies apart, which is what makes this case able to fail.
-        if CASE[phase] == "hidden" and not IS_ANCHOR then
+        -- The course this case is played in, and the act the second player ends
+        -- up standing in.
+        local course = (CASE[phase] == "ddd") and LEVEL_DDD or LEVEL_TTC
+        local stand_in = (CASE[phase] == "ddd") and DDD_ACT or SHARED_ACT
+        -- Both of StarHunt's own warps have to have landed before anything
+        -- moves a player: a case that changes sh5_goal makes the mod warp that
+        -- client, and a self-warp issued first is undone when the mod's arrives.
+        -- Level and area are exchanged even between players the engine will not
+        -- let interact, so this is readable in every case.
+        if mine.currLevelNum ~= course or theirs.currLevelNum ~= course then
+            if since % 900 == 0 then
+                say("waiting", "role=player" .. MY_GLOBAL .. " reason=not_in_course"
+                    .. " want=" .. course
+                    .. " lvl=" .. tostring(mine.currLevelNum) .. "," .. tostring(theirs.currLevelNum))
+            end
+            since = 0
+            return
+        end
+        -- **"hidden" and "ddd" are made here, and they are made by moving
+        -- rather than by reassigning.** This player keeps the goal StarHunt
+        -- gave it -- so players_have_private_variant reads two different acts --
+        -- but walks back into the act the other one is standing in, so the
+        -- engine's own act comparison stops refusing the contact. What is left
+        -- between the two bodies is the mod alone: R-030's branch in
+        -- on_allow_interact, and the predicate that branch asks.
+        if (CASE[phase] == "hidden" or CASE[phase] == "ddd") and not IS_ANCHOR then
             if not rewarped then
                 rewarped = true
-                warp_to_level(LEVEL_TTC, 1, SHARED_ACT)
-                say("rewarp", "role=player" .. MY_GLOBAL .. " act=" .. SHARED_ACT
+                warp_to_level(course, 1, stand_in)
+                say("rewarp", "role=player" .. MY_GLOBAL .. " act=" .. stand_in
                     .. " goal=" .. tostring(api.player_sync[0].sh5_goal))
                 since = 0
                 return
             end
-            if mine.currActNum ~= SHARED_ACT then
+            if mine.currActNum ~= stand_in then
                 if since % 900 == 0 then
                     say("waiting", "role=player" .. MY_GLOBAL .. " reason=rewarp act=" .. tostring(mine.currActNum))
                 end
@@ -407,18 +497,30 @@ local function update_player()
                 return
             end
         end
-        -- Both warps have to have landed. Level and area are exchanged even
-        -- between players the engine will not let interact, so this is readable
-        -- in every case.
-        if mine.currLevelNum ~= LEVEL_TTC or theirs.currLevelNum ~= LEVEL_TTC then
-            if since % 900 == 0 then
-                say("waiting", "role=player" .. MY_GLOBAL .. " reason=not_in_ttc"
-                    .. " lvl=" .. tostring(mine.currLevelNum) .. "," .. tostring(theirs.currLevelNum))
-            end
+        -- Both players stand on the meeting point before anything is asked
+        -- about the pair, so the predicate is read where a rule isolating this
+        -- course by act would have answered true. They overlap exactly for the
+        -- moment: resolve_player_collision moves along the vector between the
+        -- two torsos, so a perfect overlap pushes nobody.
+        if CASE[phase] == "ddd" and not moved then
+            moved = true
+            local x, y, z = ddd_meeting_point()
+            place_at(gMarioStates[0], x, y, z)
+            say("meet", "role=player" .. MY_GLOBAL
+                .. " x=" .. string.format("%.0f", x)
+                .. " y=" .. string.format("%.0f", y)
+                .. " z=" .. string.format("%.0f", z))
             since = 0
             return
         end
         if since < AREA_SETTLE_FRAMES then return end
+        -- What the submarine and the poles actually read. Both clients must
+        -- report the same number, or the premise that the course looks the same
+        -- from every act is wrong and the "ddd" verdict below means nothing.
+        if CASE[phase] == "ddd" then
+            say("saveflags", "role=player" .. MY_GLOBAL
+                .. " ddd_gate=" .. tostring(save_file_get_flags() & DDD_SAVE_GATE))
+        end
         local private = api.players_have_private_variant(0, OTHER)
         local want = WANT_PRIVATE[CASE[phase]]
         say("pair", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
@@ -442,7 +544,15 @@ local function update_player()
         local me = gMarioStates[0]
         if IS_ANCHOR then
             if since == 1 then
-                local x, y, z = open_ground_near(me)
+                -- In Dire Dire Docks the pair meets at a point chosen for the
+                -- course rather than on a patch of floor: the level is flooded
+                -- from end to end and has no platform to stand on.
+                local x, y, z
+                if CASE[phase] == "ddd" then
+                    x, y, z = ddd_meeting_point()
+                else
+                    x, y, z = open_ground_near(me)
+                end
                 if x == nil then
                     say("fail", "reason=no_open_ground case=" .. CASE[phase])
                     enter("done")

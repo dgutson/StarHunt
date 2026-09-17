@@ -2,7 +2,7 @@
 name: starhunt-testing
 description: >-
   How to verify any change to StarHunt. Holds the five checks in order with their exact
-  commands and recorded baselines (785 offline tests, 2 luacheck warnings, 10 type
+  commands and recorded baselines (786 offline tests, 2 luacheck warnings, 10 type
   problems), the reports that are correct code rather than bugs, the mutation sweep, and
   test/live/run.sh, which runs the mod inside real headless sm64coopdx processes. These
   commands and numbers exist nowhere else in the repository — CLAUDE.md and
@@ -29,10 +29,10 @@ loading, the module `require` graph. A change is verified when each check holds 
 | # | check | command | expected | takes |
 |---|---|---|---|---|
 | 1 | syntax | `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` | no output | instant |
-| 2 | suite | `lua5.4 test/run.lua` | `785 passed, 0 failed` | ~46s |
+| 2 | suite | `lua5.4 test/run.lua` | `786 passed, 0 failed` | ~47s |
 | 3 | lint | `luacheck StarHunt/ test/` | `2 warnings / 0 errors in 47 files` | ~2s |
 | 4 | types | `lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log` | `10 problems in 2 files` | ~15s |
-| 5 | live | `test/live/run.sh` | `PASSED`, 6 `PROBE verdict` lines | ~2.5 min |
+| 5 | live | `test/live/run.sh` | `PASSED`, 8 `PROBE verdict` lines | ~1 min |
 
 **Any rise in those numbers is a regression.** Quote what the run printed in the pull
 request. A change that adds or moves code also needs the mutation sweep, below — a green
@@ -51,7 +51,7 @@ lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 ## 2. The offline suite
 
 ```bash
-lua5.4 test/run.lua                    # all 785
+lua5.4 test/run.lua                    # all 786
 lua5.4 test/run.lua audit difficulty   # only matching suites, for a quick loop
 ```
 
@@ -144,7 +144,7 @@ from a newer upstream needs this before either check means anything. Read
 
 ```bash
 test/live/run.sh --load-only     # one instance: does the mod load, do the modules resolve (~40s)
-test/live/run.sh                 # a referee and two players: the collision cases (~2.5 min)
+test/live/run.sh                 # a referee and two players: the collision cases (~1 min)
 test/live/run.sh --without r030  # prove the run can go red; must exit 0
 ```
 
@@ -153,8 +153,10 @@ names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `
 `PAIR_DELAY` and `WORK` override the binary, the ROM, the port, the deadline, the two join
 delays and the scratch directory; on this machine the defaults are already right.
 
-A full run ends with `PASSED:` and six `PROBE verdict` lines — `split passed_through=true`,
-`hidden passed_through=true` and `shared passed_through=false`, once per player.
+A full run ends with `PASSED:` and eight `PROBE verdict` lines — `split passed_through=true`,
+`hidden passed_through=true`, `shared passed_through=false` and `ddd passed_through=false`, once
+per player — plus one `PROBE saveflags` line per player, which must carry the same `ddd_gate`
+value on both.
 
 ### Before citing a green run as evidence
 

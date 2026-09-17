@@ -36,8 +36,18 @@ against the previous code. Its last assertion also holds a DDD pair in deep wate
 coordinates inside the box `is_jrb_ship_zone` tests, so a zone belonging to one level cannot
 be reached from another.
 
+`test/live/` gained a fourth case, `ddd`, which is the same claim in a real session: two clients
+holding different DDD acts, the second standing in the first's act, meeting 300 units under the
+water surface in the column the level's own `MARIO_POS` drops Mario down. Both report
+`ddd_gate=0` for `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR`, the predicate answers
+false and the engine pushes the two apart — drift 30 and 47 against a threshold of 20. Run
+against the code before the fix, the case goes red with `fail reason=wrong_pair_state`, because
+that meeting point is inside the region `is_ddd_sub_zone` covered. The pair meets at a fixed
+point rather than on searched-for floor because the course is flooded and the shaft ends in a
+whirlpool whose current separates a pair by 190 units and more, which reads as a push.
+
 786 passed / 0 failed, luacheck 2 warnings / 0 errors in 47 files, lua-language-server 10
-problems in 2 files, `test/live/run.sh` PASSED with its six verdicts. Mutation sweep over
+problems in 2 files, `test/live/run.sh` PASSED with its eight verdicts. Mutation sweep over
 `players_have_private_variant`: 46 of 110 caught, against 44 of 119 on `main` — the survivors
 are the BBH, WF and JRB branches, untested before and after, which R-028 replaces.
 

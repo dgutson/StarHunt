@@ -52,11 +52,11 @@ dedicated headless server and **two** headless clients, and the collision it mea
 between the two clients. The server still runs StarHunt as the host: it picks the goals, owns
 `gGlobalSyncTable` and drives the round.
 
-## What the three cases measure
+## What the four cases measure
 
-All three use Tick Tock Clock, and both goals are cap-free deliberately — a vanish cap makes
-`interact_player` return before it reaches `resolve_player_collision`, which would pass for
-the wrong reason.
+The first three use Tick Tock Clock and the fourth Dire Dire Docks. Every goal used is cap-free
+deliberately — a vanish cap makes `interact_player` return before it reaches
+`resolve_player_collision`, which would pass for the wrong reason.
 
 - **split** — the two players hold goals for different acts and each stands in its own act,
   which is what an ordinary round produces. It **tests nothing the mod does**: a player's goal
@@ -74,6 +74,19 @@ the wrong reason.
 - **shared** — both players hold the same goal, so the predicate is false, the mod leaves the
   contact alone and the engine must push them apart to about 74. **This is the control.** If
   it fails, nothing else in the run means anything.
+- **ddd** — two Dire Dire Docks goals on different acts, the second player standing in the
+  first's act as in `hidden`. The predicate must answer **false** here: only the manta ray is
+  act-gated in that course, and the submarine, its door and the nine poles read
+  `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` out of the save file every client
+  receives from the host. The two must be pushed apart, and both clients report the flags they
+  read so the run can check they agree. **This is the case that fails if that course is
+  isolated by act again**, with `fail reason=wrong_pair_state`.
+  The pair meets at a fixed point rather than on searched-for floor: the course is flooded end
+  to end, and the shaft the players drop into ends in a whirlpool (hitbox radius 200, height
+  500, `src/game/behaviors/whirlpool.inc.c`) whose current separates a pair placed beside it by
+  190 units and more — a false push. The point used is the column the level's `MARIO_POS`
+  drops Mario down, 300 units under the water surface, which is still water and also inside
+  the region such a rule would have covered.
 
 ## How the pair is placed
 
