@@ -37,9 +37,12 @@ So a stray `.lua` **at the root of `StarHunt/`** would be executed as part of th
 inside `modules/` would be registered but not run unless something required it. Tests and
 tooling stay outside the folder either way.
 
-The project is closed. `PROJECT_STATUS.md` declares v1.1 final (2026-07-30) and says only
-corrective maintenance is accepted — no new features, modes, goals, modifiers or scoring
-changes. Treat a request for a new feature as a question worth raising before implementing it.
+The project has no closure statement any more. `PROJECT_STATUS.md`, which declared v1.1
+final on 2026-07-30 and accepted corrective maintenance only, was removed on 2026-09-17; what
+it held that was worth keeping is in `HISTORY.md`. Most of the work here is still corrective
+maintenance, and a new feature is still worth raising as a question — it changes the audited
+modifier matrix, the six languages and the synchronized fields all at once — but it is no
+longer refused on principle. `ROADMAP.md` says what is agreed.
 
 ## Working process required by this project
 
@@ -63,10 +66,11 @@ both directions, a mutation check on the moved code, and a re-diff against the o
 immediately before committing. `DEVELOPMENT_CHECKLIST.md` states them; `REFACTOR_PLAN.md`
 explains how.
 
-`PROJECT_STATUS.md` keeps the SHA-256 of the released single-file `main.lua`
-(`EBC76DBE…A906B883`) as a historical fact of what shipped as v1.1, and records the modular
-layout separately. **A single file's hash no longer identifies the mod**, so the recorded
-identifier is now the SHA-256 of the sorted list of every shipped file's hash:
+`HISTORY.md` keeps the SHA-256 of the released single-file `main.lua`
+(`EBC76DBE…A906B883`) as a historical fact of what shipped as v1.1, and the file-set hash of
+v1.1.1 (`E4677DF5…1024F53`) beside it, under *Lo que se publicó, y su hash*. **A single file's
+hash no longer identifies the mod**, so the recorded identifier is the SHA-256 of the sorted
+list of every shipped file's hash:
 
 ```bash
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
@@ -345,7 +349,6 @@ modifier and Boss strings live in `SH.ui_translations`, `SH.modifier_translation
 ## Documents
 
 - `CHANGELOG.md` — user-facing description of v1.1 and its maintenance updates (Spanish).
-- `PROJECT_STATUS.md` — closure statement, final hash, what validation does *not* cover.
 - `DEVELOPMENT_CHECKLIST.md` — the required process, the code map, and the do-not-undo table.
   Live rules only; its version history was moved to `HISTORY.md`.
 - `BALANCE_AUDIT.md` — the audit's four stages, per-difficulty guarantees and numeric limits

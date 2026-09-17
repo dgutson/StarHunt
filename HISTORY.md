@@ -13,6 +13,27 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — `PROJECT_STATUS.md` retired
+
+The document mixed four unrelated things: a claim that the project was closed, a register of
+tree hashes, a second copy of the release notes, and a list of which version folders existed
+on one machine. Most of it had gone stale — it still called the modular mod unplayed, still
+counted 780 tests, and still declared a closure that the act-divergence work has since
+overtaken.
+
+What was worth keeping moved rather than disappearing. The two hashes that identify a
+published build — the single-file v1.1 and the file-set v1.1.1 — are now in *Lo que se
+publicó, y su hash* below; the five intermediate tree hashes were dropped, because none of
+them was published and the command recomputes any of them from the commit that carries it.
+Everything else was already somewhere better: the installation rule is in `CLAUDE.md` and
+`CHANGELOG.md`, the per-update notes are in `CHANGELOG.md`, and the limits of the automated
+validation are in `CLAUDE.md`, `test/README.md` and roadmap item R-010.
+
+The closure statement itself was not moved anywhere, which is the point of removing the file:
+the project is governed by `ROADMAP.md` and `HISTORY.md`, and a feature request is a question
+to raise rather than one to refuse on principle. `CLAUDE.md`, `ROADMAP.md` (R-014 and R-010)
+and `test/suite/catalog.lua` cited the file and now state the fact instead.
+
 ### 2026-09-17 — R-030: a player hidden for an incompatible world is no longer solid
 
 StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so
@@ -1141,6 +1162,29 @@ forfeits or as none, or left Bowser's intro textbox blocking the Boss round.
 
 Archivado desde `DEVELOPMENT_CHECKLIST.md`, que ahora conserva solo lo vigente: el proceso
 obligatorio, el mapa del código y la tabla de errores cuya solución no se debe deshacer.
+
+### Lo que se publicó, y su hash
+
+Dos entregas llegaron a los jugadores. El identificador de cada una se conserva aquí porque
+`PROJECT_STATUS.md`, que era donde vivía, se retiró el 17 de septiembre de 2026.
+
+- **v1.1**, del 30 de julio de 2026, un solo `main.lua`. SHA-256 del archivo publicado:
+  `EBC76DBEC1554D24522E907B49FF2DE5948282029E95C6DA51C31B42A906B883`.
+- **v1.1.1**, del 16 de septiembre de 2026, ya repartido en catorce archivos. Un solo hash
+  dejó de identificar al mod, así que el identificador es el SHA-256 de la lista ordenada de
+  los hashes de todos los `.lua` bajo `StarHunt/`:
+  `E4677DF5C91F14519C50D41AB4E548B89F1B1430ADCC5534121DC68C21024F53`.
+
+El identificador se recalcula así:
+
+```bash
+(cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
+```
+
+Las etiquetas `v1.1-monolithic`, `v1.1-modular` y `v1.1.1` marcan esos árboles en git. Los
+hashes intermedios que `PROJECT_STATUS.md` acumulaba — el árbol antes y después de cada
+corrección — no se conservaron: ninguno se publicó, y el comando de arriba los vuelve a
+calcular sobre el commit que interese.
 
 ### Cambios implementados en v1.1
 

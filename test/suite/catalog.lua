@@ -163,8 +163,9 @@ return function(t, harness)
     end)
 
     s.test("the catalog data is byte-for-byte what v1.1 shipped", function()
-        -- PROJECT_STATUS.md declares v1.1 closed to balance changes, so the star
-        -- list and its hand-tuned modifier values are fixed data. This digest is
+        -- v1.1 shipped this star list, and no maintenance update since has
+        -- changed a title, an order or a hand-tuned modifier value, so it is
+        -- fixed data. This digest is
         -- the one check that notices a star being silently retitled, reordered or
         -- retuned -- including an English and Spanish column swapped over.
         --

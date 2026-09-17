@@ -83,7 +83,7 @@ session fills the context window and invites mistakes.
 
 - **Category:** Bugfix
 - **What:** The refactor is finished and merged, and the next work on this mod is corrective maintenance. There is no bug list yet — the intent is that the reports arrive at the start of a session. For each one, write a roadmap item with What / Why / Outcome, find the affected system in `DEVELOPMENT_CHECKLIST.md`'s `Mapa del código` to learn which module it lives in, and **read `Errores ya encontrados y solución que no se debe deshacer` before touching anything**: several already-fixed bugs look like redundant code and are not.
-- **Why:** `PROJECT_STATUS.md` declares v1.1 final and accepts only corrective maintenance, so a bug report is the only kind of work this project takes. Writing each one down before fixing it is what stops a session from fixing the symptom it happened to notice rather than the bug that was reported.
+- **Why:** Corrective maintenance is most of what this mod takes, so a bug report is the usual starting point for a session. Writing each one down before fixing it is what stops a session from fixing the symptom it happened to notice rather than the bug that was reported.
 - **Outcome:** Each reported bug is a roadmap item under Now, with the module it affects named. This item stays here and is worked through repeatedly rather than being completed once.
 - **Blocked-by:** —
 - **Enables:** —
@@ -92,7 +92,7 @@ session fills the context window and invites mistakes.
 
 - **Category:** Release
 - **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **This one needs you at the keyboard**; no part of it can be done from a session. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
-- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods, and `PROJECT_STATUS.md` is explicit that the validation does not cover them. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
+- **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods; `CLAUDE.md` and `test/README.md` both say so. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
 - **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
 - **Blocked-by:** —
 - **Enables:** —
