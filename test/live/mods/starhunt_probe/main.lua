@@ -89,6 +89,11 @@ local function server_interactions()
     return tostring(value)
 end
 
+-- Printed as the file runs, before any hook exists: it is the one line that
+-- separates "the mod never loaded" from "the mod loaded but the game is not
+-- running frames".
+say("boot", "loaded")
+
 local function horizontal_distance(a, b)
     local dx = a.pos.x - b.pos.x
     local dz = a.pos.z - b.pos.z

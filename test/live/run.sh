@@ -16,7 +16,11 @@
 #                    libcurl4-openssl-dev
 #   make -C ~/src/sm64coopdx -j"$(nproc)"
 #
-# No ROM is involved: Co-op DX ships its own assets, so `make` is the whole of it.
+# It also needs a vanilla US Super Mario 64 ROM, which nobody can supply for you.
+# The ROM is not needed to *build* Co-op DX -- it takes its assets from the ROM at
+# first run instead, and `main_rom_handler` (src/pc/rom_checker.cpp) scans the
+# instance's own folder for any `.z64` whose MD5 it recognises.  Point ROM at your
+# own copy, or leave one at ~/.local/share/sm64coopdx/baserom.us.z64.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,11 +28,19 @@ COOPDX="${COOPDX:-$HOME/src/sm64coopdx/build/us_pc/sm64coopdx}"
 PORT="${PORT:-27015}"
 TIMEOUT="${TIMEOUT:-180}"
 WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/starhunt-live-XXXXXX")}"
+ROM="${ROM:-$HOME/.local/share/sm64coopdx/baserom.us.z64}"
 LOAD_ONLY=0
 [[ "${1:-}" == "--load-only" ]] && LOAD_ONLY=1
 
 if [[ ! -x "$COOPDX" ]]; then
     echo "no sm64coopdx binary at $COOPDX -- build it, or set COOPDX" >&2
+    exit 2
+fi
+
+if [[ ! -f "$ROM" ]]; then
+    echo "no Super Mario 64 ROM at $ROM -- set ROM to your own copy." >&2
+    echo "Co-op DX reads its assets from the ROM at run time, so it cannot start" >&2
+    echo "without one, and no part of this repository can provide it." >&2
     exit 2
 fi
 
@@ -39,6 +51,9 @@ prepare() {
     mkdir -p "$dir/mods"
     cp -r "$ROOT/StarHunt" "$dir/mods/StarHunt"
     cp -r "$ROOT/test/live/mods/starhunt_probe" "$dir/mods/starhunt_probe"
+    # The game scans its own folder for the ROM, so each instance needs one.
+    # A hard link where possible: the file is 8MB and this runs often.
+    ln "$ROM" "$dir/baserom.us.z64" 2>/dev/null || cp "$ROM" "$dir/baserom.us.z64"
 }
 
 # stdbuf keeps the probe's print() line-buffered: without it the last lines sit
@@ -49,8 +64,11 @@ launch() {
     # is disabled: mods_enable() (src/pc/mods/mods.c) is what turns one on, and
     # --enable-mod is the only way to reach it without the menu. It matches the
     # mod's folder name under mods/, not its `-- name:` header.
+    # The build links libdiscord_game_sdk.so and ships it beside the binary
+    # rather than installing it, so the loader has to be told where it is.
+    LD_LIBRARY_PATH="$(dirname "$COOPDX")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
     stdbuf -oL -eL "$COOPDX" --headless --savepath "$WORK/$name" \
-        --configfile "config.txt" --skip-intro --skip-update-check --no-discord \
+        --configfile "config.txt" --skip-intro --skip-update-check --no-discord --hide-loading-screen \
         --enable-mod StarHunt --enable-mod starhunt_probe \
         --playername "$name" "$@" > "$WORK/$name.log" 2>&1 &
     echo $!
@@ -91,7 +109,10 @@ grep -h "^PROBE" "$WORK"/*.log 2>/dev/null || echo "(none -- see $WORK/*.log)"
 echo "-----------------------------------------------------------------------"
 
 status=1
-if grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then
+if grep -qh "could not find valid vanilla us sm64 rom" "$WORK"/*.log 2>/dev/null; then
+    echo "FAILED: the game rejected the ROM at $ROM. It has to be a vanilla US"
+    echo "Super Mario 64 ROM -- the game checks its MD5 and reads its assets."
+elif grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then
     echo "FAILED: the probe reported a failure."
 elif [[ $LOAD_ONLY -eq 1 ]]; then
     if grep -qh "^PROBE load" "$WORK"/*.log; then
