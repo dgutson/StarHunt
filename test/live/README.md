@@ -96,13 +96,13 @@ their stdout.
 - **Stdout is block-buffered and the game never flushes it**, so a killed process loses its
   output. `run.sh` runs each instance under `stdbuf -oL -eL`.
 
-## What the four cases do
+## What each case does
 
 The server starts a Normal round and waits for the mod to hand out goals — `host_start_round`
 only opens the round and leaves every goal at 0; `host_update_round` assigns them a frame or two
 later, so an override written any earlier is simply undone. It then replaces the two players'
-goals with a chosen pair — Tick Tock Clock for the first three cases, Dire Dire Docks for the
-fourth — and each client warps itself. Every goal used is cap-free deliberately: a vanish cap
+goals with a chosen pair — Tick Tock Clock for the collision cases, Dire Dire Docks for `ddd`
+— and each client warps itself. Every goal used is cap-free deliberately: a vanish cap
 makes `interact_player` return before it reaches `resolve_player_collision`.
 
 - **split** — the two players hold the act 6 and act 1 goals and each stands in its own act,

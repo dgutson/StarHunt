@@ -52,7 +52,7 @@ dedicated headless server and **two** headless clients, and the collision it mea
 between the two clients. The server still runs StarHunt as the host: it picks the goals, owns
 `gGlobalSyncTable` and drives the round.
 
-## What the four cases measure
+## What each case measures
 
 The first three use Tick Tock Clock and the fourth Dire Dire Docks. Every goal used is cap-free
 deliberately — a vanish cap makes `interact_player` return before it reaches

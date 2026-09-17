@@ -2,12 +2,11 @@
 name: starhunt-testing
 description: >-
   How to verify any change to StarHunt. Holds the five checks in order with their exact
-  commands and recorded baselines (786 offline tests, 2 luacheck warnings, 10 type
-  problems), the reports that are correct code rather than bugs, the mutation sweep, and
-  test/live/run.sh, which runs the mod inside real headless sm64coopdx processes. These
-  commands and numbers exist nowhere else in the repository — CLAUDE.md and
-  DEVELOPMENT_CHECKLIST.md both point here — so load this skill instead of guessing a
-  command, a flag or a baseline. Use it whenever a change to StarHunt has to be verified,
+  commands, what each one is expected to report, which of those reports are correct code
+  rather than bugs, the mutation sweep, and test/live/run.sh, which runs the mod inside real
+  headless sm64coopdx processes. These commands exist nowhere else in the repository —
+  CLAUDE.md and DEVELOPMENT_CHECKLIST.md both point here — so load this skill instead of
+  guessing a command, a flag or what a clean run looks like. Use it whenever a change to StarHunt has to be verified,
   before opening a pull request, when asked to run the tests, the suite, luacheck,
   lua-language-server, a mutation sweep, or to check that something works in the real game,
   and when adding a case to the offline suite or the live harness. Use it even when testing
@@ -29,14 +28,16 @@ loading, the module `require` graph. A change is verified when each check holds 
 | # | check | command | expected | takes |
 |---|---|---|---|---|
 | 1 | syntax | `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` | no output | instant |
-| 2 | suite | `lua5.4 test/run.lua` | `786 passed, 0 failed` | ~47s |
-| 3 | lint | `luacheck StarHunt/ test/` | `2 warnings / 0 errors in 47 files` | ~2s |
-| 4 | types | `lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log` | `10 problems in 2 files` | ~15s |
-| 5 | live | `test/live/run.sh` | `PASSED`, 8 `PROBE verdict` lines | ~1 min |
+| 2 | suite | `lua5.4 test/run.lua` | `0 failed`, every suite in the list run | ~1 min |
+| 3 | lint | `luacheck StarHunt/ test/` | `0 errors`, and only the two warnings named below | seconds |
+| 4 | types | `lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log` | only the reports named below, all in two files | ~15s |
+| 5 | live | `test/live/run.sh` | `PASSED`, and a verdict from both players for every case | ~1 min |
 
-**Any rise in those numbers is a regression.** Quote what the run printed in the pull
-request. A change that adds or moves code also needs the mutation sweep, below — a green
-suite says nothing about lines no test reaches.
+**Anything a run reports that this file does not account for is a regression**, and so is a
+check that reports less than it should — a suite that stops loading, a live case that prints
+no verdict. Quote what the run printed in the pull request. A change that adds or moves code
+also needs the mutation sweep, below — a green suite says nothing about lines no test
+reaches.
 
 ## 1. Syntax, with lua5.4 and never lua
 
@@ -51,7 +52,7 @@ lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 ## 2. The offline suite
 
 ```bash
-lua5.4 test/run.lua                    # all 786
+lua5.4 test/run.lua                    # every suite
 lua5.4 test/run.lua audit difficulty   # only matching suites, for a quick loop
 ```
 
@@ -102,9 +103,9 @@ lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --l
 **Pass the directory.** Given a file path it reports "no problems found" whatever the code
 contains, which reads exactly like a pass.
 
-The ten expected problems are two in `StarHunt/modules/save.lua` and eight in
-`test/harness.lua`. `.luarc.json` disables `different-requires`, because the engine's
-definitions and the mod both define names the checker would otherwise pair up.
+The expected problems are in `StarHunt/modules/save.lua` and `test/harness.lua`, and in no
+other file. `.luarc.json` disables `different-requires`, because the engine's definitions and
+the mod both define names the checker would otherwise pair up.
 
 A clean run also confirms something the suite cannot: every engine symbol the mod uses still
 exists in the sm64coopdx being targeted, because both checkers read a generated copy of the
@@ -112,11 +113,11 @@ engine's own API.
 
 ### Judging a type report against the engine, not the annotation
 
-Both `save.lua` reports are `save_file_do_save(file, true)` — "cannot assign `boolean` to
+Every `save.lua` report is `save_file_do_save(file, true)` — "cannot assign `boolean` to
 parameter `integer`". The annotation says `integer`, but `smlua_to_integer` converts a
 boolean itself, `true` to 1 (`src/pc/lua/smlua_utils.c:95-98`). The call is correct.
 
-The eight in `test/harness.lua` are the stub's partial `MarioState`, `Area`, `Controller`,
+Those in `test/harness.lua` are the stub's partial `MarioState`, `Area`, `Controller`,
 `MarioBodyState`, `PlayerCameraState` and `Camera` tables, plus `marioObj = nil`. The stub
 supplies the fields the mod reads, not the whole struct, so completing them would be work
 with no test behind it.
@@ -153,10 +154,11 @@ names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `
 `PAIR_DELAY` and `WORK` override the binary, the ROM, the port, the deadline, the two join
 delays and the scratch directory; on this machine the defaults are already right.
 
-A full run ends with `PASSED:` and eight `PROBE verdict` lines — `split passed_through=true`,
-`hidden passed_through=true`, `shared passed_through=false` and `ddd passed_through=false`, once
-per player — plus one `PROBE saveflags` line per player, which must carry the same `ddd_gate`
-value on both.
+A full run ends with `PASSED:` and one `PROBE verdict` line per player per case:
+`split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false` and
+`ddd passed_through=false`. Both players also print a `PROBE saveflags` line, and the two must
+carry the same `ddd_gate` value. `run.sh` counts the verdicts it needs itself, so a case added
+to the probe and not to `run.sh` shows up as a run that never finishes.
 
 ### Before citing a green run as evidence
 
