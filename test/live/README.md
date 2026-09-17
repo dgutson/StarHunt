@@ -62,33 +62,46 @@ the client with `--headless --client`, and greps the probe's output out of their
   the flag is only read once, as StarHunt loads, so the probe has to be first. **Renaming the
   probe breaks the harness silently** — it would still load, just too late to matter.
 
-## What the R-030 case actually does
+## What the two cases do, and what the run currently proves
 
-The host starts a Normal round, then replaces both players' goals with two Tick Tock Clock
-stars whose acts are 6 and 1. Act 6 stops the clock and the others run it, so
-`players_have_private_variant` isolates that pair anywhere in the course, and each client warps
-itself to its own goal. Both goals are cap-free on purpose: a vanish cap makes `interact_player`
-return before it reaches `resolve_player_collision`, which would pass the test for the wrong
-reason.
+The host starts a Normal round and waits for the mod to hand out goals — `host_start_round`
+only opens the round and leaves every goal at 0; `host_update_round` assigns them a frame or
+two later, so an override written any earlier is simply undone. It then replaces both goals
+with a chosen Tick Tock Clock pair and both clients warp themselves.
 
-Once both players are in the same area and the area has been alive for 120 frames — the engine
-refuses every player contact while `gCurrentArea->localAreaTimer < 60` — the **client** puts its
-own Mario exactly on the host's, once, and then both sides leave the engine alone for 60 frames
-and record the horizontal distance each frame.
+- **isolated** — acts 6 and 1. Act 6 stops the clock while the others run it, so
+  `players_have_private_variant` isolates that pair anywhere in the course. R-030 says these
+  two must pass through each other.
+- **shared** — both on act 6. The same predicate is false, so the mod leaves the contact alone
+  and the engine must push these two apart. **This case is the control**, and without it the
+  run proves nothing.
 
-Only the client moves, for two reasons: a player can only be placed by the instance that owns
-it, because a remote Mario's position is overwritten by the next packet, and if both sides moved
-onto each other's position they would swap places and never touch at all. The client says it has
-arrived by writing its own row of the player sync table, which is the one channel a client may
-write, so the host does not spend its whole sample window measuring a gap that had not closed.
+Both goals are cap-free deliberately: a vanish cap makes `interact_player` return before it
+reaches `resolve_player_collision`.
 
-Two Mario hitboxes have a radius of 37 and `resolve_player_collision` pushes to twice that, so a
-push lands at about 74 while no push leaves them near 0; the verdict is drawn at 40, between the
-two. Both instances have to report `passed_through=true`.
+The host stands itself on ground with room before inviting the client over, because
+`resolve_player_collision` works out where a push would land and abandons it when there is no
+floor there — two players near the edge of a small platform are never separated at all, and
+the Tick Tock Clock entrance platform is exactly that small. Each side writes its own row of
+the player sync table to say when it is ready, that being the one row a player may write.
+
+**The collision measurement does not work yet, and the control is what shows it.** The shared
+pair is not pushed apart, the two cases report identical numbers, and the isolated case stayed
+green with the R-030 branch deleted from `modules/goals.lua`. The probe's `gates` line names
+the cause: each instance sees the *other* player frozen at the position they arrived with, so
+the bodies never occupy one place in either instance's own view. Writing `m.pos` from Lua
+appears to move a player locally without the engine sending that position on, which would mean
+the probe has to move them with controller input instead — those fields are writable. This is
+roadmap item R-032, and until it is closed a green `run.sh` says nothing about R-030.
+
+Two smaller findings from the same runs: `gServerSettings.playerInteractions` reads 2 on the
+host and 1 on the client, so it is not synchronised; and the mod's own state is reached through
+`api.global_sync` / `api.player_sync` rather than the globals, because every mod in sm64coopdx
+gets its own pair of sync tables.
 
 ## What it still does not cover
 
-Rendering, the HUD, anything a human has to look at, and any mod interaction — the probe plays
-both parts and neither is a person. It is two processes on one machine over the loopback, so it
-says nothing about latency or packet loss, and a real session with real players remains the
-last check before a release.
+Rendering, the HUD, anything a person has to look at, and any interaction with a third-party
+mod — the probe plays both parts and neither is a person. It is two processes on one machine
+over the loopback, so it says nothing about latency or packet loss, and a real session with
+real players remains the last check before a release.

@@ -54,10 +54,24 @@ prepare() {
     # The game scans its own folder for the ROM, so each instance needs one.
     # A hard link where possible: the file is 8MB and this runs often.
     ln "$ROM" "$dir/baserom.us.z64" 2>/dev/null || cp "$ROM" "$dir/baserom.us.z64"
+    # The config has to exist before the game reads it, or --enable-mod is lost:
+    # configfile_load_internal (src/pc/configfile.c) creates the file and RETURNS
+    # when it is missing, and the loop that turns gCLIOpts.enableMods into queued
+    # enables sits below that return. A first run on a fresh save path therefore
+    # starts with every mod switched off however many --enable-mod flags it was
+    # given. Writing the two lines ourselves settles it in one run; the option is
+    # spelled with a trailing colon, as `functionOptions` declares it.
+    printf 'enable-mod: StarHunt\nenable-mod: starhunt_probe\n' > "$dir/config.txt"
 }
 
 # stdbuf keeps the probe's print() line-buffered: without it the last lines sit
 # in stdio's buffer and are lost when the process is killed.
+#
+# **The caller's arguments must not come last.** `--client <ip> <port>` only reads
+# its port when another argument follows it: the parser checks `(i + 2) < argc`
+# after it has already consumed the IP (src/pc/cliopts.c), so a port written at
+# the very end of the command line is ignored and the client quietly dials 7777.
+# Putting --playername after "$@" is what keeps that from happening.
 launch() {
     local name="$1"; shift
     # A fresh savepath means a fresh config, and a mod the config has never seen
@@ -70,7 +84,7 @@ launch() {
     stdbuf -oL -eL "$COOPDX" --headless --savepath "$WORK/$name" \
         --configfile "config.txt" --skip-intro --skip-update-check --no-discord --hide-loading-screen \
         --enable-mod StarHunt --enable-mod starhunt_probe \
-        --playername "$name" "$@" > "$WORK/$name.log" 2>&1 &
+        "$@" --playername "$name" > "$WORK/$name.log" 2>&1 &
     echo $!
 }
 
@@ -92,7 +106,8 @@ if [[ $LOAD_ONLY -eq 0 ]]; then
 fi
 
 # What counts as finished: every instance has printed a verdict, or one failed.
-want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 2)
+# Two instances, two cases each: four verdicts in all.
+want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 4)
 deadline=$((SECONDS + TIMEOUT))
 while (( SECONDS < deadline )); do
     if grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then break; fi
@@ -121,11 +136,24 @@ elif [[ $LOAD_ONLY -eq 1 ]]; then
     else
         echo "FAILED: StarHunt did not load. See $WORK/host.log"
     fi
-elif (( $(cat "$WORK"/*.log 2>/dev/null | grep -c "passed_through=true") >= want )); then
-    echo "PASSED: two players the mod hid from each other stayed overlapped (R-030)."
-    status=0
 else
-    echo "FAILED: the hidden players were pushed apart, or never got as far as touching."
+    # The isolated pair must pass through each other, and the shared pair must
+    # not: a setup where the two bodies never touch at all would report the
+    # first case as a pass whether or not the fix is present, so the second is
+    # what gives the first its meaning.
+    isolated=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=isolated passed_through=true")
+    shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
+    if (( isolated >= 2 && shared >= 2 )); then
+        echo "PASSED: the pair StarHunt hides passed through each other (R-030),"
+        echo "and the pair it does not hide was still pushed apart."
+        status=0
+    elif (( shared < 2 )); then
+        echo "FAILED: the control case did not collide, so this run proves nothing"
+        echo "about the isolated pair. Two players on the same act must be pushed"
+        echo "apart; see the overlap lines above for what was measured."
+    else
+        echo "FAILED: the players StarHunt hides from each other were pushed apart."
+    fi
 fi
 
 echo "logs: $WORK"
