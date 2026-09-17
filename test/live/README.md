@@ -165,18 +165,22 @@ positions are not being exchanged. Add to it rather than removing from it.
 
 ## Verifying the harness still measures something
 
-A green run is only worth what its control is worth. To check the whole thing end to end, delete
-these four lines from `StarHunt/modules/goals.lua` and run it again:
+A green run is only worth what its ability to go red is worth, so that is one command:
 
-```lua
-    if has_interaction(interaction, INTERACT_PLAYER) then
-        local other = player_index_of_body(object)
-        return other == nil or not players_have_private_variant(m.playerIndex, other)
-    end
+```bash
+test/live/run.sh --without r030
 ```
 
-`hidden` must turn red — measured at `drift=47.3 reach=84.7 passed_through=false` — and `split`
-and `shared` must not move. Then put the lines back and confirm `git status` is clean.
+It takes the `INTERACT_PLAYER` branch out of `on_allow_interact` and requires the `hidden` case
+to fail while the control still holds — exit 0 means the harness can fail, and a green ordinary
+run therefore means something. **The working tree is never edited.** `run.sh` already copies
+`StarHunt/` into each instance's own `mods/` folder, so the removal is applied to those copies
+after the copy and before the game starts; the tree hash is the same before and after. That is
+the rule `tools/sweep_mutations.py` already follows, and for the same reason — a run killed
+halfway through has repeatedly left a half-applied edit behind when it worked in place.
+
+`test/live/without/README.md` says how to add another one, and why `run.sh` dies rather than
+continues when the block it means to remove is no longer there.
 
 ## What it still does not cover
 

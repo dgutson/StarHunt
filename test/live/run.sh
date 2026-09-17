@@ -5,8 +5,11 @@
 # game itself: loading, the folder-relative `require`, warping, networking and
 # player collision, none of which test/run.lua can reach.
 #
-#   test/live/run.sh                 # referee + two players, the R-030 case
+#   test/live/run.sh                 # referee + two players, the R-030 cases
 #   test/live/run.sh --load-only     # one instance: does the mod load at all
+#   test/live/run.sh --without r030  # prove the run can go red: take that fix out
+#                                    # of each instance's COPY of the mod and
+#                                    # require the case it protects to fail
 #
 # **Three processes, not two, and the two that collide are both clients.**
 # A process started with `--headless --server` sets gServerSettings.headlessServer
@@ -39,7 +42,21 @@ TIMEOUT="${TIMEOUT:-180}"
 WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/starhunt-live-XXXXXX")}"
 ROM="${ROM:-$HOME/.local/share/sm64coopdx/baserom.us.z64}"
 LOAD_ONLY=0
-[[ "${1:-}" == "--load-only" ]] && LOAD_ONLY=1
+WITHOUT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --load-only) LOAD_ONLY=1 ;;
+        --without)   WITHOUT="${2:-}"; shift ;;
+        *) echo "usage: run.sh [--load-only] [--without <name>]" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+if [[ -n "$WITHOUT" && ! -f "$ROOT/test/live/without/$WITHOUT.txt" ]]; then
+    echo "no such removal: $WITHOUT. Available:" >&2
+    ls "$ROOT/test/live/without/" | sed 's/\.txt$//' | grep -v README >&2
+    exit 2
+fi
 
 if [[ ! -x "$COOPDX" ]]; then
     echo "no sm64coopdx binary at $COOPDX -- build it, or set COOPDX" >&2
@@ -71,6 +88,31 @@ prepare() {
     # given. Writing the two lines ourselves settles it in one run; the option is
     # spelled with a trailing colon, as `functionOptions` declares it.
     printf 'enable-mod: StarHunt\nenable-mod: starhunt_probe\n' > "$dir/config.txt"
+    remove_from_copy "$dir/mods/StarHunt"
+}
+
+# `--without <name>` takes a fix out of StarHunt so the run can be shown to go
+# red. **It edits this instance's copy, never the working tree** -- the same rule
+# tools/sweep_mutations.py follows, because a run killed halfway through has
+# repeatedly left a half-applied edit behind when it worked in place.
+#
+# The block has to be found exactly once, and the run dies here if it is not.
+# A removal that silently does nothing would turn the falsification check into a
+# tautology, which is the failure this whole mechanism exists to prevent.
+remove_from_copy() {
+    [[ -z "$WITHOUT" ]] && return 0
+    python3 - "$ROOT/test/live/without/$WITHOUT.txt" "$1" <<'PY' || exit 2
+import sys
+spec, moddir = sys.argv[1], sys.argv[2]
+head, _, block = open(spec).read().partition("\n")
+target = moddir + "/" + head.strip()
+source = open(target).read()
+found = source.count(block)
+if found != 1:
+    sys.exit("removal %r: found the block %d times in %s, expected exactly 1. "
+             "The code has moved; update the .txt file." % (spec, found, head.strip()))
+open(target, "w").write(source.replace(block, "", 1))
+PY
 }
 
 # stdbuf keeps the probe's print() line-buffered: without it the last lines sit
@@ -164,10 +206,39 @@ else
     #             modules/goals.lua has to turn this red.
     #   split  -- the ordinary round arrangement, recorded rather than tested: the
     #             engine keeps two players on different acts apart on its own.
+    # Which case each named removal is expected to break. A removal whose case is
+    # not named here would report a pass for doing nothing.
+    declare -A WITHOUT_CASE=( [r030]=hidden )
+    WITHOUT_BREAKS="${WITHOUT_CASE[$WITHOUT]:-}"
+    if [[ -n "$WITHOUT" && -z "$WITHOUT_BREAKS" ]]; then
+        echo "FAILED: '$WITHOUT' has no expected case in WITHOUT_CASE, so there is"
+        echo "nothing to check it against. Add it beside this line."
+        echo "logs: $WORK"
+        exit 1
+    fi
     split=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=split passed_through=true")
     hidden=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=hidden passed_through=true")
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
-    if (( shared < 2 )); then
+    # With `--without <name>` the whole run is inverted: the point is to show
+    # that the harness can fail, so the case that fix protects MUST go red while
+    # the control and the engine-only case stay exactly where they were. A run
+    # that comes back green here means the removal measured nothing.
+    if [[ -n "$WITHOUT" ]]; then
+        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=$WITHOUT_BREAKS passed_through=false")
+        if (( shared < 2 )); then
+            echo "INCONCLUSIVE: the control case did not collide even with '$WITHOUT'"
+            echo "removed, so this run says nothing about whether the removal mattered."
+        elif (( broke >= 2 )); then
+            echo "PASSED (inverted): with '$WITHOUT' removed from each instance's copy of"
+            echo "the mod, the '$WITHOUT_BREAKS' case went red and the control still held."
+            echo "The harness can fail, so a green run without --without means something."
+            status=0
+        else
+            echo "FAILED: '$WITHOUT' was removed and the '$WITHOUT_BREAKS' case stayed green."
+            echo "The case is measuring something other than that code -- a green ordinary"
+            echo "run proves nothing until this is understood."
+        fi
+    elif (( shared < 2 )); then
         echo "FAILED: the control case did not collide, so this run proves nothing"
         echo "about the other two. Two players on the same act with the same goal"
         echo "must be pushed apart to about 74; see the overlap lines above."

@@ -192,18 +192,24 @@ the two clients.
 
 ### Before citing a green run as evidence
 
-Delete these four lines from `StarHunt/modules/goals.lua` and run it again:
+A harness that stays green with the fix removed is worse than no harness, because it gets quoted.
+Proving it can go red is one command:
 
-```lua
-    if has_interaction(interaction, INTERACT_PLAYER) then
-        local other = player_index_of_body(object)
-        return other == nil or not players_have_private_variant(m.playerIndex, other)
-    end
+```bash
+test/live/run.sh --without r030     # must exit 0
 ```
 
-`hidden` must turn red (`drift=47.3 reach=84.7 passed_through=false`) while `split` and `shared`
-do not move. Restore the lines and confirm `git status` is clean. A harness that stays green with
-the fix removed is worse than no harness, because it gets quoted.
+It removes the `INTERACT_PLAYER` branch of `on_allow_interact` and then **requires** the `hidden`
+case to fail while the control still holds; exit 0 means the removal was noticed. **Never edit
+`StarHunt/` to do this by hand.** `run.sh` applies the removal to each instance's own copy of the
+mod, so the working tree is untouched and its hash is unchanged — the rule
+`tools/sweep_mutations.py` already follows, because an interrupted run that edits in place leaves
+a half-applied change behind.
+
+Adding a removal for a new case: write the block to delete into `test/live/without/<name>.txt`,
+first line the path inside `StarHunt/`, and name the case it must break in `WITHOUT_CASE` in
+`run.sh`. `run.sh` aborts if the block is not found exactly once, because a removal that silently
+does nothing turns the check into a tautology.
 
 ### Reading a failure
 
