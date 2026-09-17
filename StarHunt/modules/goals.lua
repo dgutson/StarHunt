@@ -541,13 +541,13 @@ end
 -- Whether two players are looking at the same world.
 --
 -- Two players in the same level on different acts may be standing in geometry
--- that does not agree -- JRB's two ship layouts, WDW's water level, BBH's
--- interior rooms, Whomp's tower, TTC's stopped clock. Where the conflict is
--- local to one region, only that region is private and the rest of the course
--- stays shared; where the whole course differs between acts, the whole course
--- is private. Team and Chaos are PvP races rather than parallel runs, so they
--- share a world whenever the players are genuinely in the same place and skip
--- the per-act geometry rules entirely.
+-- that does not agree -- JRB's two ship layouts, BBH's interior rooms, Whomp's
+-- tower, TTC's stopped clock. Where the conflict is local to one region, only
+-- that region is private and the rest of the course stays shared; where the
+-- whole course differs between acts, the whole course is private. Team and
+-- Chaos are PvP races rather than parallel runs, so they share a world whenever
+-- the players are genuinely in the same place and skip the per-act geometry
+-- rules entirely.
 --
 -- Geometry that turns on a save flag rather than on the act is the same for
 -- everybody and is never private: sm64coopdx hands each joiner the host's whole
@@ -556,6 +556,32 @@ end
 -- (`save_file.c`). Dire Dire Docks is the course this covers -- its submarine,
 -- sub door and nine poles all test SAVE_FLAG_HAVE_KEY_2 |
 -- SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, and only its manta ray is act-gated.
+--
+-- Wet-Dry World is not act-dependent either: every object in both of its areas
+-- is ALL_ACTS. Its water level is the one state two clients can disagree on,
+-- and the act does not decide it -- `geo_wdw_set_initial_water_level`
+-- (`moving_texture.c:305`) derives it from `gPaintingMarioYEntry`, written only
+-- when a player enters through a painting (`paintings.c:632`), so a direct warp
+-- leaves whatever value that client happened to hold.
+--
+-- Every pair that can meet has been handed the same level anyway.
+-- `is_player_active` (`obj_behaviors.c:542-559`) refuses a remote player whose
+-- course, act, level or area differs from the local one, and after a warp that
+-- act is the goal's -- `DynOS_Warp_ToLevel` sets `gCurrActStarNum`
+-- (`data/dynos_warps.cpp:189`) and `level_update.c:558` publishes it as
+-- `currActNum`. The engine's area sync matches on those same four fields
+-- (`get_network_player_from_area`, `network_player.c:129-142`) and the area
+-- packet carries `gEnvironmentLevels[0]`, copied into `gEnvironmentRegions[6]`
+-- for WDW (`packet_area.c:52`, `:155-157`). So two players who can touch each
+-- other hold the same water, and two who could hold different water cannot
+-- touch each other.
+--
+-- The mod must not set that level itself. `set_water_level` and
+-- `set_environment_region` write `gEnvironmentRegions[6]`, which
+-- `bhv_init_changing_water_level_loop` rewrites from `gEnvironmentLevels[0]`
+-- every frame from its eleventh onward (`wdw_water_level.inc.c:35`), and
+-- `gEnvironmentLevels` is not exposed to Lua -- so such a write lasts one frame
+-- and the diamonds in the course change the level for everybody anyway.
 --
 -- Both answers feed visibility, nametags and whether PvP damage lands.
 -- JRB has two incompatible ship layouts. When a player reaches the ship
@@ -594,11 +620,6 @@ local function players_have_private_variant(a, b)
     -- Those object states cannot share one visible/PvP simulation.
     if first.level == LEVEL_TTC and second.level == LEVEL_TTC
         and (first.act == 6) ~= (second.act == 6) then
-        return true
-    end
-    -- Wet-Dry World may load a different global water/geometry state for each
-    -- act, so different acts are private throughout that course.
-    if first.level == LEVEL_WDW and second.level == LEVEL_WDW and first.act ~= second.act then
         return true
     end
     -- BBH changes several rooms and objects between acts. Keep PvP outside

@@ -102,7 +102,7 @@ The server starts a Normal round and waits for the mod to hand out goals — `ho
 only opens the round and leaves every goal at 0; `host_update_round` assigns them a frame or two
 later, so an override written any earlier is simply undone. It then replaces the two players'
 goals with a chosen pair — Tick Tock Clock for the collision cases, Dire Dire Docks for `ddd`
-— and each client warps itself. Every goal used is cap-free deliberately: a vanish cap
+and Wet-Dry World for `wdw` — and each client warps itself. Every goal used is cap-free deliberately: a vanish cap
 makes `interact_player` return before it reaches `resolve_player_collision`.
 
 - **split** — the two players hold the act 6 and act 1 goals and each stands in its own act,
@@ -128,13 +128,22 @@ makes `interact_player` return before it reaches `resolve_player_collision`.
   report the flags they read for `run.sh` to check that they agree. **This is the case that fails
   if Dire Dire Docks is isolated by act again**; it goes red against the code that did, with
   `fail reason=wrong_pair_state`.
+- **wdw** — two Wet-Dry World goals on different acts, played the same way. The predicate must
+  answer **false** here too: every object in both of that course's areas is `ALL_ACTS`, and its
+  water level does not come from the act — `geo_wdw_set_initial_water_level`
+  (`src/game/moving_texture.c:305`) derives it from `gPaintingMarioYEntry`. Every pair that can
+  meet holds the same level: the engine's area sync matches on the same four fields
+  `is_player_active` does (`network_player.c:129-142`) and the area packet carries
+  `gEnvironmentLevels[0]`, copied into `gEnvironmentRegions[6]` for this course
+  (`packet_area.c:52`, `:155-157`). **This is the case that fails if Wet-Dry World is isolated
+  by act again**, with the same `fail reason=wrong_pair_state`.
 
 That "hidden" arrangement is not an artificial one. When a player's goal changes, StarHunt waits
 `NEXT_GOAL_DELAY` — 90 frames, three seconds — before warping them, and a player who has just
 been given a different act of the level they are standing in is in exactly this state for that
 whole window, next to whoever else is there.
 
-The `ddd` pair does not stand where the other three do. Dire Dire Docks is flooded from end to
+The `ddd` pair does not stand where the other four do. Dire Dire Docks is flooded from end to
 end, so there is no patch of floor to look for, and the shaft the players drop into ends in a
 whirlpool — hitbox radius 200, height 500 at `-3174, -4915, 102`
 (`sWhirlpoolHitbox`, `src/game/behaviors/whirlpool.inc.c`) — whose current carries a pair placed
@@ -143,6 +152,11 @@ fixed meeting point: the column the level's own `MARIO_POS` drops Mario down, 30
 water surface, where the water is still and two players sink together instead of falling. That
 point is also inside the region a rule isolating the course by act would have covered, which is
 what lets the case go red when one comes back.
+
+The `wdw` pair needs none of that. No instance in the harness ever enters a painting, so
+`gPaintingMarioYEntry` stays at the `0.0` it is defined with (`src/game/moving_texture.c:119`)
+and the course is drained to 31 units in every run, which leaves the ground by the entrance dry
+floor. The pair meets there, on searched-for floor like the Tick Tock Clock cases.
 
 ## How the pair is placed, and two traps in doing it
 

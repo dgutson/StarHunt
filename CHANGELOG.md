@@ -40,6 +40,11 @@ que copiar `main.lua` solo no alcanza.
 
 ## Cambios de v1.1
 
+- Mantenimiento del 17 de septiembre: en Wet-Dry World los jugadores se ven, se
+  tocan y pelean entre sí aunque tengan actos distintos. Nada en ese curso
+  depende del acto, y el nivel del agua —lo único en lo que dos jugadores
+  podían diferir— se lo pasa el juego a cada uno al entrar al área, así que
+  todos ven el mismo.
 - Mantenimiento del 17 de septiembre: en Dire, Dire Docks los jugadores se ven,
   se tocan y pelean entre sí aunque tengan actos distintos. El submarino, su
   puerta y los nueve postes aparecen o desaparecen según la partida guardada,

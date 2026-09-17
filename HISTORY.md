@@ -13,6 +13,63 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
+
+`players_have_private_variant` hid two players from each other, and refused the contact between
+their bodies, whenever they held different WDW acts — anywhere in the course, at any distance.
+Nothing in Wet-Dry World is act-gated: every object in both areas of `levels/wdw/script.c` is
+`ALL_ACTS`, and no data under `levels/wdw/` reads the act at all.
+
+The water level is the one state two clients in that course can disagree on, and the act does not
+decide it. `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:305`) picks 31, 1024 or
+2816 from `gPaintingMarioYEntry`, which is written only when a player enters through a painting
+(`src/game/paintings.c:632`), so a direct warp leaves whatever value that client happened to hold
+— two players on the *same* act could get different water, and two on different acts usually got
+the same.
+
+**Every pair that can meet has been handed the same water level anyway.** `is_player_active`
+(`src/game/obj_behaviors.c:542-559`) refuses a remote player whose course, act, level or area
+differs from the local one, and after a StarHunt warp that act is the goal's act:
+`DynOS_Warp_ToLevel` sets `gCurrActStarNum` (`data/dynos_warps.cpp:189`) and
+`src/game/level_update.c:558` publishes it as the player's `currActNum`. The engine's area sync
+matches on exactly those four fields (`get_network_player_from_area`,
+`src/pc/network/network_player.c:129-142`): a player changing level or area is matched against
+whoever is already there and sent that area (`packet_change_area.c:23`,
+`packet_change_level.c:23-28`), and the area packet carries `gEnvironmentLevels[0]`
+(`packet_area.c:52`), which the receiver copies into `gEnvironmentRegions[6]` under an explicit
+`gCurrLevelNum == LEVEL_WDW` test (`packet_area.c:155-157`). So two players who can touch each
+other hold the same water, and two whose water could differ cannot touch each other at all.
+
+Forcing the level from Lua was rejected, and cannot be made to work: `set_water_level` and
+`set_environment_region` write `gEnvironmentRegions[6]`, which
+`bhv_init_changing_water_level_loop` seeds `gEnvironmentLevels[0]` from for its first ten frames
+and then rewrites from it on every later frame (`wdw_water_level.inc.c:29-35`). `gEnvironmentLevels`
+is not exposed to Lua, so such a write lasts one frame — and the seven water diamonds in the course
+(`levels/wdw/script.c:29-33,52-53`) change the level for everybody anyway.
+
+The defect shipped in released v1.1: `v1.1-monolithic` carries the rule at `main.lua:3679`.
+
+`test/suite/world.lua`'s WDW case is now "Wet-Dry World is one world for every act", and fails
+against the previous code on its first assertion. It also holds the pair at coordinates inside the
+boxes `is_wf_tower_zone` and `is_jrb_ship_zone` test, and in area 2, so a zone belonging to one
+level cannot be reached from another course.
+
+`test/live/` gained a fifth case, `wdw`: two clients holding WDW acts 1 and 3, the second standing
+in the first's act, meeting on the dry ground by the entrance. The predicate answers false and the
+engine pushes them apart — drift 17.2 and 47.1, reach 84.3 against the 74-unit push. No instance
+there ever enters a painting, so `gPaintingMarioYEntry` stays at the `0.0` it is defined with
+(`moving_texture.c:119`) and the course is drained to 31 units in every run, which is why the case
+needs no meeting point of its own. Run against a copy of the tree with the old rule put back, it
+goes red on both clients with `fail reason=wrong_pair_state`. Adding it turned the probe's
+DDD-specific pieces into a `SHARED_COURSE` table and one `pick_act_pair`, so a third such course
+costs one entry.
+
+786 passed / 0 failed, luacheck 2 warnings / 0 errors in 47 files, lua-language-server 10 problems
+in 2 files, `test/live/run.sh` PASSED with its ten verdicts. Mutation sweep over
+`players_have_private_variant` and the two zone helpers, `world` and `goals` suites: 50 of 152
+caught, against 58 of 160 on main. Both leave 102 survivors — the same untested TTC, BBH, WF and
+JRB branches — and the eight mutations that are gone are the deleted lines' own.
+
 ### 2026-09-17 — R-031: Dire Dire Docks is one world, whatever act a player was sent to
 
 `players_have_private_variant` hid two players from each other, and refused the contact

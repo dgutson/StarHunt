@@ -119,14 +119,42 @@ return function(t, harness)
             "two running-clock acts were isolated from each other")
     end)
 
-    s.test("Wet-Dry World isolates every act from every other", function()
-        -- The water level is global to the course, so there is no shared
-        -- region at all between two different acts.
+    s.test("Wet-Dry World is one world for every act", function()
+        -- Nothing in Wet-Dry World is act-gated: every object in both areas of
+        -- levels/wdw/script.c is ALL_ACTS, and no data under levels/wdw/ reads
+        -- the act at all. The water level is the one state that can differ
+        -- between two clients, and the act is not what decides it --
+        -- geo_wdw_set_initial_water_level (moving_texture.c:305) derives it
+        -- from gPaintingMarioYEntry, written only when a player enters through
+        -- a painting (paintings.c:632), so a direct warp leaves whatever value
+        -- that client happened to hold. Every pair that can meet has been
+        -- handed the same level anyway: is_player_active
+        -- (obj_behaviors.c:542-559) refuses a remote player whose course, act,
+        -- level or area differs, the engine's area sync matches on those same
+        -- four fields (network_player.c:129-142), and the area packet carries
+        -- gEnvironmentLevels[0], copied into gEnvironmentRegions[6] for WDW
+        -- (packet_area.c:52, :155-157).
         local api, ctl = fresh()
         place(api, ctl, LEVEL_WDW, 1, 4)
-        t.ok(api.players_have_private_variant(0, 1), "two WDW acts shared a world")
-        place(api, ctl, LEVEL_WDW, 3, 3)
-        t.ok(not api.players_have_private_variant(0, 1), "one WDW act isolated from itself")
+        t.ok(not api.players_have_private_variant(0, 1),
+            "two WDW acts were isolated from each other")
+        t.ok(api.players_can_share_world(0, 1),
+            "two WDW acts standing together could not see each other")
+
+        -- A zone belongs to the level whose rule names it and must not be
+        -- reached from another course. These two positions sit inside the boxes
+        -- is_wf_tower_zone and is_jrb_ship_zone test.
+        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 2000, z = 0 } end
+        t.ok(api.players_can_share_world(0, 1),
+            "two WDW acts were isolated by Whomp's tower zone")
+        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 0, z = -2000 } end
+        t.ok(api.players_can_share_world(0, 1),
+            "two WDW acts were isolated by the Jolly Roger Bay ship zone")
+
+        -- Downtown is area 2, with its own water level and its own diamonds.
+        for i = 0, 1 do gNetworkPlayers[i].currAreaIndex = 2 end
+        t.ok(api.players_can_share_world(0, 1),
+            "two WDW acts were isolated in downtown")
     end)
 
     s.test("Dire Dire Docks is one world for every act", function()

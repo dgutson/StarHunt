@@ -164,8 +164,8 @@ fi
 
 # What counts as finished: both players have printed a verdict for every case,
 # or one instance failed. The referee prints no verdict; it has no body in the
-# measurement. Two players, four cases each: eight verdicts in all.
-want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 8)
+# measurement. Two players, five cases each: ten verdicts in all.
+want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 10)
 deadline=$((SECONDS + TIMEOUT))
 while (( SECONDS < deadline )); do
     if grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then break; fi
@@ -195,7 +195,7 @@ elif [[ $LOAD_ONLY -eq 1 ]]; then
         echo "FAILED: StarHunt did not load. See $WORK/server.log"
     fi
 else
-    # Four questions, and the order they are answered in matters.
+    # Five questions, and the order they are answered in matters.
     #
     #   shared -- the control. Two players the mod does not hide from each other
     #             must be pushed apart by the engine. If this fails, nothing else
@@ -211,6 +211,9 @@ else
     #             mod must leave them alone and the engine must push them apart.
     #             Both clients also report the save flags the submarine and the
     #             poles read, which have to agree for the case to mean anything.
+    #   wdw    -- the same question for Wet-Dry World, whose objects are ALL_ACTS
+    #             in both areas and whose water level is not derived from the
+    #             act. The mod must leave that pair alone as well.
     # Which case each named removal is expected to break. A removal whose case is
     # not named here would report a pass for doing nothing.
     declare -A WITHOUT_CASE=( [r030]=hidden )
@@ -231,6 +234,7 @@ else
     hidden=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=hidden passed_through=true")
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
     ddd=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=ddd passed_through=false")
+    wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
     # One distinct value across the clients means every player in Dire Dire Docks
     # reads the same submarine and the same poles.
     gates_seen=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE saveflags")
@@ -273,12 +277,18 @@ else
         echo "FAILED: two players holding different Dire Dire Docks acts were kept"
         echo "apart while standing in the same act. Nothing in that course is gated"
         echo "on the act, so the mod is isolating a pair whose worlds agree (R-031)."
+    elif (( wdw < 2 )); then
+        echo "FAILED: two players holding different Wet-Dry World acts were kept"
+        echo "apart while standing in the same act. Every object in that course is"
+        echo "ALL_ACTS and its water level does not come from the act, so the mod is"
+        echo "isolating a pair whose worlds agree (R-029)."
     else
         echo "PASSED: the pair StarHunt hides passed through each other while the"
         echo "engine was willing to collide them (R-030), the pair it does not hide"
         echo "was pushed apart at the engine's 74 units, two players on different"
-        echo "acts never touched at all, and two players on different Dire Dire"
-        echo "Docks acts fought each other over one save file (R-031)."
+        echo "acts never touched at all, two players on different Dire Dire Docks"
+        echo "acts fought each other over one save file (R-031), and so did two on"
+        echo "different Wet-Dry World acts (R-029)."
         status=0
     fi
 fi
