@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-028
+Next ID: R-032
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -27,6 +27,66 @@ session fills the context window and invites mistakes.
 ---
 
 ## Now
+
+### R-030 — A player hidden for an incompatible world is still solid
+
+- **Category:** Bugfix
+- **What:** When `players_have_private_variant` says two players are in incompatible worlds, `update_private_player_visibility` (`modules/round.lua:946`) sets `GRAPH_RENDER_INVISIBLE` on the remote Mario and `on_allow_pvp_attack` (`modules/team.lua:251`) refuses the damage — but nothing stops the two bodies touching. `interact_player` still reaches `resolve_player_collision` whenever `gServerSettings.playerInteractions` is not `NONE`, and `modules/round.lua:511` sets it to `PLAYER_INTERACTIONS_PVP` for the whole round. So the hidden player is an invisible wall you can bump into and stand on. Refuse the contact in `on_allow_interact` (`modules/goals.lua:755`), which already hooks `HOOK_ALLOW_INTERACT`: the engine calls that hook for `INTERACT_PLAYER` and explicitly lets remote players through (`src/game/interaction.c:2386-2395`), so the one hook the mod already owns is enough.
+- **Why:** It is a defect in released v1.1, reachable today in Normal mode wherever the mod hides a player — an invisible body that blocks movement is worse than either showing the player or removing them. It is also the exact code R-028 needs for its own suppression, and R-028 is the first thing in this mod to depend on `HOOK_ALLOW_INTERACT` reaching `INTERACT_PLAYER`. That path is verified in the engine's source but has never been exercised in a real session, so proving it in a small change first is worth more than proving it inside a large one.
+- **Outcome:** Two players the mod has hidden from each other pass through each other. `test/suite/world.lua` or `test/suite/interact.lua` covers the refusal, and the three documented checks stay at their baselines. A real session confirms the pass-through, which no test can.
+- **Blocked-by:** —
+- **Enables:** R-028
+
+### R-031 — Dire Dire Docks is isolated for a divergence that cannot happen
+
+- **Category:** Bugfix
+- **What:** `players_have_private_variant` treats two players on different DDD acts as incompatible whenever either is near the origin, through `is_ddd_sub_zone`. Nothing in DDD is act-gated except the manta ray. The submarine, the sub door and the nine poles are gated on save flags — `bhv_bowsers_sub_loop` and `bhv_ddd_pole_init` both test `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` — and save state is common to the whole session, because `packet_join.c:103-129` sends the host's entire EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer rather than its own file, and `save_file.c:712-732` broadcasts every later flag change. So every player in DDD sees the same submarine and the same poles. Delete `is_ddd_sub_zone` and the DDD branch. (The zone was also mismeasured: the pole cluster reaches x = 5760, outside the 4600 radius it tests.)
+- **Why:** The rule costs players visibility and PvP in a course for nothing. More than that, it is the cheapest live test of the claim R-028 is built on — that the act is the only axis on which two players' worlds differ. If removing this rule causes no trouble in a real session, the premise holds and the volume table is sound; if it does cause trouble, the premise is wrong and R-028 needs rethinking before it is written rather than after.
+- **Outcome:** Two players on different DDD acts see each other and can fight anywhere in the course. `test/suite/world.lua` asserts it. A real session in DDD with two players on different acts shows the same submarine state to both.
+- **Blocked-by:** —
+- **Enables:** R-028
+
+### R-029 — Wet-Dry World is isolated for a reason that does not exist, and its real divergence is unhandled
+
+- **Category:** Bugfix
+- **What:** `players_have_private_variant` in `modules/goals.lua` treats every pair of different WDW acts as a private variant, across the whole course. Nothing in `levels/wdw/script.c` is act-gated, so that rule hides players whose worlds agree. The water level, which is what the rule was aiming at, comes from `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:304-329`) reading the global `gPaintingMarioYEntry` when the area loads — a value only written when a player enters through a painting (`paintings.c:632`). StarHunt warps directly, so each client keeps whatever stale value it happened to have, and **two players on the same act can get different water** while two on different acts usually get the same. Remove the act rule; decide separately whether to normalize the water by setting a known value before the warp, the way `keep_moat_lowered` and `set_ttc_speed_setting` already normalize other global world state.
+- **Why:** The rule costs players visibility and PvP in a whole course for nothing, and the divergence it was meant to catch is neither detected nor prevented. Diamond-driven changes are broadcast afterwards (`packet_change_water_level.c`), so only the initial level is at risk — which makes normalizing it cheap.
+- **Outcome:** WDW acts are no longer isolated from each other, and either the initial water level is the same for every player in the course or the roadmap records the decision not to force it. `test/suite/world.lua`'s WDW case is rewritten to assert the new behaviour.
+- **Blocked-by:** —
+- **Enables:** —
+
+### R-028 — Fair PvP between players sent to different acts of one course
+
+- **Category:** Feature
+- **What:** Replace the act-mismatch isolation in `modules/goals.lua` (`players_have_private_variant`) with a per-level table of axis-aligned volumes that exist in one act group and not the other, and use that table to decide, for each pair of players, whether they can see, damage and collide with each other. Applies to **NORMAL and TEAM** (TEAM skips the whole mechanism today, at `goals.lua:594`). The volumes are never drawn, never spawned as objects and never solid — they are numbers in a table, and a player walks through one exactly as they do now. Per frame, per pair: derive each player's act group from `sh5_goal`; if the two groups match, do nothing; otherwise take the volumes that exist in exactly one of the two groups — the divergent set — and then, in this order: (1) if the other player is inside or standing on a divergent volume the local player does not have, draw them as a silhouette and suppress damage and contact in both directions; (2) otherwise, if the straight segment between the two Marios crosses any divergent volume, hide them, blank the nametag and suppress damage and contact; (3) otherwise leave them fully visible and fighting. The test uses the segment between the two players rather than either camera, so both clients reach the same answer with no new synchronized state: each player's act is already in `gPlayerSyncTable[i].sh5_goal`.
+- **The table** (origins from the game's own level scripts; the half-extents have to be measured in game, since the script gives only the spawn point):
+
+  | level | what | exists in | origin |
+  |---|---|---|---|
+  | JRB | sunken hull (`bhvSunkenShipPart2`, `bhvInSunkenShip`) | act 1 | 5385, -5520, 2428 |
+  | JRB | raised hull (`bhvShipPart3`, `bhvInSunkenShip3`) | acts 2-6 | 4880, 820, 2375 |
+  | JRB | sliding box (`bhvJrbSlidingBox`) | acts 2-6 | 4668, 1434, 2916 |
+  | WF | tower and its platforms (`bhvTower`, `bhvTowerPlatformGroup`) | acts 2-6 | 0, 3584, 0 |
+  | WF | tower door (`bhvTowerDoor`) | acts 2-6 | -511, 3584, 0 |
+  | WF | kickable board (`bhvKickableBoard`) | acts 2-6 | 13, 3584, -1407 |
+  | BBH | hidden staircase steps, three of them (`bhvHiddenStaircaseStep`) | acts 2-6 | interior |
+
+  Deliberately excluded, because they change no surface anyone can stand on: BOB's cannon, CCM's snowman bottom (act 5), JRB's jet stream and whirlpool.
+- **Engine facts already verified against `coop-deluxe/sm64coopdx`,** so the next session does not have to re-derive them:
+  - `src/engine/level_script.c:534` gates every `OBJECT_WITH_ACTS` on `1 << (gCurrActNum - 1)`, evaluated per client when the area loads. That is the whole reason two players see different geometry.
+  - **Save-file progression is not a divergence.** `packet_join.c:103-129` sends the host's entire 512-byte EEPROM to each joiner, `ultra_reimplementation.c:128` makes the client read from that buffer instead of its own file, and `save_file.c:712-732` broadcasts every later flag change. This is the premise the whole volume table rests on: the act is the only axis on which two players' worlds can differ. R-031 removes the DDD rule, which is the cheapest live test of exactly that claim.
+  - `is_jrb_ship_zone` is wrong today. Its box (x within +/-2600, y -2600..1000, z -4200..-350) is in **area 2** coordinates — the ship interior — while both hulls are in area 1 at x around 4880-5385, z around 2375-2428. It never fires where it matters. The volume table replaces it, so fixing it separately would be wasted work.
+  - **Do not read `gNetworkPlayers[i].currActNum`** to learn a player's act. It is fed from `gCurrActStarNum` (`level_update.c:558`), which only the star-select menu sets and which is reset to 0 when the level transition ends (`level_update.c:1480`). It is 0 during ordinary play. `sh5_goal` is the right source.
+  - **Contact suppression arrives with R-030**, which fixes the same gap for the isolation that exists today. This item reuses that code rather than writing its own.
+  - **A translucent render is reachable.** `marioBodyState.modelState = MODEL_STATE_NOISE_ALPHA` (0x180: bit 0x100 plus alpha 0x80) makes `mario_misc.c:415` draw that Mario at that alpha. The engine clears `modelState` to 0 every frame at `mario.c:1819`, so it has to be re-applied after the per-player update — the same ordering problem `SH.apply_post_moveset_limits` already solves.
+- **Open decisions, to settle before writing code:**
+  - **What the silhouette is.** Three reachable forms: a translucent Mario through `modelState`; a flat single colour through `network_player_set_override_palette_color`, the mechanism `team.lua` already uses for team colours; or a filled shape in HUD space through `djui_hud_world_pos_to_screen_pos`, which has no depth and would draw through walls, undoing the thing this item builds. The first two together are the closest to a silhouette that keeps correct depth.
+  - **What happens where a divergence is not a volume.** TTC acts 1-5 versus act 6 change the speed of every moving platform in the course; StarHunt sets it itself at `round.lua:822` per player and the engine also syncs `gTTCSpeedSetting` through `packet_level.c:33`, so no box can express it and the existing course-wide rule either stays as a second tier or is dropped deliberately. BBH's only divergent surface is the staircase, so replacing "isolate anywhere indoors" with three boxes means BBH players on different acts will now fight indoors.
+  - **Precedence when both conditions hold.** A player on the raised ship deck both occupies a divergent volume and is occluded by it. The rule above makes occupancy win, so they read as a silhouette rather than vanishing. Confirm or overrule.
+- **Why:** StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so two players can stand in one course and area with different acts and therefore different geometry — the Jolly Roger Bay hull sits at y = -5520 in act 1 and y = +820 in acts 2-6. Today NORMAL answers this by hiding the other player outright, which deletes the encounter, and TEAM answers it by ignoring the problem, which lets two players fight through a ship only one of them has. Neither is a fair fight, and a fair fight between different acts is what the mode is for. The zone tests that stand in for this today are also aimed at the wrong places: the JRB box is in the wrong area entirely and the DDD rule guards against a divergence that cannot occur.
+- **Outcome:** Two players on different acts of one course see each other, damage each other and collide with each other everywhere the geometry agrees, and are cleanly separated only where it does not — occluded by a divergent volume, or standing in one. `is_jrb_ship_zone` and `is_ddd_sub_zone` are gone, replaced by the volume table. `test/suite/world.lua` covers each volume and each of the three per-pair outcomes, and the three documented checks stay at their baselines. Not covered, as ever: a real multiplayer session, which is the only thing that can confirm the measured half-extents and what the silhouette actually looks like.
+- **Blocked-by:** R-030, R-031
+- **Enables:** —
 
 ### R-014 — Take the bug reports and turn them into roadmap items
 
