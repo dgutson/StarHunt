@@ -7,7 +7,7 @@
 > entries are no longer present in this file.
 
 Format: 1
-Next ID: R-032
+Next ID: R-033
 
 Two documents carry the detail this file deliberately omits. `DEVELOPMENT_CHECKLIST.md` holds
 the process that is mandatory before editing the mod, the code map that says which module a
@@ -27,6 +27,15 @@ session fills the context window and invites mistakes.
 ---
 
 ## Now
+
+### R-032 — Run the R-030 case inside the real game, and grow the live harness
+
+- **Category:** Testing
+- **What:** `test/live/` exists and is verified as far as a machine with no ROM allows: with a deliberately invalid `.z64` every instance reaches the engine's ROM gate and exits with its own message, so the binary, the library path, the save paths, the mod copies, `--enable-mod` and headless mode are all correct. What has never run is the case itself. With a vanilla US SM64 ROM in place, run `test/live/run.sh --load-only` and then `test/live/run.sh`, fix whatever the first real run finds, and record what it actually printed.
+- **Why:** The harness is worth nothing until it has run once. Everything after the ROM gate — hosting from the command line, a client joining over the loopback, the goal override reaching both sides, the warp, the sync-table handshake and the collision measurement — is designed against the engine's source and has never met the engine. The R-030 fix is the first thing it would confirm, and it is the one claim about that fix that no Lua test can make.
+- **Outcome:** `test/live/run.sh` passes against the game, with both instances reporting `passed_through=true`, and the probe lines are recorded in `HISTORY.md`. Once it has run once, the cases worth adding next are named: the same pair without the fix (it must fail), and a pair that shares a world (they must still collide).
+- **Blocked-by:** —
+- **Enables:** —
 
 ### R-031 — Dire Dire Docks is isolated for a divergence that cannot happen
 
@@ -91,7 +100,7 @@ session fills the context window and invites mistakes.
 ### R-010 — Verify the split mod in a real sm64coopdx multiplayer session
 
 - **Category:** Release
-- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **This one needs you at the keyboard**; no part of it can be done from a session. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
+- **What:** Install the `StarHunt/` folder into `sm64coopdx/mods/` and play a real multiplayer session covering all four modes — Normal, Team, Boss and Chaos — with at least two players. **The parts that need you at the keyboard are what is left**: `test/live/run.sh --load-only` now answers the load question without a person, so what remains is the playing. Copy the whole folder, not `main.lua` alone. The first thing to watch for is simply that the mod loads at all: if a `require` fails, sm64coopdx reports it at load time and nothing else in this list matters.
 - **Why:** Nothing automated reaches rendering, networking, warping, collision or interaction with other mods; `CLAUDE.md` and `test/README.md` both say so. The refactor changed how the mod is loaded — one file became fourteen, resolved through sm64coopdx's own folder-relative `require` — and that is precisely the mechanism no test can exercise, since `test/harness.lua` reimplements `require` rather than using the game's.
 - **Outcome:** All four modes have been played end to end from the split mod, and the load order, warping and HUD behave as they did from the single released file.
 - **Blocked-by:** —

@@ -86,6 +86,13 @@ lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 lua5.4 test/run.lua
 lua5.4 test/run.lua audit difficulty     # only matching suites
 
+# Inside the real game: two headless sm64coopdx processes, the mod, and a probe
+# mod that drives them. Reaches loading, warping, networking and collision, which
+# the stub suite cannot. Needs a built game and your own SM64 ROM; see
+# test/live/README.md.
+test/live/run.sh --load-only
+test/live/run.sh
+
 # Lint: scope, shadowing, unused values. Uses .luacheckrc.
 luacheck StarHunt/ test/
 
@@ -168,9 +175,10 @@ longer shadow anything. Inside `goals.lua` itself they still do, which still mea
 it uses, and drives it through `STARHUNT_TEST_API`. See `test/README.md` for the layout and for
 what each suite guards. The suite was mutation-checked, so a green run means something.
 
-It does not replace a real multiplayer session in sm64coopdx, and the project documents are
-explicit about that. Rendering, networking, warping, collision and other-mod interaction are
-all outside its reach.
+It does not replace a real multiplayer session in sm64coopdx. Rendering, networking, warping,
+collision and other-mod interaction are all outside its reach. `test/live/` reaches some of
+them by running the mod inside two headless sm64coopdx processes; what stays out of reach
+there is anything a person has to look at, and anything about real latency.
 
 The original harness named in DEVELOPMENT_CHECKLIST.md, `work/starhunt_v11_load_test.lua`, was
 never in this repository and is not on this machine; `test/` is a fresh implementation.
