@@ -13,6 +13,85 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — R-032: the live harness measures a collision, and says what it is measuring
+
+`test/live/` booted, loaded StarHunt, started a real round and warped both players, but its
+collision measurement was empty: the control pair that had to be pushed apart was not, and the
+case under test stayed green with the R-030 branch deleted. The leading theory was that writing
+`m.pos` from Lua moves a player locally without the engine transmitting the position. That was
+wrong. `network_update_player` sends at least every third tick whatever moved the player, so a
+teleport is transmitted like anything else.
+
+The real cause was one flag. `gServerSettings.headlessServer` is set when a process is started
+with both `--headless` and `--server` (`src/pc/network/network.c:140`), and it makes that
+process's own player inert twice over: `network_update_player`
+(`src/pc/network/packets/packet_player.c:430`) returns before sending its position, so every
+client sees the host frozen where it first appeared, and `is_player_active`
+(`src/game/obj_behaviors.c:547`) returns false for the server's player on **every** instance,
+which is the first question `interact_player` asks about both bodies. A headless host can
+referee a round but can never touch anybody, so the harness now runs a dedicated headless
+server and **two** headless clients, and measures the collision between the two clients.
+
+Two further traps were in the measurement itself. `resolve_player_collision` pushes along the
+vector between the two torsos, so a pair placed at exactly the same point has a zero direction
+and nobody moves however willing the engine is — the players are now placed 20 units apart. And
+two players on different acts never exchange positions at all, because `network_receive_player`
+drops a packet whose course, act, level or area does not match, so the meeting point travels
+through the sync table rather than through the other player's body.
+
+**The case that had been called `isolated` was measuring the engine, not the mod.** StarHunt
+warps with `warp_to_level(goal.level, 1, goal.act)`, that act becomes the player's `currActNum`,
+and `is_player_active` refuses any remote player whose act differs — so two players on TTC acts
+6 and 1 are kept apart by Co-op DX before StarHunt is consulted. The run is now three cases:
+`split` records that (it cannot fail, and says so), `shared` is the control, and a new `hidden`
+case is the one that tests R-030 — the second player warps itself back into the first one's act
+without its goal changing, so both `currActNum` agree and the engine is willing while
+`players_have_private_variant`, which reads the assigned goals, still calls the pair private.
+
+That arrangement is not artificial: `NEXT_GOAL_DELAY` is 90 frames, so a player who has just
+been given a different act of the level they are standing in stays in exactly that state for
+three seconds, next to whoever else is there.
+
+Measured, in a real three-process run: `shared` pushed apart to 74.3 with a drift of 54.0,
+`hidden` held at the 20 units it was placed at with a drift of 0.0, `split` never touching at
+all with `active_them=0`. With the four-line `INTERACT_PLAYER` branch deleted from
+`modules/goals.lua`, `hidden` turns red at `drift=47.3 reach=84.7` while `split` and `shared`
+do not move. **So the live harness now confirms R-030, and fails when R-030 is removed.**
+
+785 passed / 0 failed, luacheck 2 warnings / 0 errors in 47 files, lua-language-server 10
+problems in 2 files. The mod itself is unchanged; the whole item is in `test/live/`. Not
+covered, as ever: rendering, anything a person has to look at, real latency, and third-party
+mods.
+
+### 2026-09-17 — `PROJECT_STATUS.md` retired
+
+The document mixed four unrelated things: a claim that the project was closed, a register of
+tree hashes, a second copy of the release notes, and a list of which version folders existed
+on one machine. Most of it had gone stale — it still called the modular mod unplayed, still
+counted 780 tests, and still declared a closure that the act-divergence work has since
+overtaken.
+
+What was worth keeping moved rather than disappearing. The two hashes that identify a
+published build — the single-file v1.1 and the file-set v1.1.1 — are now in *Lo que se
+publicó, y su hash* below; the five intermediate tree hashes were dropped, because none of
+them was published and the command recomputes any of them from the commit that carries it.
+Everything else was already somewhere better: the installation rule is in `CLAUDE.md` and
+`CHANGELOG.md`, the per-update notes are in `CHANGELOG.md`, and the limits of the automated
+validation are in `CLAUDE.md`, `test/README.md` and roadmap item R-010.
+
+`CLAUDE.md`, `ROADMAP.md` (R-014 and R-010) and `test/suite/catalog.lua` cited the file and
+now state the fact instead.
+
+The closure statement was not moved anywhere. StarHunt is under active development and takes
+both bug fixes and new features; what it is working on is `ROADMAP.md`, and what it has done
+is this file. Every statement of a development status is therefore gone from the documents
+that carried one: the closure paragraph in `CLAUDE.md`, the *Estado del proyecto: FINALIZADO*
+header and the no-new-versions paragraph in `DEVELOPMENT_CHECKLIST.md`, the *Versión final del
+proyecto* line in `CHANGELOG.md`, the *Final project audit* line and the *Known limits at
+project closure* heading in `BALANCE_AUDIT.md`, and the two sentences in R-014 that described
+the project's phase rather than the practice being asked for. Dated entries in this file that
+record what was declared at the time are left as written.
+
 ### 2026-09-17 — R-030: a player hidden for an incompatible world is no longer solid
 
 StarHunt sends each player to their own star with `warp_to_level(goal.level, 1, goal.act)`, so
@@ -1141,6 +1220,29 @@ forfeits or as none, or left Bowser's intro textbox blocking the Boss round.
 
 Archivado desde `DEVELOPMENT_CHECKLIST.md`, que ahora conserva solo lo vigente: el proceso
 obligatorio, el mapa del código y la tabla de errores cuya solución no se debe deshacer.
+
+### Lo que se publicó, y su hash
+
+Dos entregas llegaron a los jugadores. El identificador de cada una se conserva aquí porque
+`PROJECT_STATUS.md`, que era donde vivía, se retiró el 17 de septiembre de 2026.
+
+- **v1.1**, del 30 de julio de 2026, un solo `main.lua`. SHA-256 del archivo publicado:
+  `EBC76DBEC1554D24522E907B49FF2DE5948282029E95C6DA51C31B42A906B883`.
+- **v1.1.1**, del 16 de septiembre de 2026, ya repartido en catorce archivos. Un solo hash
+  dejó de identificar al mod, así que el identificador es el SHA-256 de la lista ordenada de
+  los hashes de todos los `.lua` bajo `StarHunt/`:
+  `E4677DF5C91F14519C50D41AB4E548B89F1B1430ADCC5534121DC68C21024F53`.
+
+El identificador se recalcula así:
+
+```bash
+(cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
+```
+
+Las etiquetas `v1.1-monolithic`, `v1.1-modular` y `v1.1.1` marcan esos árboles en git. Los
+hashes intermedios que `PROJECT_STATUS.md` acumulaba — el árbol antes y después de cada
+corrección — no se conservaron: ninguno se publicó, y el comando de arriba los vuelve a
+calcular sobre el commit que interese.
 
 ### Cambios implementados en v1.1
 

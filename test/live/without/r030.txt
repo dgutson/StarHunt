@@ -1,0 +1,5 @@
+modules/goals.lua
+    if has_interaction(interaction, INTERACT_PLAYER) then
+        local other = player_index_of_body(object)
+        return other == nil or not players_have_private_variant(m.playerIndex, other)
+    end

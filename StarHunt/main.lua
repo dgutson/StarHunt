@@ -155,9 +155,22 @@ end
 -- references so adding or reordering hooks cannot silently test the wrong
 -- function.
 if rawget(_G, "STARHUNT_TEST_MODE") then
-    STARHUNT_TEST_API = {
+    -- Published on the real global table on purpose. Outside the game this is
+    -- the same as a bare assignment, but sm64coopdx gives every mod its own
+    -- _ENV whose metatable reads through to _G (smlua_load_script in
+    -- src/pc/lua/smlua.c), so a bare assignment would land in StarHunt's own
+    -- environment and stay invisible to the test/live probe that sets the flag.
+    _G.STARHUNT_TEST_API = {
         goals = GOALS,
         runtime = local_runtime,
+        -- The two sync tables themselves. Outside the game a test can reach
+        -- these as globals, but sm64coopdx gives every mod its own pair
+        -- (smlua_sync_table_init_globals, called per mod in smlua.c), so the
+        -- test/live probe running beside this mod sees its own empty tables and
+        -- not these. Handing the references over is the only way a second mod
+        -- can read or set this one's round state.
+        global_sync = gGlobalSyncTable,
+        player_sync = gPlayerSyncTable,
         translated = translated,
         language_codes = SH.language_codes,
         language_names = SH.language_names,

@@ -9,13 +9,12 @@
 A mutation is "caught" when the suite fails with it applied, and "survived" when the suite
 still passes — a survivor means either that the line is untested, or that the mutation is
 equivalent and cannot change behaviour. Both need a human to decide which; the equivalent
-ones found so far are listed in REFACTOR_PLAN.md so a later sweep does not re-investigate
-them.
+ones are listed in REFACTOR_PLAN.md so a later sweep does not re-investigate them.
 
 Each worker gets its own copy of the tree under a temporary directory and runs there, so
-the real working tree is never mutated — a killed sweep has repeatedly left a half-applied
-mutation behind when it ran in place. Run this in the foreground with WORKERS=2: two
-background sweeps were once killed for low memory on this machine.
+the real working tree is never mutated — a sweep killed partway through would otherwise
+leave a half-applied mutation behind. Run this in the foreground with WORKERS=2: a
+background sweep on this machine gets killed for low memory.
 
 Reads $MUTATIONS (default /tmp/starhunt_mutations.json).
 """
