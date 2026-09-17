@@ -10,6 +10,8 @@ This directory runs the mod inside real sm64coopdx processes and reads back what
 ```bash
 test/live/run.sh --load-only    # one instance: does the mod load, do the modules resolve
 test/live/run.sh                # a referee and two players: the R-030 collision cases
+test/live/run.sh --without r030 # the same, with that fix taken out of each instance's
+                                # COPY of the mod: the case it protects must go red
 ```
 
 `run.sh` exits 0 on a pass, 1 on a failure and 2 when it cannot find the game or the ROM. It
