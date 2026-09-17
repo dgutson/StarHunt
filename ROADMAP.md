@@ -28,15 +28,6 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-032 — Make the live harness's collision case mean something
-
-- **Category:** Testing
-- **What:** `test/live/` now runs: two headless sm64coopdx processes boot, load StarHunt, start a real Normal round, take the goals the mod assigned and replace them with a chosen Tick Tock Clock pair, and both players warp. What does **not** work is the measurement. The probe runs two cases — an isolated pair (TTC acts 6 and 1, which `players_have_private_variant` isolates) and a shared pair (both on act 6, which it does not) — and the shared pair is the control: the engine must push those two apart. It does not. Both cases report the same numbers, and the isolated case reported a pass even with the R-030 branch deleted from `modules/goals.lua`, which is what proves the measurement is empty rather than the fix being wrong. The diagnostic the probe prints names the cause: each instance sees the **other** player frozen at the position they arrived with — the host moved itself and the client's `their_xz` never changed — so the two bodies never occupy one place in either instance's own view, and `resolve_player_collision` is never reached with them overlapping.
-- **Why:** A green run that stays green when the fix is removed is worse than no run at all, because it will be cited as evidence. The control case exists precisely so that this is visible, and it is doing its job; what is left is to make the players actually meet. The likely cause is that writing `m.pos` from Lua moves a player locally without the engine sending the position, so the remote copy never follows — in which case the probe has to move them the way a player does, with controller input, which `smlua_cobject_autogen.c` marks writable. Two other findings from the same runs are worth keeping: `gServerSettings.playerInteractions` reads 2 on the host and 1 on the client, so it is not synchronised; and `resolve_player_collision` abandons a push whose landing point has no floor, which is why the Tick Tock Clock entrance platform is the wrong place to stand and why the probe now searches for open ground first.
-- **Outcome:** `test/live/run.sh` reports the shared pair pushed apart at about 74 units and the isolated pair still overlapping, and deleting the R-030 branch turns the run red. Only then does the live harness confirm anything about R-030.
-- **Blocked-by:** —
-- **Enables:** —
-
 ### R-031 — Dire Dire Docks is isolated for a divergence that cannot happen
 
 - **Category:** Bugfix

@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 #
-# Run StarHunt inside two real headless sm64coopdx processes and read back what
-# the probe mod saw.  This is the only check in the repository that exercises
-# the game itself: loading, the folder-relative `require`, warping, networking
-# and player collision, none of which test/run.lua can reach.
+# Run StarHunt inside real headless sm64coopdx processes and read back what the
+# probe mod saw.  This is the only check in the repository that exercises the
+# game itself: loading, the folder-relative `require`, warping, networking and
+# player collision, none of which test/run.lua can reach.
 #
-#   test/live/run.sh                 # host + client, the R-030 pass-through case
+#   test/live/run.sh                 # referee + two players, the R-030 case
 #   test/live/run.sh --load-only     # one instance: does the mod load at all
+#
+# **Three processes, not two, and the two that collide are both clients.**
+# A process started with `--headless --server` sets gServerSettings.headlessServer
+# (src/pc/network/network.c:140), and that flag makes its own player inert: it
+# never sends its position (network_update_player, packets/packet_player.c:430)
+# and is_player_active returns FALSE for it on every instance
+# (src/game/obj_behaviors.c:547), which is the first question interact_player asks
+# about both bodies.  A headless host can referee a round but can never touch
+# anybody, so the harness runs a dedicated server and two ordinary players.
 #
 # It needs a built sm64coopdx.  Point COOPDX at the binary, or let it find
 # ~/src/sm64coopdx/build/us_pc/sm64coopdx:
@@ -95,19 +104,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare host
-PIDS="$(launch host --server "$PORT")"
+prepare server
+PIDS="$(launch server --server "$PORT")"
 if [[ $LOAD_ONLY -eq 0 ]]; then
-    prepare client
-    # The host has to finish booting and be listening before the client dials
+    # The server has to finish booting and be listening before a client dials
     # it; there is no retry, a client that arrives early just sits there.
     sleep "${JOIN_DELAY:-15}"
-    PIDS="$PIDS $(launch client --client 127.0.0.1 "$PORT")"
+    # p1 before p2, and with a gap: the probe decides which player stands still
+    # and which walks into it from the global index the server hands out, and
+    # that is assigned in join order. The gap keeps the order deterministic.
+    prepare p1
+    PIDS="$PIDS $(launch p1 --client 127.0.0.1 "$PORT")"
+    sleep "${PAIR_DELAY:-8}"
+    prepare p2
+    PIDS="$PIDS $(launch p2 --client 127.0.0.1 "$PORT")"
 fi
 
-# What counts as finished: every instance has printed a verdict, or one failed.
-# Two instances, two cases each: four verdicts in all.
-want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 4)
+# What counts as finished: both players have printed a verdict for every case,
+# or one instance failed. The referee prints no verdict; it has no body in the
+# measurement. Two players, three cases each: six verdicts in all.
+want=$([[ $LOAD_ONLY -eq 1 ]] && echo 1 || echo 6)
 deadline=$((SECONDS + TIMEOUT))
 while (( SECONDS < deadline )); do
     if grep -qh "^PROBE fail" "$WORK"/*.log 2>/dev/null; then break; fi
@@ -134,25 +150,39 @@ elif [[ $LOAD_ONLY -eq 1 ]]; then
         echo "PASSED: StarHunt loads in a real sm64coopdx and its modules resolve."
         status=0
     else
-        echo "FAILED: StarHunt did not load. See $WORK/host.log"
+        echo "FAILED: StarHunt did not load. See $WORK/server.log"
     fi
 else
-    # The isolated pair must pass through each other, and the shared pair must
-    # not: a setup where the two bodies never touch at all would report the
-    # first case as a pass whether or not the fix is present, so the second is
-    # what gives the first its meaning.
-    isolated=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=isolated passed_through=true")
+    # Three questions, and the order they are answered in matters.
+    #
+    #   shared -- the control. Two players the mod does not hide from each other
+    #             must be pushed apart by the engine. If this fails, nothing else
+    #             in the run means anything: a setup where the bodies never touch
+    #             reports every other case as a pass, fix or no fix.
+    #   hidden -- R-030 itself. Two players the mod hides, standing in one act so
+    #             the engine is willing, must pass through. Deleting the branch in
+    #             modules/goals.lua has to turn this red.
+    #   split  -- the ordinary round arrangement, recorded rather than tested: the
+    #             engine keeps two players on different acts apart on its own.
+    split=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=split passed_through=true")
+    hidden=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=hidden passed_through=true")
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
-    if (( isolated >= 2 && shared >= 2 )); then
-        echo "PASSED: the pair StarHunt hides passed through each other (R-030),"
-        echo "and the pair it does not hide was still pushed apart."
-        status=0
-    elif (( shared < 2 )); then
+    if (( shared < 2 )); then
         echo "FAILED: the control case did not collide, so this run proves nothing"
-        echo "about the isolated pair. Two players on the same act must be pushed"
-        echo "apart; see the overlap lines above for what was measured."
+        echo "about the other two. Two players on the same act with the same goal"
+        echo "must be pushed apart to about 74; see the overlap lines above."
+    elif (( hidden < 2 )); then
+        echo "FAILED: two players StarHunt hides from each other were pushed apart"
+        echo "while standing in the same act. That is the R-030 case."
+    elif (( split < 2 )); then
+        echo "FAILED: two players on different acts touched each other, which the"
+        echo "engine alone should already prevent. Something changed in Co-op DX."
     else
-        echo "FAILED: the players StarHunt hides from each other were pushed apart."
+        echo "PASSED: the pair StarHunt hides passed through each other while the"
+        echo "engine was willing to collide them (R-030), the pair it does not hide"
+        echo "was pushed apart at the engine's 74 units, and two players on"
+        echo "different acts never touched at all."
+        status=0
     fi
 fi
 

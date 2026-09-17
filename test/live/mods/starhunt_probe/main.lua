@@ -28,9 +28,28 @@ local function say(key, text)
     if type(out) == "function" then out(line) else log_to_console(line) end
 end
 
--- Asked once the game is running, not at load time: a client loads its mods
--- while joining, so the network type is not settled yet when this file runs.
-local ROLE = nil
+-- **Three instances, and the two that collide are both clients.**
+--
+-- The obvious arrangement -- a headless host and one client, bumping into each
+-- other -- cannot work, and it took a working control case to see why. A
+-- process started with `--headless --server` sets
+-- `gServerSettings.headlessServer` (src/pc/network/network.c:140), and that one
+-- flag makes its own player inert in two separate places:
+--
+--   * `network_update_player` (packets/packet_player.c:430) returns before
+--     sending anything, so the host's position is never transmitted and every
+--     client sees it frozen wherever it first appeared;
+--   * `is_player_active` (src/game/obj_behaviors.c:547) returns FALSE for the
+--     server's player on **every** instance, and `interact_player` asks that
+--     question about both bodies before it reaches `resolve_player_collision`.
+--
+-- So a headless host can referee but can never touch anybody. The harness
+-- therefore runs a dedicated headless server plus two headless clients, and the
+-- collision it measures is between the two clients.
+local ROLE = nil            -- "server" | "player"
+local MY_GLOBAL = nil
+local OTHER = nil           -- the other client's local index, on a client
+local IS_ANCHOR = false     -- lower global index stands still; the other walks in
 
 -- Frames to let an area settle before touching anything. interact_player
 -- refuses every contact while gCurrentArea->localAreaTimer < 60, so a shorter
@@ -39,35 +58,74 @@ local AREA_SETTLE_FRAMES = 120
 
 -- What counts as "the engine pushed them apart". resolve_player_collision
 -- separates two players to 2 * hitboxRadius, and Mario's radius is 37, so a
--- push parks them at about 74 and holds them there.
---
--- The question is whether they stayed closer than that, not whether they stayed
--- exactly on top of each other. Each instance owns its own player and receives
--- the other's position over the network, so a clean pass-through settles at a
--- small steady offset rather than at zero: the first real run measured 46.5 on
--- the host while the client, which had done the placing, measured 0.
+-- push parks them at about 74.
 local PUSH_DISTANCE = 74.0
 local SEPARATED = PUSH_DISTANCE - 4.0
 
--- Two cases per run, and the second is what makes the first mean anything.
+-- **How far apart the two are placed, and why it is not zero.**
+-- resolve_player_collision pushes along the vector between the two torsos:
 --
---  1. isolated -- two players on TTC acts 6 and 1. players_have_private_variant
---                 is true for that pair, so R-030 says they pass through.
---  2. shared   -- both players on the same act, so the same predicate is false
---                 and the mod leaves the contact alone. These two have to be
---                 pushed apart. Without this case the run proves nothing: a
---                 setup where the bodies never touch at all reports the first
---                 case as a pass even with the fix taken out, which is exactly
---                 what the first version of this probe did.
-local CASE = { "isolated", "shared" }
+--     posX = m->pos[0] + (radius - marioDist) / radius * marioRelX
+--
+-- Placed exactly on top of each other, marioRelX and marioRelZ are both 0, the
+-- whole term is 0 and nobody moves however hard the engine tries. A pair that
+-- overlaps perfectly is therefore indistinguishable from a pair the engine
+-- refused, which is a trap worth naming: the first version of this probe
+-- teleported one player onto the other's exact position.
+local PLACE_OFFSET = 20.0
+
+-- How far a player has to have moved from where it was put down for that to
+-- count as a push. An idle Mario on flat ground with zero velocity does not
+-- drift, so anything above a few units is the engine.
+local PUSHED_DRIFT = 20.0
+
+-- Three cases per run, and only the middle one is about StarHunt at all.
+--
+--  1. split  -- the two players hold TTC goals for acts 6 and 1 and are each
+--               standing in their own act. This is what an ordinary StarHunt
+--               round produces, and it is **not** a test of anything the mod
+--               does: the engine refuses the contact by itself, because
+--               is_player_active compares the two players' currActNum and a
+--               remote player on another act is not active. The case is kept
+--               because it records that, and because it is what the first
+--               version of this harness mistook for a passing test of R-030.
+--
+--  2. hidden -- the same two goals, but this player walks back into the act the
+--               other one is standing in, so both currActNum agree and the
+--               engine is willing. players_have_private_variant still says the
+--               pair is private, because it reads the assigned goals rather
+--               than the loaded act. R-030's refusal in on_allow_interact is
+--               now the only thing between the two bodies. **This is the case
+--               that fails when that branch is deleted.**
+--
+--  3. shared -- both players hold the act 6 goal, so the predicate is false and
+--               the mod leaves the contact alone. The engine must push these
+--               two apart. Without this control a run where the bodies never
+--               touch at all reports every other case as a pass.
+local CASE = { "split", "hidden", "shared" }
+
+-- Which cases players_have_private_variant has to answer true for.
+local WANT_PRIVATE = { split = true, hidden = true, shared = false }
+
+-- The act both players stand in for "hidden" and "shared". Act 6 is the one
+-- that stops the clock, so it is the side of the TTC divergence the predicate
+-- keys on; the other player's goal keeps whatever act pick_ttc_goals found.
+local SHARED_ACT = 6
 
 local state = "wait_api"
 local since = 0
-local phase = 1
+local phase = 0
+-- STARHUNT_TEST_API is a table the mod builds at run time, so nothing the type
+-- checker can read describes its shape. Saying so here keeps the annotation to
+-- one line instead of a nil check at every use.
+---@type any
 local api = nil
 local ttc = { act_6 = nil, act_other = nil }
-local overlap = { min = nil, max = nil, samples = 0 }
-local watched_goal = nil
+local placed_at = nil
+local drift = 0
+local reach = 0
+local samples = 0
+local rewarped = false
 
 --- The two TTC goals the cases need: act 6, and any other act.
 -- Act 6 stops the clock while the others run it, which is the divergence
@@ -92,12 +150,16 @@ local function connected_count()
     return n
 end
 
-local function both_in_ttc()
-    for i = 0, 1 do
+--- The other client, as this instance indexes it.
+-- `type` is what separates the three: NPT_LOCAL is this process's own player,
+-- NPT_SERVER is the referee (whose body cannot collide with anything), and
+-- NPT_CLIENT is the player this one is meant to bump into.
+local function find_other_client()
+    for i = 1, MAX_PLAYERS - 1 do
         local np = gNetworkPlayers[i]
-        if not np.connected or np.currLevelNum ~= LEVEL_TTC then return false end
+        if np ~= nil and np.connected and np.type == NPT_CLIENT then return i end
     end
-    return (gNetworkPlayers[0].currAreaIndex or 0) == (gNetworkPlayers[1].currAreaIndex or 0)
+    return nil
 end
 
 --- PLAYER_INTERACTIONS_PVP is what makes the bodies touch at all, so it is
@@ -110,8 +172,8 @@ local function server_interactions()
 end
 
 local function horizontal_distance(a, b)
-    local dx = a.pos.x - b.pos.x
-    local dz = a.pos.z - b.pos.z
+    local dx = a.x - b.x
+    local dz = a.z - b.z
     return math.sqrt(dx * dx + dz * dz)
 end
 
@@ -157,6 +219,10 @@ local function place_at(m, x, y, z)
     m.pos.x, m.pos.y, m.pos.z = x, y, z
     m.vel.x, m.vel.y, m.vel.z = 0, 0, 0
     m.forwardVel = 0
+    placed_at = { x = x, y = y, z = z }
+    drift = 0
+    reach = 0
+    samples = 0
 end
 
 local function enter(next_state)
@@ -164,51 +230,64 @@ local function enter(next_state)
     since = 0
 end
 
---- Give the two players the goals a case needs, and tell the clients.
+--- Give the two client players the goals a case needs.
 -- Each client warps itself from its own sh5_goal and only acts on a goal it has
--- not seen, so the sequence counter has to move as well.
+-- not seen, so the sequence counter has to move as well. The referee's own
+-- player keeps whatever goal the mod gave it; its body takes part in nothing.
 local function assign(first, second)
-    for i = 0, 1 do
-        local sync = api.player_sync[i]
-        sync.sh5_goal = (i == 0) and first or second
+    local a, b = 1, 2   -- on the server the local index IS the global index
+    if not gNetworkPlayers[a].connected or not gNetworkPlayers[b].connected then return false end
+    for _, pair in ipairs({ { a, first }, { b, second } }) do
+        local sync = api.player_sync[pair[1]]
+        sync.sh5_goal = pair[2]
         sync.sh5_goal_seq = (sync.sh5_goal_seq or 0) + 1
         sync.sh5_modifier = 0
         sync.sh5_modifier_2 = 0
     end
+    return true
 end
 
-local function begin_case()
-    overlap = { min = nil, max = nil, samples = 0 }
-    gPlayerSyncTable[0].sh_probe_overlap = 0
-    gPlayerSyncTable[0].sh_probe_ready = 0
-    watched_goal = api.player_sync[0].sh5_goal
-    enter("observe")
+--- Everything a pair that refuses to collide could be refusing over.
+-- `is_player_active` is the decisive one and the reason this harness was
+-- rebuilt: interact_player asks it about both bodies, and it is false for a
+-- headless server's player and for any remote player whose course, act, level
+-- or area does not match the local one.
+local function gates(other_mario, distance)
+    local me = gMarioStates[0]
+    local mine = me.marioObj ~= nil and me.marioObj.collidedObjInteractTypes or 0
+    local my_np, their_np = gNetworkPlayers[0], gNetworkPlayers[OTHER]
+    say("gates", "role=" .. ROLE .. MY_GLOBAL .. " case=" .. CASE[phase]
+        .. " dist=" .. string.format("%.1f", distance)
+        .. " drift=" .. string.format("%.1f", drift)
+        .. " active_me=" .. tostring(is_player_active(me))
+        .. " active_them=" .. tostring(is_player_active(other_mario))
+        .. " collided=" .. tostring((mine & INTERACT_PLAYER) ~= 0)
+        .. " interactions=" .. server_interactions()
+        .. " headless_server=" .. tostring(gServerSettings.headlessServer)
+        .. " my_act=" .. tostring(my_np.currActNum) .. " their_act=" .. tostring(their_np.currActNum)
+        .. " my_area=" .. tostring(my_np.currAreaIndex) .. " their_area=" .. tostring(their_np.currAreaIndex)
+        .. " their_pos_valid=" .. tostring(their_np.currPositionValid)
+        .. " my_action=" .. string.format("%08X", me.action or 0)
+        .. " invinc=" .. tostring(me.invincTimer) .. "," .. tostring(other_mario.invincTimer)
+        -- resolve_player_collision refuses outright when the two torsos are
+        -- further apart vertically than one hitbox height (160).
+        .. " dy=" .. string.format("%.1f", math.abs(me.pos.y - other_mario.pos.y))
+        .. " their_xz=" .. string.format("%.0f,%.0f", other_mario.pos.x, other_mario.pos.z))
 end
 
-local function update()
-    since = since + 1
-    if ROLE == nil then ROLE = network_is_server() and "host" or "client" end
-
-    if state == "wait_api" then
-        -- StarHunt publishes this on _G only when it saw the flag above.
-        api = rawget(_G, "STARHUNT_TEST_API")
-        if api == nil then
-            if since == 300 then say("fail", "reason=no_test_api role=" .. ROLE) end
+--- The referee half: start a round, hand out the case's goals, wait for both
+-- players to report, move on.
+local function update_server()
+    if state == "wait_players" then
+        if connected_count() < 3 then
+            if since % 600 == 0 then say("waiting", "role=server players=" .. connected_count()) end
             return
         end
-        say("load", "role=" .. ROLE .. " goals=" .. #api.goals)
-        enter("wait_players")
-
-    elseif state == "wait_players" then
-        if connected_count() < 2 then
-            if since % 600 == 0 then say("waiting", "role=" .. ROLE .. " players=" .. connected_count()) end
-            return
-        end
-        say("players", "role=" .. ROLE .. " count=" .. connected_count())
-        enter(ROLE == "host" and "start_round" or "await_case")
+        say("players", "role=server count=" .. connected_count())
+        enter("start_round")
 
     elseif state == "start_round" then
-        -- A moment for the second player to be enrolled: host_start_round takes
+        -- A moment for both players to be enrolled: host_start_round takes
         -- whoever is connected when it runs.
         if since < 60 then return end
         ttc.act_6, ttc.act_other = pick_ttc_goals()
@@ -232,62 +311,140 @@ local function update()
         -- leaves every goal at 0. host_update_round hands the goals out on a
         -- later frame, so an override written straight after the start is undone
         -- a frame later and both players warp to whatever the mod rolled.
-        if (api.player_sync[0].sh5_goal or 0) == 0 or (api.player_sync[1].sh5_goal or 0) == 0 then
-            if since % 600 == 0 then say("waiting", "role=host reason=no_goals_yet") end
+        local a, b = 1, 2   -- on the server the local index IS the global index
+        if (api.player_sync[a].sh5_goal or 0) == 0 or (api.player_sync[b].sh5_goal or 0) == 0 then
+            if since % 600 == 0 then say("waiting", "role=server reason=no_goals_yet") end
             return
         end
-        assign(ttc.act_6, ttc.act_other)
-        say("case", "name=" .. CASE[phase] .. " goals=" .. ttc.act_6 .. "," .. ttc.act_other)
-        begin_case()
+        phase = 1
+        enter("open_case")
 
-    elseif state == "await_case" then
-        -- A client learns that a new case has started from its own goal
-        -- changing, which is the one piece of state the host is already sending
-        -- it. Nothing else has to be arranged between the two probes.
-        local goal = api.player_sync[0].sh5_goal or 0
-        if goal == 0 or goal == watched_goal then
-            if since % 600 == 0 then say("waiting", "role=client reason=no_new_case") end
-            return
-        end
-        begin_case()
-
-    elseif state == "observe" then
-        if not both_in_ttc() then
-            if since % 600 == 0 then
-                say("waiting", "role=" .. ROLE .. " reason=not_in_ttc"
-                    .. " lvl=" .. tostring(gNetworkPlayers[0].currLevelNum)
-                    .. "," .. tostring(gNetworkPlayers[1].currLevelNum))
-            end
-            return
-        end
-        if since < AREA_SETTLE_FRAMES then return end
-        local private = api.players_have_private_variant(0, 1)
-        local want = (CASE[phase] == "isolated")
-        say("pair", "role=" .. ROLE .. " case=" .. CASE[phase]
-            .. " private=" .. tostring(private)
-            .. " interactions=" .. server_interactions())
-        if private ~= want then
-            say("fail", "reason=wrong_pair_state role=" .. ROLE .. " case=" .. CASE[phase])
+    elseif state == "open_case" then
+        -- "hidden" reuses the goals "split" handed out, untouched: reassigning
+        -- them would change sh5_goal, and a client re-warps to its goal's act
+        -- the moment that value changes, which is exactly the warp this case
+        -- exists to avoid. The second player moves itself instead.
+        local first = ttc.act_6
+        local second = (CASE[phase] == "shared") and ttc.act_6 or ttc.act_other
+        if CASE[phase] ~= "hidden" and not assign(first, second) then
+            say("fail", "reason=players_left")
             enter("done")
             return
         end
-        enter("overlap")
+        -- The clients learn a case has started from the global sync table,
+        -- which only the server may write.
+        gGlobalSyncTable.sh_probe_case = phase
+        say("case", "name=" .. CASE[phase] .. " goals=" .. first .. "," .. second)
+        enter("await_reports")
 
-    elseif state == "overlap" then
-        -- Put the two players in one place, once, and then leave the engine
-        -- alone. resolve_player_collision moves whichever player it is
-        -- processing, so a pair the engine still collides separates within a
-        -- frame or two and stays at the push distance.
-        --
-        -- **Only the client moves.** A player can only be placed by the
-        -- instance that owns it — a remote Mario's position is overwritten by
-        -- the next packet — and if both sides moved onto each other's position
-        -- they would swap places and never touch at all.
-        local me, them = gMarioStates[0], gMarioStates[1]
-        if ROLE == "host" then
-            -- The host stands itself on ground with room first, and only then
-            -- invites the client over. Each side writes its own row of the
-            -- player sync table, which is the one row a player may write.
+    elseif state == "await_reports" then
+        local done = 0
+        for i = 1, MAX_PLAYERS - 1 do
+            if (gPlayerSyncTable[i].sh_probe_done or 0) == phase then done = done + 1 end
+        end
+        if done < 2 then
+            if since % 900 == 0 then say("waiting", "role=server reason=reports done=" .. done) end
+            return
+        end
+        if phase >= #CASE then
+            enter("done")
+        else
+            phase = phase + 1
+            enter("open_case")
+        end
+
+    elseif state == "done" then
+        if since == 1 then say("end", "role=server") end
+    end
+end
+
+--- The player half: wait for a case, stand the pair on top of each other, and
+-- measure whether the engine moved this instance's own player away.
+local function update_player()
+    if state == "wait_players" then
+        OTHER = find_other_client()
+        if connected_count() < 3 or OTHER == nil then
+            if since % 600 == 0 then say("waiting", "role=player players=" .. connected_count()) end
+            return
+        end
+        MY_GLOBAL = gNetworkPlayers[0].globalIndex
+        IS_ANCHOR = MY_GLOBAL < gNetworkPlayers[OTHER].globalIndex
+        say("players", "role=player" .. MY_GLOBAL .. " count=" .. connected_count()
+            .. " other=" .. OTHER .. " anchor=" .. tostring(IS_ANCHOR))
+        enter("await_case")
+
+    elseif state == "await_case" then
+        local want = gGlobalSyncTable.sh_probe_case or 0
+        if want == 0 or want == phase then
+            if since % 900 == 0 then say("waiting", "role=player" .. MY_GLOBAL .. " reason=no_new_case") end
+            return
+        end
+        phase = want
+        rewarped = false
+        gPlayerSyncTable[0].sh_probe_ready = 0
+        gPlayerSyncTable[0].sh_probe_placed = 0
+        enter("settle")
+
+    elseif state == "settle" then
+        local mine, theirs = gNetworkPlayers[0], gNetworkPlayers[OTHER]
+        -- **The "hidden" case is made here, and it is made by moving rather
+        -- than by reassigning.** This player keeps the goal StarHunt gave it --
+        -- so players_have_private_variant still calls the pair private -- but
+        -- walks back into the act the other one is standing in, so the engine's
+        -- own act comparison stops refusing the contact. That leaves R-030's
+        -- branch in on_allow_interact as the only thing that can keep the two
+        -- bodies apart, which is what makes this case able to fail.
+        if CASE[phase] == "hidden" and not IS_ANCHOR then
+            if not rewarped then
+                rewarped = true
+                warp_to_level(LEVEL_TTC, 1, SHARED_ACT)
+                say("rewarp", "role=player" .. MY_GLOBAL .. " act=" .. SHARED_ACT
+                    .. " goal=" .. tostring(api.player_sync[0].sh5_goal))
+                since = 0
+                return
+            end
+            if mine.currActNum ~= SHARED_ACT then
+                if since % 900 == 0 then
+                    say("waiting", "role=player" .. MY_GLOBAL .. " reason=rewarp act=" .. tostring(mine.currActNum))
+                end
+                since = 0
+                return
+            end
+        end
+        -- Both warps have to have landed. Level and area are exchanged even
+        -- between players the engine will not let interact, so this is readable
+        -- in every case.
+        if mine.currLevelNum ~= LEVEL_TTC or theirs.currLevelNum ~= LEVEL_TTC then
+            if since % 900 == 0 then
+                say("waiting", "role=player" .. MY_GLOBAL .. " reason=not_in_ttc"
+                    .. " lvl=" .. tostring(mine.currLevelNum) .. "," .. tostring(theirs.currLevelNum))
+            end
+            since = 0
+            return
+        end
+        if since < AREA_SETTLE_FRAMES then return end
+        local private = api.players_have_private_variant(0, OTHER)
+        local want = WANT_PRIVATE[CASE[phase]]
+        say("pair", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+            .. " private=" .. tostring(private)
+            .. " my_act=" .. tostring(mine.currActNum) .. " their_act=" .. tostring(theirs.currActNum)
+            .. " interactions=" .. server_interactions())
+        if private ~= want then
+            say("fail", "reason=wrong_pair_state role=player" .. MY_GLOBAL .. " case=" .. CASE[phase])
+            enter("done")
+            return
+        end
+        enter("place")
+
+    elseif state == "place" then
+        -- **The meeting point travels through the sync table, not through the
+        -- other player's body.** Two players on different acts never exchange
+        -- positions at all -- network_receive_player drops a packet whose
+        -- course, act, level or area does not match and marks the sender's
+        -- position invalid -- so the walking player cannot aim at where it sees
+        -- the standing one. Both sides agree on plain coordinates instead.
+        local me = gMarioStates[0]
+        if IS_ANCHOR then
             if since == 1 then
                 local x, y, z = open_ground_near(me)
                 if x == nil then
@@ -296,86 +453,81 @@ local function update()
                     return
                 end
                 place_at(me, x, y, z)
-                gPlayerSyncTable[0].sh_probe_ready = 1
-                say("ground", "role=host case=" .. CASE[phase]
+                local mine = gPlayerSyncTable[0]
+                mine.sh_probe_x, mine.sh_probe_y, mine.sh_probe_z = x, y, z
+                mine.sh_probe_ready = phase
+                say("ground", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
                     .. " x=" .. string.format("%.0f", x)
                     .. " y=" .. string.format("%.0f", y)
                     .. " z=" .. string.format("%.0f", z))
                 return
             end
-            if (gPlayerSyncTable[1].sh_probe_overlap or 0) ~= 1 then
-                if since % 600 == 0 then say("waiting", "role=host reason=client_not_placed") end
-                since = 1
+            -- Start counting only once the other player has arrived, or the
+            -- sixty samples are spent waiting for company.
+            if (gPlayerSyncTable[OTHER].sh_probe_placed or 0) ~= phase then
+                if since % 900 == 0 then say("waiting", "role=player" .. MY_GLOBAL .. " reason=partner_not_placed") end
                 return
             end
+            samples = 0
+            enter("measure")
         else
-            if (gPlayerSyncTable[1].sh_probe_ready or 0) ~= 1 then
-                if since % 600 == 0 then say("waiting", "role=client reason=host_not_ready") end
-                since = 1
+            local theirs = gPlayerSyncTable[OTHER]
+            if (theirs.sh_probe_ready or 0) ~= phase then
+                if since % 900 == 0 then say("waiting", "role=player" .. MY_GLOBAL .. " reason=anchor_not_ready") end
                 return
             end
-            if since == 2 then
-                place_at(me, them.pos.x, them.pos.y, them.pos.z)
-                gPlayerSyncTable[0].sh_probe_overlap = 1
-                return
-            end
-            if since < 2 then return end
-        end
-        local distance = horizontal_distance(me, them)
-        if overlap.samples == 30 then
-            -- Which gate is shut, when a pair that should collide does not.
-            -- interact_player walks: playerInteractions, ACT_FLAG_INTANGIBLE,
-            -- the vanish cap, then resolve_player_collision, which additionally
-            -- refuses while either invincTimer is above zero. The interaction
-            -- is only reached at all when the engine put INTERACT_PLAYER in the
-            -- player's collidedObjInteractTypes.
-            local mine = me.marioObj ~= nil and me.marioObj.collidedObjInteractTypes or 0
-            say("gates", "role=" .. ROLE .. " case=" .. CASE[phase]
-                .. " dist=" .. string.format("%.1f", distance)
-                .. " collided=" .. tostring((mine & INTERACT_PLAYER) ~= 0)
-                .. " my_act=" .. string.format("%08X", me.action or 0)
-                .. " their_act=" .. string.format("%08X", them.action or 0)
-                .. " invinc=" .. tostring(me.invincTimer) .. "," .. tostring(them.invincTimer)
-                .. " my_flags=" .. string.format("%X", me.flags or 0)
-                -- resolve_player_collision refuses outright when the two torsos
-                -- are further apart vertically than one hitbox height (160), so
-                -- a stale or falling remote body never touches anything.
-                .. " dy=" .. string.format("%.1f", math.abs(me.pos.y - them.pos.y))
-                .. " my_y=" .. string.format("%.0f", me.pos.y)
-                .. " their_y=" .. string.format("%.0f", them.pos.y)
-                .. " their_xz=" .. string.format("%.0f,%.0f", them.pos.x, them.pos.z))
-        end
-        overlap.samples = overlap.samples + 1
-        if overlap.min == nil or distance < overlap.min then overlap.min = distance end
-        if overlap.max == nil or distance > overlap.max then overlap.max = distance end
-        if overlap.samples >= 60 then
-            say("overlap", "role=" .. ROLE .. " case=" .. CASE[phase]
-                .. " min=" .. string.format("%.1f", overlap.min)
-                .. " max=" .. string.format("%.1f", overlap.max)
-                .. " samples=" .. overlap.samples)
-            say("verdict", "role=" .. ROLE .. " case=" .. CASE[phase]
-                .. " passed_through=" .. tostring(overlap.max < SEPARATED))
-            if phase >= #CASE then
-                enter("done")
-            else
-                phase = phase + 1
-                enter(ROLE == "host" and "next_case" or "await_case")
-            end
+            place_at(me, (theirs.sh_probe_x or 0) + PLACE_OFFSET, theirs.sh_probe_y or 0, theirs.sh_probe_z or 0)
+            gPlayerSyncTable[0].sh_probe_placed = phase
+            enter("measure")
         end
 
-    elseif state == "next_case" then
-        if since < 30 then return end
-        -- The shared case: both players on the same act, so the mod has no
-        -- reason to isolate them and the engine's collision must stand. Act 6
-        -- for both, not act 1: the client is the side that watches its own goal
-        -- for the change, and it already holds the act 1 goal.
-        assign(ttc.act_6, ttc.act_6)
-        say("case", "name=" .. CASE[phase] .. " goals=" .. ttc.act_6 .. "," .. ttc.act_6)
-        begin_case()
+    elseif state == "measure" then
+        local me = gMarioStates[0]
+        local them = gMarioStates[OTHER]
+        -- Two numbers, and the first is the one that matters. `drift` is how
+        -- far this instance's own player has moved from where the probe put it
+        -- down: nothing but the engine moves an idle Mario with no input and no
+        -- velocity, so a drift is a push. `reach` is the distance to the other
+        -- body as this instance sees it, which is only meaningful when the
+        -- engine is exchanging their positions at all.
+        drift = math.max(drift, horizontal_distance(me.pos, placed_at))
+        reach = math.max(reach, horizontal_distance(me.pos, them.pos))
+        samples = samples + 1
+        if samples == 30 then gates(them, horizontal_distance(me.pos, them.pos)) end
+        if samples >= 60 then
+            local pushed = drift >= PUSHED_DRIFT or reach >= SEPARATED
+            say("overlap", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                .. " drift=" .. string.format("%.1f", drift)
+                .. " reach=" .. string.format("%.1f", reach)
+                .. " samples=" .. samples)
+            say("verdict", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                .. " passed_through=" .. tostring(not pushed))
+            gPlayerSyncTable[0].sh_probe_done = phase
+            enter("await_case")
+        end
 
     elseif state == "done" then
-        if since == 1 then say("end", "role=" .. ROLE) end
+        if since == 1 then say("end", "role=player" .. tostring(MY_GLOBAL)) end
     end
+end
+
+local function update()
+    since = since + 1
+    if ROLE == nil then ROLE = network_is_server() and "server" or "player" end
+
+    if state == "wait_api" then
+        -- StarHunt publishes this on _G only when it saw the flag above.
+        api = rawget(_G, "STARHUNT_TEST_API")
+        if api == nil then
+            if since == 300 then say("fail", "reason=no_test_api role=" .. ROLE) end
+            return
+        end
+        say("load", "role=" .. ROLE .. " goals=" .. #api.goals)
+        enter("wait_players")
+        return
+    end
+
+    if ROLE == "server" then update_server() else update_player() end
 end
 
 hook_event(HOOK_UPDATE, update)

@@ -86,10 +86,12 @@ lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"
 lua5.4 test/run.lua
 lua5.4 test/run.lua audit difficulty     # only matching suites
 
-# Inside the real game: two headless sm64coopdx processes, the mod, and a probe
-# mod that drives them. Reaches loading, warping, networking and collision, which
-# the stub suite cannot. Needs a built game and your own SM64 ROM; see
-# test/live/README.md.
+# Inside the real game: three headless sm64coopdx processes -- a dedicated server
+# and two players -- the mod, and a probe mod that drives them. Reaches loading,
+# warping, networking and player collision, which the stub suite cannot. It has
+# to be three: a `--headless --server` process sets gServerSettings.headlessServer,
+# and that makes its own player unable to collide with anybody on any instance.
+# Needs a built game and your own SM64 ROM; ~2.5 min. See test/live/README.md.
 test/live/run.sh --load-only
 test/live/run.sh
 
@@ -177,8 +179,9 @@ what each suite guards. The suite was mutation-checked, so a green run means som
 
 It does not replace a real multiplayer session in sm64coopdx. Rendering, networking, warping,
 collision and other-mod interaction are all outside its reach. `test/live/` reaches some of
-them by running the mod inside two headless sm64coopdx processes; what stays out of reach
-there is anything a person has to look at, and anything about real latency.
+them by running the mod inside three headless sm64coopdx processes, and its collision case
+fails when the fix it covers is deleted; what stays out of reach there is anything a person
+has to look at, and anything about real latency.
 
 The original harness named in DEVELOPMENT_CHECKLIST.md, `work/starhunt_v11_load_test.lua`, was
 never in this repository and is not on this machine; `test/` is a fresh implementation.
