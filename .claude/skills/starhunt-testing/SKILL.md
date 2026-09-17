@@ -1,6 +1,6 @@
 ---
 name: starhunt-testing
-description: Everything about verifying a change to StarHunt — the five checks in order with their exact commands and recorded baselines, the two expected false positives, the mutation sweep, and test/live/run.sh, the harness that runs the mod inside real headless sm64coopdx processes. **CLAUDE.md deliberately no longer carries any of this, so this skill is the only place the commands and baselines exist** — load it rather than guessing a command or a number. Use it whenever a change to StarHunt has to be verified, before opening a pull request, when asked to run the tests, the suite, luacheck, lua-language-server, a mutation sweep or "check this works in the real game", when any check reports different numbers from the baselines, and when adding a case to the offline suite or the live harness. Use it even when testing was never mentioned, because every edit under StarHunt/ or test/ ends in these checks, and it is step 5 of the process in DEVELOPMENT_CHECKLIST.md. Also use it whenever the live harness fails, times out, hangs or reports numbers that look wrong, because nearly all of its failure modes are sm64coopdx behaviour rather than bugs in the mod, and the dead ends it records have each already cost a session.
+description: Everything about verifying a change to StarHunt — the five checks in order with their exact commands and recorded baselines, the two expected false positives, the mutation sweep, and test/live/run.sh, the harness that runs the mod inside real headless sm64coopdx processes. **CLAUDE.md deliberately no longer carries any of this, so this skill is the only place the commands and baselines exist** — load it rather than guessing a command or a number. Use it whenever a change to StarHunt has to be verified, before opening a pull request, when asked to run the tests, the suite, luacheck, lua-language-server, a mutation sweep or "check this works in the real game", when any check reports different numbers from the baselines, and when adding a case to the offline suite or the live harness. Use it even when testing was never mentioned, because every edit under StarHunt/ or test/ ends in these checks. Also use it whenever the live harness fails, times out, hangs or reports numbers that look wrong, because nearly all of its failure modes are sm64coopdx behaviour rather than bugs in the mod, and the dead ends it records have each already cost a session.
 ---
 
 # Testing StarHunt
@@ -51,10 +51,6 @@ silently test the wrong one. **Being in that table does not mean a function is t
 times now a published function turned out to be called by no test at all. `grep` for the key
 before assuming coverage.
 
-`work/starhunt_v11_load_test.lua`, the harness named in `DEVELOPMENT_CHECKLIST.md`, was never in
-this repository and is not on this machine. `test/` is a fresh implementation; do not go looking
-for the old one.
-
 ## 3. The two static checkers
 
 ```bash
@@ -80,28 +76,22 @@ Both were confirmed against the engine's binding code, not just its annotations.
   `smlua_to_lua_function` special-cases `LUA_TNIL` and returns 0; `nil` is the intended way to
   pass no setup function.
 
-The 24 old "shadowing upvalue `goal`" warnings are **gone**: the `goal()` constructor is now
-`modules/goals.lua:61` and file-local to it. Inside `goals.lua` itself the locals still shadow it,
-which means a typo'd `goal(...)` call in such a scope is a runtime error rather than a lint error.
+Inside `goals.lua`, local variables named `goal` still shadow the file-local `goal()` constructor
+at line 61, so a typo'd `goal(...)` call in such a scope is a runtime error rather than a lint
+error. Luacheck will not catch it.
 
-### How the checkers know the engine API
+### When a checker suddenly reports undefined globals
 
-`StarHunt/main.lua` calls about 59 engine functions and reads roughly 1,090 engine constants.
-Without the game's API these are all undefined globals and the linters are useless, so the API
-list is generated from sm64coopdx's own `autogen/lua_definitions` (6,337 globals: 2,008 functions,
-4,307 constants, 22 mutable engine tables) and stored **outside this folder**, because the game
-loads every `.lua` file it finds in a mod directory:
+It is the engine definitions that are stale, not the mod. Both checkers read a generated copy of
+sm64coopdx's API from `~/.local/share/sm64coopdx/`, so after the game is rebuilt from a newer
+upstream, regenerate it and re-run:
 
-| path | contents |
-|---|---|
-| `~/.local/share/sm64coopdx/definitions/` | `functions.lua`, `constants.lua`, `structs.lua`, `manual.lua` from the game repo |
-| `~/.local/share/sm64coopdx/luacheck_globals.lua` | generated read/write global lists, loaded by `.luacheckrc` |
-| `~/.local/share/sm64coopdx/refresh.sh` | re-downloads the definitions and regenerates the above |
+```bash
+~/.local/share/sm64coopdx/refresh.sh
+```
 
-Run `~/.local/share/sm64coopdx/refresh.sh` after the game updates, so the checkers match the
-engine version being targeted. The two config files that stay in the repository, `.luarc.json`
-and `.luacheckrc`, have no `.lua` extension, so the game ignores them if the folder is ever
-copied into `mods/`.
+`references/engine-api.md` explains what that generates and why it lives outside the repository.
+Read it only if the refresh does not settle it.
 
 `selene` is installed and **unusable**: its 0.31.0 Linux release only compiles the `lua51` and
 `luau` grammars, so it cannot parse this project's 5.4 syntax. Do not add a `selene.toml`.

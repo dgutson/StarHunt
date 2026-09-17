@@ -76,7 +76,7 @@ Tags `v1.1-monolithic` and `v1.1-modular` mark the commit before and after the s
 
 ## Verifying a change
 
-Every command, baseline and caveat for checking this mod — the syntax check, the 785-test offline
+Every command, baseline and caveat for checking this mod — the syntax check, the offline
 suite, luacheck, lua-language-server, the mutation sweep, and the live harness that runs the mod
 inside real headless sm64coopdx processes — is in the **`starhunt-testing` skill**
 (`.claude/skills/starhunt-testing/SKILL.md`). Load it before verifying anything; step 5 of the
