@@ -29,7 +29,7 @@ cerradas, las verificaciones antiguas y los cambios ya implementados están en
 6. Ejecutar la comprobación de sintaxis y la prueba completa:
    `lua5.4 -e "assert(loadfile('StarHunt/main.lua'))"` y `lua5.4 test/run.lua`.
    Las tres líneas de referencia, y **cualquier subida es una regresión**:
-   784 pruebas sin fallos, `luacheck StarHunt/ test/` con 2 avisos y 0 errores,
+   784 pruebas sin fallos, `luacheck StarHunt/ test/` con 2 avisos y 0 errores en 47 archivos,
    y `lua-language-server --check` con 10 problemas en 2 archivos.
 7. Mutar el código cambiado y comprobar que la prueba lo detecta
    (`tools/gen_mutations.py` y `tools/sweep_mutations.py`). Estar publicado en

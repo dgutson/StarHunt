@@ -141,7 +141,7 @@ The whole mod is clean. **These are the baselines; a rise in either is a regress
 | check | expected |
 |---|---|
 | `lua5.4 test/run.lua` | 784 passed, 0 failed |
-| `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 46 files |
+| `luacheck StarHunt/ test/` | 2 warnings / 0 errors in 47 files |
 | `lua-language-server --check` | Found 10 problems in 2 files |
 
 The 2 luacheck warnings are `hud.lua:93` shadowing the upvalue `alpha` and an empty `if`
