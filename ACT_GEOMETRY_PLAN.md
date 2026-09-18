@@ -513,7 +513,51 @@ be fair.
 
 ---
 
-## 12. Deliberately not done
+## 12. What this costs, and the rule that keeps it cheap
+
+**The Lua side reproduces nothing the engine does.** It does not compute collision, move a
+player, resolve a hit, drive an animation or draw anything. It writes two fields on some
+objects, and the C code then behaves differently because of what it reads. Everything the
+player experiences runs on the engine's ordinary path.
+
+Where the work actually lands:
+
+- **A suppressed object costs the client less than a live one, not more.**
+  `load_object_collision_model_internal` returns at `src/engine/surface_load.c:979` when
+  `collisionData` is NULL, so it never reaches `transform_object_vertices` or
+  `load_object_surfaces` for that object, on any frame. `GRAPH_RENDER_INVISIBLE` removes its
+  draw.
+- **The added cost is C, and it comes from `disableActs`,** which spawns every act's objects
+  on every client. Each client now ticks the behaviours of objects belonging to acts it
+  cannot see, and those objects join object sync. Measure it in the live harness rather than
+  guessing at it; a course with the most act-gated placements is the case to measure.
+- **Load time.** Classification runs once per object, against the rows for one level. The
+  mod already builds the star catalog, the modifier catalog and the full goal-by-modifier
+  matrix at load (`rebuild_audited_modifiers`), which is far more work than this.
+- **Per frame, the Lua budget goes down.** `update_private_player_visibility`
+  (`StarHunt/modules/round.lua:946-974`) loops over every player every frame today and is
+  deleted; `players_have_private_variant` runs from three call sites every frame today and is
+  deleted. What replaces them is one sweep every thirty frames. `update_star_visibility`
+  (`StarHunt/modules/goals.lua:885-910`) already walks an object list every frame and stays as
+  it is.
+- **The table is data.** Generated, never executed, consulted at object load and not again.
+
+**The rule that keeps it this way: suppression is a state written once, not re-applied every
+frame.** For the behaviours known to be act-gated, `LOAD_COLLISION_DATA` sits in the
+behaviour script's init section, before `BEGIN_LOOP`, so the pointer is written once. But
+several platform behaviours assign `o->collisionData` from C —
+`src/game/behaviors/rotating_octagonal_plat.inc.c:12`, `ttc_cog.inc.c:29`,
+`sliding_platform_2.inc.c:18`, `seesaw_platform.inc.c:20`,
+`platform_on_track.inc.c:97`, `ttc_treadmill.inc.c:28`,
+`animated_floor_switch.inc.c:78`. **When the table is generated, check whether any behaviour
+in it appears in that list.** If one does, that object's suppression has to be re-asserted by
+the sweep; if none does, it must not be, because re-asserting every frame is exactly the cost
+this design exists to avoid.
+
+If a later change finds itself doing per-frame work in Lua to hold this design together, that
+is the signal to stop and re-read this section rather than to optimise the loop.
+
+## 13. Deliberately not done
 
 - **No volume table and no measured half-extents.** R-028 proposed axis-aligned boxes whose
   extents had to be measured in game. The generated table carries each object's identity and
