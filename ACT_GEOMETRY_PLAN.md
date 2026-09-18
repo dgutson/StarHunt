@@ -23,6 +23,11 @@ sees, exactly the objects their own goal's act puts in the course.
 The mod does not simulate any of the fight. It changes which objects exist for whom, and
 the engine does the rest.
 
+**Read section 13 before building any of this.** A change of roughly thirty lines in
+sm64coopdx removes the need for sections 4 through 12 entirely and costs nothing at runtime.
+Section 13 specifies it. What decides between them is not the code but whether a patched game
+is acceptable: everything else in this document runs on stock sm64coopdx today.
+
 ---
 
 ## 2. The constraint that shapes everything
@@ -557,7 +562,116 @@ this design exists to avoid.
 If a later change finds itself doing per-frame work in Lua to hold this design together, that
 is the signal to stop and re-read this section rather than to optimise the loop.
 
-## 13. Deliberately not done
+## 13. The engine change that would remove all of this
+
+Everything above is a workaround for one thing: sm64coopdx uses `currActNum` for two unrelated
+jobs and does not let a mod separate them.
+
+1. **Which objects exist in my world.** `gCurrActNum`, read by the level script at
+   `src/engine/level_script.c:534` and `:959`.
+2. **Whether another player counts as being here with me.** `np->currActNum`, compared in the
+   player-locality tests.
+
+Job 1 must stay per-player; that is what an act *is*. Job 2 is the only thing standing between
+StarHunt and a fair fight. Separate them and this entire document collapses: each client loads
+exactly its own act at vanilla cost, with no `disableActs`, no generated table, no suppression,
+no sweep and no restore — and the two players can still see, touch and damage each other.
+
+**This requires a patched game.** The Lua design above runs on stock sm64coopdx today; the
+change below runs only where the engine carries it, so it means either an accepted upstream
+pull request or a fork every player has to install. That trade-off, not the code, is what
+decides between them.
+
+### The patch
+
+**One new field.** `u8 crossActPlayers;` in `struct LevelValues` (`src/game/hardcoded.h:64`,
+beside `disableActs`), `FALSE` in `gDefaultLevelValues` (`src/game/hardcoded.c:46`).
+`autogen/convert_structs.py` regenerates `smlua_cobject_autogen.c` on the next build, so
+`gLevelValues.crossActPlayers` becomes Lua-settable with no binding work.
+
+**One new helper**, replacing four open-coded copies of the same four-field comparison:
+
+```c
+bool network_player_location_mismatch(struct NetworkPlayer* np, bool compareAct) {
+    if (gNetworkPlayerLocal == NULL) { return true; }
+    return np->currCourseNum != gNetworkPlayerLocal->currCourseNum
+        || np->currLevelNum  != gNetworkPlayerLocal->currLevelNum
+        || np->currAreaIndex != gNetworkPlayerLocal->currAreaIndex
+        || (compareAct && np->currActNum != gNetworkPlayerLocal->currActNum);
+}
+```
+
+Existing callers pass `compareAct = true` and keep today's behaviour: `is_player_active`
+(`src/game/obj_behaviors.c:552-557`) and `network_player_update_course_level`
+(`src/pc/network/network_player.c:475-478`).
+
+**One new predicate** for the player-to-player path, which passes
+`compareAct = !gLevelValues.crossActPlayers` and is otherwise identical to `is_player_active`.
+
+**Five call sites, and only five:**
+
+| where | line |
+|---|---|
+| `interact_player`, both bodies | `src/game/interaction.c:1447`, `:1454` |
+| `interact_player_pvp`, both bodies | `src/game/interaction.c:1481`, `:1482` |
+| `execute_mario_action`, the hide block's `levelAreaMismatch` | `src/game/mario.c:2012-2020` |
+| `network_receive_player` | `src/pc/network/packets/packet_player.c:265-270` |
+| `nametags_render` | `src/pc/nametags.c:70` |
+
+**One packet change.** `PACKET_PLAYER` is sent `PLMT_AREA` (`packet_player.c:234`), so
+`packet_process` (`src/pc/network/packets/packet.c:47-55`) drops it on an act mismatch before
+`network_receive_player` ever runs. Add a value to the `PacketLevelMatchType` enum
+(`packet.h:86-88`) that compares level and area but not act, give `struct Packet` the matching
+flag in `packet_init` (`packet_read_write.c`), and send `PACKET_PLAYER` with it when
+`gLevelValues.crossActPlayers` is set.
+
+### What must not change, and why the patch is safe because of it
+
+- **`is_player_active` itself keeps the act.** It has 55 callers and about forty are behaviours
+  choosing a target — `nearest_mario_state_to_object`, `is_point_within_radius_of_any_player`,
+  `cur_obj_is_any_player_on_platform`, `king_bobomb_nearest_mario_state`,
+  `eyerok_nearest_targetable_player_to_object` and the rest. Relaxing it globally would let a
+  Whomp in your act chase a player who cannot see it, and a platform in your act count a rider
+  who is not in its world.
+- **`get_network_player_from_area` keeps the act** (`network_player.c:129-142`), so each act
+  remains its own object-sync world and no client tries to sync objects the other does not have.
+- **Object, area, level and macro packets keep `PLMT_AREA` / `PLMT_LEVEL`.** Only the player
+  packet crosses.
+
+Two things already in the engine shrink the patch:
+
+- `mario_process_interactions` (`src/game/interaction.c:2377-2389`) already refuses every object
+  interaction for a remote player except `INTERACT_PLAYER` and `INTERACT_POLE`, so a cross-act
+  player cannot trigger your act's objects on your machine. No new guard is needed.
+- `is_player_active` returns early for `np->type == NPT_LOCAL` before any location test, and
+  `interact_player_pvp` is driven from the local player's own `mario_process_interactions`, so
+  only the victim's check actually has to be relaxed.
+
+### What a reviewer will ask
+
+- A remote player standing on a platform the local client does not have is simulated locally
+  against local collision between packets, and snapped back by each arriving packet
+  (`network_update_player` runs from `src/pc/network/network.c:590`). Expect jitter over
+  geometry the two clients disagree about. This is the thing to test first.
+- `resolve_player_collision` will let a player stand on another who is standing on nothing
+  visible.
+- `take_damage_and_knock_back` will knock a player into geometry that exists only for them.
+- The flag is per-client. Co-op DX enforces a common mod list, so both ends run the same mod,
+  but the pull request should say plainly that mismatched flags give one-directional behaviour.
+
+The argument for upstream: four copies of one comparison become one function, the new behaviour
+is off by default, and it makes a class of mod possible that cannot be written today.
+
+### What StarHunt becomes if the patch lands
+
+`round.lua:843` stays exactly as it is, warping to `goal.act`. No `disableActs`, no
+`actdata.lua`, no `world.lua`, no sweep, no suppression, no restore. One line at mod load sets
+`gLevelValues.crossActPlayers = true`; `players_have_private_variant`, both zone tests,
+`update_private_player_visibility` and the nametag blanking are deleted; and the fairness rule,
+if anyone wants one, is a per-pair comparison. Sections 4 through 12 of this document stop
+applying.
+
+## 14. Deliberately not done
 
 - **No volume table and no measured half-extents.** R-028 proposed axis-aligned boxes whose
   extents had to be measured in game. The generated table carries each object's identity and
