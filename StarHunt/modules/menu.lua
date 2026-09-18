@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - the /starhunt config menu.
+-- StarHunt v1.1.2 - the /starhunt config menu.
 --
 -- Six options for the host -- language, mode, difficulty, round length, status
 -- and the start/stop action -- and two for everyone else, who may change only
@@ -277,7 +277,7 @@ local function show_help()
 end
 
 SH.show_updates = function()
-    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1.1")
+    djui_chat_message_create("\\#FFE05A\\STAR\\#58D6FF\\HUNT \\#FFFFFF\\v1.1.2")
     djui_chat_message_create(translated(
         "ABOUT: A multiplayer challenge mod with four game modes.",
         "DE QUE TRATA: Un mod multijugador de desafios con cuatro modos."))
@@ -293,6 +293,9 @@ SH.show_updates = function()
     djui_chat_message_create(translated(
         "V1.1.1: Bowser's attacks stop while a player is holding him, including the throw.",
         "V1.1.1: Los ataques de Bowser se detienen mientras un jugador lo tiene agarrado, incluido el lanzamiento."))
+    djui_chat_message_create(translated(
+        "V1.1.2: Wet-Dry World and Dire, Dire Docks are one shared world regardless of a player's act, and a player hidden for an incompatible world no longer blocks or gets pushed.",
+        "V1.1.2: Wet-Dry World y Dire, Dire Docks son un solo mundo compartido sin importar el acto de cada jugador, y un jugador oculto por un mundo incompatible ya no bloquea ni empuja."))
 end
 
 local function starhunt_command(message)

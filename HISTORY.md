@@ -1318,7 +1318,7 @@ obligatorio, el mapa del código y la tabla de errores cuya solución no se debe
 
 ### Lo que se publicó, y su hash
 
-Dos entregas llegaron a los jugadores. El identificador de cada una se conserva aquí porque
+Tres entregas llegaron a los jugadores. El identificador de cada una se conserva aquí porque
 `PROJECT_STATUS.md`, que era donde vivía, se retiró el 17 de septiembre de 2026.
 
 - **v1.1**, del 30 de julio de 2026, un solo `main.lua`. SHA-256 del archivo publicado:
@@ -1327,6 +1327,9 @@ Dos entregas llegaron a los jugadores. El identificador de cada una se conserva 
   dejó de identificar al mod, así que el identificador es el SHA-256 de la lista ordenada de
   los hashes de todos los `.lua` bajo `StarHunt/`:
   `E4677DF5C91F14519C50D41AB4E548B89F1B1430ADCC5534121DC68C21024F53`.
+- **v1.1.2**, del 17 de septiembre de 2026, mismo formato de catorce archivos, con las tres
+  correcciones R-029, R-030 y R-031:
+  `2922C10DEAC4D27930713F74EA2983592698A352D0EEA5A361DD3EBBEAEE1B18`.
 
 El identificador se recalcula así:
 
@@ -1334,9 +1337,9 @@ El identificador se recalcula así:
 (cd StarHunt && find . -name '*.lua' | sort | xargs sha256sum | sha256sum)
 ```
 
-Las etiquetas `v1.1-monolithic`, `v1.1-modular` y `v1.1.1` marcan esos árboles en git. Los
-hashes intermedios que `PROJECT_STATUS.md` acumulaba — el árbol antes y después de cada
-corrección — no se conservaron: ninguno se publicó, y el comando de arriba los vuelve a
+Las etiquetas `v1.1-monolithic`, `v1.1-modular`, `v1.1.1` y `v1.1.2` marcan esos árboles en
+git. Los hashes intermedios que `PROJECT_STATUS.md` acumulaba — el árbol antes y después de
+cada corrección — no se conservaron: ninguno se publicó, y el comando de arriba los vuelve a
 calcular sobre el commit que interese.
 
 ### Cambios implementados en v1.1

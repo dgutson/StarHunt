@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - the HUD's text layer and the native HUD's visibility.
+-- StarHunt v1.1.2 - the HUD's text layer and the native HUD's visibility.
 --
 -- FONT_HUD has no colon: it renders ':' as an 'X'.  So no StarHunt text may
 -- reach djui_hud_print_text with a colon in it.  draw_hud_text splits the

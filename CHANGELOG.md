@@ -20,6 +20,23 @@ Easy, Normal, Hard y Nightmare son una configuración independiente del modo.
 Nightmare añade un modificador compatible adicional a cada modo y Boss conserva
 su configuración especial de vida.
 
+## v1.1.2 - 17 de septiembre de 2026
+
+Tres correcciones, y nada mas:
+
+- En Wet-Dry World los jugadores ya se ven, se tocan y pelean entre si aunque
+  tengan actos distintos.
+- En Dire, Dire Docks pasa lo mismo: se ven, se tocan y pelean entre si con
+  actos distintos.
+- Cuando el mod oculta a otro jugador porque su acto carga otra geometria,
+  ahora ademas se atraviesan; antes seguia siendo un cuerpo solido contra el
+  que chocar o pararse encima.
+
+El detalle de cada una esta abajo, en los tres puntos fechados 17 de
+septiembre dentro de los cambios de v1.1. **Nada mas cambia para el
+jugador**, y los numeros que viajan por la red siguen siendo los mismos que
+en v1.1 y v1.1.1.
+
 ## v1.1.1 - 16 de septiembre de 2026
 
 Primer paquete publicado desde que el mod dejo de ser un solo archivo. **Para

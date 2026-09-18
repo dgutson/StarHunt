@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - what the Boss round is made of.
+-- StarHunt v1.1.2 - what the Boss round is made of.
 --
 -- Three passes: the static data and the functions that read Bowser's health
 -- pool out of it; the readers the rest of the mod uses to ask about a Boss

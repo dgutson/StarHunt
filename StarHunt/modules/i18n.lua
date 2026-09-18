@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - the six UI languages.
+-- StarHunt v1.1.2 - the six UI languages.
 --
 -- SH.language is an index into SH.language_codes, persisted under
 -- "starhunt_v11_language" and migrated from the v1.0 down to v0.6 keys on first
@@ -53,6 +53,7 @@ SH.ui_translations = {
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFICULDADE: Fácil, Normal, Difícil ou Pesadelo se aplica independentemente a cada modo.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Modificadores pessoais no Chaos, extras no Pesadelo e botão Outro Nível no menu com espera de dois minutos.",
         ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Os ataques do Bowser param enquanto um jogador o segura, incluindo o arremesso.",
+        ["V1.1.2: Wet-Dry World and Dire, Dire Docks are one shared world regardless of a player's act, and a player hidden for an incompatible world no longer blocks or gets pushed."] = "V1.1.2: Wet-Dry World e Dire, Dire Docks são um único mundo compartilhado, independente do ato de cada jogador, e um jogador oculto por um mundo incompatível não bloqueia nem empurra mais.",
         ["ANOTHER LEVEL"] = "OUTRO NÍVEL", ["READY"] = "PRONTO",
         ["NORMAL/TEAM ONLY"] = "SÓ NORMAL/EQUIPES",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "OUTRO NÍVEL SÓ ESTÁ DISPONÍVEL EM NORMAL OU EQUIPES.",
@@ -83,6 +84,7 @@ SH.ui_translations = {
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFFICULTÉ : Facile, Normal, Difficile ou Cauchemar s'applique séparément à chaque mode.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1 : Modificateurs personnels en Chaos, extras en Cauchemar et bouton Autre niveau avec attente de deux minutes.",
         ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1 : Les attaques de Bowser s'arrêtent tant qu'un joueur le tient, y compris pendant le lancer.",
+        ["V1.1.2: Wet-Dry World and Dire, Dire Docks are one shared world regardless of a player's act, and a player hidden for an incompatible world no longer blocks or gets pushed."] = "V1.1.2 : Wet-Dry World et Dire, Dire Docks sont un seul monde partagé, quel que soit l'acte de chaque joueur, et un joueur caché pour un monde incompatible ne bloque ni ne pousse plus.",
         ["ANOTHER LEVEL"] = "AUTRE NIVEAU", ["READY"] = "PRÊT",
         ["NORMAL/TEAM ONLY"] = "NORMAL/ÉQUIPES SEULEMENT",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "UN AUTRE NIVEAU EST DISPONIBLE UNIQUEMENT EN NORMAL OU ÉQUIPES.",
@@ -113,6 +115,7 @@ SH.ui_translations = {
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "SCHWIERIGKEIT: Leicht, Normal, Schwer oder Albtraum gilt unabhängig für jeden Modus.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Persönliche Chaos-Modifikatoren, Albtraum-Extras und Anderes-Level-Knopf mit zwei Minuten Wartezeit.",
         ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Bowsers Angriffe stoppen, solange ein Spieler ihn hält, auch beim Wurf.",
+        ["V1.1.2: Wet-Dry World and Dire, Dire Docks are one shared world regardless of a player's act, and a player hidden for an incompatible world no longer blocks or gets pushed."] = "V1.1.2: Wet-Dry World und Dire, Dire Docks sind eine einzige gemeinsame Welt, unabhängig vom Akt jedes Spielers, und ein wegen einer inkompatiblen Welt versteckter Spieler blockiert oder stößt nicht mehr.",
         ["ANOTHER LEVEL"] = "ANDERES LEVEL", ["READY"] = "BEREIT",
         ["NORMAL/TEAM ONLY"] = "NUR NORMAL/TEAM",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "EIN ANDERES LEVEL IST NUR IN NORMAL ODER TEAM VERFÜGBAR.",
@@ -143,6 +146,7 @@ SH.ui_translations = {
         ["DIFFICULTY: Easy, Normal, Hard or Nightmare applies independently to every mode."] = "DIFFICOLTÀ: Facile, Normale, Difficile o Incubo si applica separatamente a ogni modalità.",
         ["V1.1: Personal Chaos modifiers, Nightmare extras and an in-game Another Level button with a two-minute cooldown."] = "V1.1: Modificatori personali in Chaos, extra in Incubo e pulsante Altro livello con attesa di due minuti.",
         ["V1.1.1: Bowser's attacks stop while a player is holding him, including the throw."] = "V1.1.1: Gli attacchi di Bowser si fermano mentre un giocatore lo tiene, incluso il lancio.",
+        ["V1.1.2: Wet-Dry World and Dire, Dire Docks are one shared world regardless of a player's act, and a player hidden for an incompatible world no longer blocks or gets pushed."] = "V1.1.2: Wet-Dry World e Dire, Dire Docks sono un unico mondo condiviso, indipendentemente dall'atto di ciascun giocatore, e un giocatore nascosto per un mondo incompatibile non blocca né spinge più.",
         ["ANOTHER LEVEL"] = "ALTRO LIVELLO", ["READY"] = "PRONTO",
         ["NORMAL/TEAM ONLY"] = "SOLO NORMAL/SQUADRE",
         ["ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM."] = "UN ALTRO LIVELLO È DISPONIBILE SOLO IN NORMAL O SQUADRE.",

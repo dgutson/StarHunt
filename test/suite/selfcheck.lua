@@ -20,7 +20,7 @@ return function(t, harness)
     -- Pinned rather than read back from the mod. A test that asks the catalog
     -- what the catalog contains agrees with it whatever it says.
     local SUCCESS_LINE =
-        "[StarHunt v1.1.1] 93 goals, 32 modifiers, 2976 audited pairs "
+        "[StarHunt v1.1.2] 93 goals, 32 modifiers, 2976 audited pairs "
         .. "(2222 approved, 754 rejected), and checks passed."
 
     -- The 32 kinds MODIFIER_KINDS accepts, written out so that dropping one
@@ -294,7 +294,7 @@ return function(t, harness)
         api.modifier_audit_counts.rejected = 93 * 33 - 2222
         local lines = run(api)
         t.eq(lines[1],
-            "[StarHunt v1.1.1] 93 goals, 32 modifiers, 3069 audited pairs "
+            "[StarHunt v1.1.2] 93 goals, 32 modifiers, 3069 audited pairs "
             .. "(2222 approved, 847 rejected), and checks passed.")
     end)
 
@@ -308,7 +308,7 @@ return function(t, harness)
         api.modifier_audit_counts.rejected = 753
         local lines = run(api)
         t.eq(lines[1],
-            "[StarHunt v1.1.1] 93 goals, 32 modifiers, 2976 audited pairs "
+            "[StarHunt v1.1.2] 93 goals, 32 modifiers, 2976 audited pairs "
             .. "(2223 approved, 753 rejected), and checks passed.")
     end)
 

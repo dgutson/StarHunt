@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - which of the 32 modifiers each of the 93 stars can survive.
+-- StarHunt v1.1.2 - which of the 32 modifiers each of the 93 stars can survive.
 --
 -- BALANCE_AUDIT.md describes the four stages audit_modifier() runs, in order:
 -- a button or ability the star requires may never be removed; a route that is
