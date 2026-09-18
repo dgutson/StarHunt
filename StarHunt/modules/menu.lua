@@ -6,11 +6,11 @@
 -- the language and read the status.  This is the only way to pick a mode, a
 -- difficulty or a length.
 --
--- The pause list is further down, under `PAUSE_ROWS`.  It has its own input
--- function because the game does not update Mario while it is paused, so the
--- hook `update_config_input` runs under never fires there; `update_pause_menu`
--- runs under HOOK_UPDATE instead, which fires every frame whatever the play
--- mode is.
+-- The pause list is further down, under `PAUSE_ROWS`.  It needs an input
+-- function of its own: the game does not update Mario while it is paused, so
+-- HOOK_BEFORE_MARIO_UPDATE, the hook `update_config_input` runs under, never
+-- fires there.  `update_pause_menu` runs under HOOK_UPDATE, which fires every
+-- frame whatever the play mode is.
 --
 -- `update_config_input` owns the controller while the menu is up.  It reads the
 -- buttons and the stick, then zeroes both before Mario's movement code can see
