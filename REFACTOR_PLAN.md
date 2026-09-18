@@ -483,8 +483,10 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   interpreter -- while `or 1` is caught, and the clamp itself is caught by the test that stores
   `-5`. The client half of the round loop added one more: `BOSS_LEVELS[... or -1]` is
   indistinguishable from `BOSS_LEVELS[... or 0]`, because `BOSS_LEVELS` is a one-entry Lua
-  array and no negative or zero index into it holds anything. **Leave all twenty-one exactly
-  as they are.**
+  array and no negative or zero index into it holds anything. `players_can_share_world` added
+  two: the `or 0` on each player's `sh5_goal` can be any value `GOALS` does not hold, so
+  `or -1` is indistinguishable from it -- `get_goal` is a plain `GOALS[id]` lookup and both
+  read as no goal. **Leave every one of them exactly as they are.**
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.

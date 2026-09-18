@@ -19,7 +19,7 @@ prevent.
 
 | name | removes | the case it must turn red |
 |---|---|---|
-| `r030` | the `INTERACT_PLAYER` branch of `on_allow_interact` | `hidden` |
+| `crossact` | the `core.enable_cross_act_players(gLevelValues)` call in `main.lua` | `split` |
 
 To add one: write the block into `<name>.txt`, then give `run.sh` the case it is expected to
 break, in the `WITHOUT_CASE` table beside the verdict block.

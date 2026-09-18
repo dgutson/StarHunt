@@ -172,6 +172,8 @@ local function install_engine()
     end
 
     gServerSettings.skipIntro = 0
+    -- The engine's own default for the field the mod asks about at load.
+    gLevelValues.crossActPlayers = 0
     gServerSettings.playerInteractions = 1
 
     -- functions the tests observe or steer ------------------------------------

@@ -62,7 +62,6 @@ local goals = require("goals")
 local GOALS = goals.GOALS
 local get_goal = goals.get_goal
 local get_local_goal = goals.get_local_goal
-local players_have_private_variant = goals.players_have_private_variant
 local NORMAL_MODIFIER_CATALOG = require("audit").NORMAL_MODIFIER_CATALOG
 local boss = require("boss")
 local BOSS_LEVELS = boss.BOSS_LEVELS
@@ -936,44 +935,6 @@ local function force_return_to_lobby(m)
     end
 end
 
-local function on_nametags_render(player_index, pos)
-    local index = tonumber(player_index)
-    if index ~= nil and index ~= 0 and is_round_active() and players_have_private_variant(0, index) then
-        return { name = "", pos = pos }
-    end
-end
-
-local function update_private_player_visibility()
-    for i = 1, MAX_PLAYERS - 1 do
-        local mario = gMarioStates[i]
-        local object = mario ~= nil and mario.marioObj or nil
-        local hide = gNetworkPlayers[i].connected and is_round_active()
-            and players_have_private_variant(0, i)
-        local tracked = local_runtime.hidden_players[i]
-        if tracked ~= nil and tracked.object ~= object then
-            local_runtime.hidden_players[i] = nil
-            tracked = nil
-        end
-        if object ~= nil and hide then
-            if tracked == nil then
-                tracked = {
-                    object = object,
-                    was_invisible = (object.header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0,
-                }
-                local_runtime.hidden_players[i] = tracked
-            end
-            object.header.gfx.node.flags = object.header.gfx.node.flags | GRAPH_RENDER_INVISIBLE
-        elseif object ~= nil and tracked ~= nil then
-            if not tracked.was_invisible then
-                object.header.gfx.node.flags = object.header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE
-            end
-            local_runtime.hidden_players[i] = nil
-        elseif not gNetworkPlayers[i].connected then
-            local_runtime.hidden_players[i] = nil
-        end
-    end
-end
-
 local function on_pause_exit(_)
     if is_round_active() then
         djui_popup_create(translated("FINISH THE ROUND OR ASK THE HOST TO STOP IT.", "TERMINA LA RONDA O PIDE AL HOST QUE LA DETENGA."), 1)
@@ -1082,8 +1043,6 @@ return {
     local_goal_warp_update = local_goal_warp_update,
     local_boss_warp_update = local_boss_warp_update,
     force_return_to_lobby = force_return_to_lobby,
-    on_nametags_render = on_nametags_render,
-    update_private_player_visibility = update_private_player_visibility,
     on_pause_exit = on_pause_exit,
     on_death = on_death,
     on_before_death_action = on_before_death_action,

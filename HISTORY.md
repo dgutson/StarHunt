@@ -13,6 +13,102 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-17 — R-028: two players in different acts of one course now fight each other
+
+Every player in a round is sent to a star of their own, so two players in one course hold
+different acts, and sm64coopdx severs any pair whose `currActNum` differ. `is_player_active`
+(`src/game/obj_behaviors.c`) answers false; `interact_player` and `interact_player_pvp` ask it
+about both bodies before anything else; `execute_mario_action` (`src/game/mario.c`) fades the
+remote Mario out over sixteen frames, hides it and returns; `network_receive_player`
+(`packet_player.c`) drops the position packet and marks the position invalid; `nametags_render`
+skips the tag. All of it sits upstream of every Lua hook, and `currActNum` is read-only from
+Lua, so the fair fight this item asks for cannot be built inside the mod.
+
+What the item originally proposed — a per-level table of axis-aligned volumes plus a silhouette
+— therefore could not deliver its own Outcome. `ACT_GEOMETRY_PLAN.md` carries the engine
+references that settle that, and also the design that does work on the published game:
+`gLevelValues.disableActs` to spawn every act's objects and per-client suppression of the ones
+outside the local act. That design is not what was built, and the document keeps it because it
+is the route to take if the engine change is never accepted upstream.
+
+**The engine change was built instead.** `dgutson/sm64coopdx`, branch
+`feature/cross-act-players`, forked from `coop-deluxe/sm64coopdx`: one commit adding
+`u8 crossActPlayers` to `struct LevelValues`, FALSE by default. While it is set,
+
+- `is_player_active_cross_act` asks the same four-field location question without the act, and
+  replaces `is_player_active` at the seven player-to-player sites: `interact_player` for both
+  bodies, `interact_player_pvp` for both, the knockback scaler in `determine_knockback_action`,
+  both gates in `mario_process_interactions`, and `nametags_render`. `is_player_active` itself
+  keeps the act, because its other callers are behaviours choosing a target — a Whomp must not
+  chase a player who is not in its world.
+- `execute_mario_action` and `network_receive_player` leave the act out of their own copies of
+  that comparison.
+- `PACKET_PLAYER` goes out under a new match type, `PLMT_AREA_ANY_ACT`, carried in bit 4 of the
+  packet flag byte, so neither the server's relay (`network.c`) nor `packet_process` drops it.
+  Every other packet type keeps the act in its match, and `get_network_player_from_area` keeps
+  it too, so each act stays its own object-sync world and each client still loads and spawns
+  its own act.
+
+On the mod side the isolation is gone: `players_have_private_variant`, `is_jrb_ship_zone`,
+`is_wf_tower_zone`, `update_private_player_visibility`, the nametag blanking,
+`local_runtime.hidden_players`, `player_index_of_body` and R-030's `INTERACT_PLAYER` refusal,
+with the `Privacidad/PvP` row of the code map and R-030's do-not-undo entry replaced by one
+that says the act is never a reason to separate two players. `enable_cross_act_players`
+(`modules/core.lua`) is all that replaces them: it walks `gLevelValues`' own field list and
+sets `crossActPlayers` only where the build has it, because writing a field a build does not
+have prints a Lua error and changes nothing. `players_can_share_world` kept its question —
+same round, same course, same area — and lost its call to the deleted predicate; the PvP rule
+in `modules/team.lua` reads it, and that is what lets the damage land.
+
+**Measured against the patched build.** Two players in Tick Tock Clock, one standing in act 6
+and one in act 1, were pushed apart by the engine: `their_pos_valid=true`, `collided=true`,
+drift 34.4 and 31.5 units to a final distance of 76.0, with `active_them=0` and
+`active_them_cross_act=1` on both clients. With
+`core.enable_cross_act_players(gLevelValues)` removed from each instance's copy of the mod
+(`test/live/run.sh --without crossact`) the same case reports `their_pos_valid=false`,
+`collided=false` and zero drift, so the harness can still go red; the `r030` removal retired
+with the branch it took out. Offline: 776 tests pass, luacheck reports its two expected
+warnings, lua-language-server its ten expected problems in `save.lua` and `test/harness.lua`.
+The sweep over the new and changed lines caught 34 of 37 and 4 of 4, and the two that survive
+are equivalent mutants recorded in `REFACTOR_PLAN.md`.
+
+**Tick Tock Clock needed no constraint on goal dealing.** `gTTCSpeedSetting` travels in the
+level packet, but a client only ever asks for level state from a player whose act matches:
+`packet_change_level.c` and `packet_change_area.c` both call
+`get_network_player_from_area(courseNum, actNum, ...)`, which this change deliberately leaves
+alone. Each act therefore keeps its own clock speed, and the symmetric rule
+`ACT_GEOMETRY_PLAN.md` proposed for the one-shared-instance design does not apply to this one.
+
+**What the two clients disagree about, measured.** The live harness gained a case for the one
+cost this design has, and a measurement to go with it. Every case now reports a `jitter` line:
+each client publishes where its own player actually is through the sync table — the only
+channel that crosses acts, since `PACKET_PLAYER` is the thing under test — and compares that
+against the body it is simulating for the other player, which between packets runs the remote
+Mario's own action against the local client's collision and is snapped back by
+`network_receive_player` when a packet arrives.
+
+Over ground the two clients agree about, the difference is nothing worth a number: `split`,
+`shared` and `wdw` report `error_max=0.0` with no direction changes, and `ddd`, whose pair sinks
+through water together, 1.2 units. A position packet lands every frame on the loopback. The new `hull` case puts one player on the deck of the Jolly
+Roger Bay ship that exists only in acts 2 to 6 (`bhvInSunkenShip3`, whose collision comes from
+the ROM, so the deck is searched for by behaviour rather than assumed) while the other holds the
+act 1 goal, where it was never spawned. Both clients then report a floor about 6,655 units apart
+under that body, and the act-1 client's copy of it oscillates — 25 direction changes in 50
+frames, up to 24 units from where its owner says it is. The other direction is coarser: the
+act-4 client lands the falling player on its deck and is pulled back down by each packet, a
+single-frame step of 295 units.
+
+So the jitter is real, it is confined to the geometry the two acts disagree about, and on a
+loopback it is about 24 units. **A real session will be worse in proportion to its latency**,
+since the divergence is a fall between corrections: three frames each way instead of one leaves
+several times as long to fall. That is an estimate, not a measurement — nothing here has run
+over a real connection. `test/live/README.md` records how to put delay on the loopback with
+`tc netem` to see the shape without two machines.
+
+**Not covered:** a real multiplayer session. What a player sees when the other stands on
+geometry they do not have — Jolly Roger Bay's raised hull, a Tick Tock Clock platform the other
+client has stopped — is exactly what three headless processes on one machine cannot show.
+
 ### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
 
 `players_have_private_variant` hid two players from each other, and refused the contact between

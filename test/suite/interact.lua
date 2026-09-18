@@ -434,12 +434,10 @@ return function(t, harness)
         local rt = api.runtime
         rt.hidden_stars = { [1] = true }
         rt.rejected_stars = { [1] = true }
-        rt.hidden_players = { [1] = true }
         rt.star_visibility_next = 500
         api.reset_hidden_objects()
         t.is_nil(next(rt.hidden_stars), "hidden stars survived a level change")
         t.is_nil(next(rt.rejected_stars), "rejected stars survived a level change")
-        t.is_nil(next(rt.hidden_players), "hidden players survived a level change")
         t.eq(rt.star_visibility_next, 0, "the visibility throttle was not released")
     end)
 

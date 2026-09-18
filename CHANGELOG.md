@@ -20,6 +20,21 @@ Easy, Normal, Hard y Nightmare son una configuración independiente del modo.
 Nightmare añade un modificador compatible adicional a cada modo y Boss conserva
 su configuración especial de vida.
 
+## Sin publicar
+
+Esto no esta en ningun paquete todavia, y **necesita una version parcheada del
+juego**: el sm64coopdx publicado descarta todo contacto entre dos jugadores con
+actos distintos antes de que el mod pueda opinar, asi que sobre el juego
+publicado el mod se comporta igual que en v1.1.2. La rama que lo permite es
+`feature/cross-act-players` en `github.com/dgutson/sm64coopdx`; agrega un solo
+campo y viene apagada de fabrica.
+
+- Dos jugadores que estan en el mismo curso con estrellas de actos distintos se
+  ven, se empujan y se pegan, y cada uno sigue teniendo los objetos de su propio
+  acto: el barco hundido de Jolly Roger Bay para quien juega el acto 1, el
+  levantado para quien juega otro. El mod ya no esconde a nadie por su acto ni
+  le quita el cuerpo.
+
 ## v1.1.2 - 17 de septiembre de 2026
 
 Tres correcciones, y nada mas:

@@ -33,6 +33,11 @@ loading, the module `require` graph. A change is verified when each check holds 
 | 4 | types | `lua-language-server --check /home/dfg/src/StarHunt_v1.1 --checklevel=Warning --logpath=/tmp/lls-log` | only the reports named below, all in two files | ~15s |
 | 5 | live | `test/live/run.sh` | `PASSED`, and a verdict from both players for every case | ~1 min |
 
+The live harness needs a game built from `dgutson/sm64coopdx`, branch
+`feature/cross-act-players`: the mod asks for `gLevelValues.crossActPlayers` and the probe calls
+`is_player_active_cross_act`, and neither exists in the published game. `test/live/README.md`
+has the clone and build lines.
+
 **Anything a run reports that this file does not account for is a regression**, and so is a
 check that reports less than it should — a suite that stops loading, a live case that prints
 no verdict. Quote what the run printed in the pull request. A change that adds or moves code
@@ -137,6 +142,23 @@ Both checkers read the generated API under `~/.local/share/sm64coopdx/`, so a ga
 from a newer upstream needs this before either check means anything. Read
 `references/engine-api.md` only if the refresh does not settle it.
 
+**That script downloads the definitions from `coop-deluxe/sm64coopdx` and therefore drops the
+engine change this mod targets**, which shows up as `Undefined field crossActPlayers` in
+`modules/core.lua`. Until that change is upstream, take the definitions from the local
+checkout of the fork instead:
+
+```bash
+cd ~/.local/share/sm64coopdx
+for f in constants functions manual structs; do
+    cp ~/src/sm64coopdx/autogen/lua_definitions/$f.lua definitions/$f.lua
+done
+python3 gen_configs.py
+```
+
+Regenerate them from that checkout after any engine change, with
+`python3 ~/src/sm64coopdx/autogen/convert_structs.py` and `convert_functions.py` run from the
+checkout root — both are idempotent, so a clean tree produces no diff.
+
 `selene` is installed and cannot be used here: its 0.31.0 Linux release compiles only the
 `lua51` and `luau` grammars, so it cannot parse this project's 5.4 syntax. Do not add a
 `selene.toml`.
@@ -146,7 +168,7 @@ from a newer upstream needs this before either check means anything. Read
 ```bash
 test/live/run.sh --load-only     # one instance: does the mod load, do the modules resolve (~40s)
 test/live/run.sh                 # a referee and two players: the collision cases (~1 min)
-test/live/run.sh --without r030  # prove the run can go red; must exit 0
+test/live/run.sh --without crossact  # prove the run can go red; must exit 0
 ```
 
 Exit 0 is a pass, 1 a failure, 2 a missing game or ROM. It prints every `PROBE` line and
@@ -154,10 +176,13 @@ names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `
 `PAIR_DELAY` and `WORK` override the binary, the ROM, the port, the deadline, the two join
 delays and the scratch directory; on this machine the defaults are already right.
 
-A full run ends with `PASSED:` and one `PROBE verdict` line per player per case:
-`split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false`,
-`ddd passed_through=false` and `wdw passed_through=false`. Both players also print a
-`PROBE saveflags` line, and the two must carry the same `ddd_gate` value. `run.sh` waits for
+A full run ends with `PASSED:` and one `PROBE verdict` line per player per case. Every case
+reports `passed_through=false` — the engine pushed the two bodies apart — except `hull`, which
+reports `floor_gap` and must have both clients above 500, because the player standing on a deck
+the other client never spawned is measured for disagreement rather than for a push. Both players
+also print a `PROBE saveflags` line, and the two must carry the same `ddd_gate` value, and a
+`PROBE jitter` line per case, which is a measurement rather than a verdict:
+`references/live-harness.md` says what its fields mean and why a loopback understates them. `run.sh` waits for
 the referee's `PROBE end role=server`, which it prints once every player has reported every
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.
@@ -165,13 +190,13 @@ block in `run.sh` runs, prints its verdict and is never judged.
 ### Before citing a green run as evidence
 
 ```bash
-test/live/run.sh --without r030
+test/live/run.sh --without crossact
 ```
 
 A harness that stays green with the fix removed is worse than none, because it gets quoted.
-This removes the `INTERACT_PLAYER` branch of `on_allow_interact` in `modules/goals.lua` and
-inverts the run: it requires the `hidden` case to go red while the control still holds, so
-exit 0 means the removal was noticed.
+This removes `core.enable_cross_act_players(gLevelValues)` from `main.lua` and inverts the run:
+it requires the `split` case to go red while the control still holds, so exit 0 means the
+removal was noticed.
 
 **Never edit `StarHunt/` by hand to do this.** `run.sh` applies the removal to each
 instance's own copy of the mod, after the copy and before the game starts, so the working

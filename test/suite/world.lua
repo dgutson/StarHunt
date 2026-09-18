@@ -1,10 +1,11 @@
 -- Who shares a world with whom.
 --
--- Two players in one level on different acts can be standing in geometry that
--- does not agree, and the mod hides them from each other and blocks PvP where
--- it does. Both answers feed visibility, nametags and whether damage lands, and
--- extracting them into modules/goals.lua found the whole area untested -- the
--- functions were published to STARHUNT_TEST_API and then never used.
+-- Two players in one course are sent to different stars, so they load different
+-- acts. The engine decides whether they can see, collide with and damage each
+-- other; the mod's part is to ask sm64coopdx to leave the act out of that
+-- decision, and then to leave the pair alone. What is left here is the rest of
+-- the same-place question -- the round, the level, the area -- and the proof
+-- that no act is treated as a reason to separate two players.
 
 return function(t, harness)
     local s = t.suite("world")
@@ -33,19 +34,26 @@ return function(t, harness)
         ctl.begin_round(api, mode or api.normal_mode, api.medium)
     end
 
-    --- The Mario object the engine hands the interaction hook for a body.
-    -- The engine stamps the owner onto the object every frame, and the mod
-    -- reads that field rather than walking the player list, so the fixture has
-    -- to carry it too.
-    local function body_of(index)
-        if gMarioStates[index].marioObj == nil then
-            -- A stub stands in for the engine's Object, as everywhere else in
-            -- test/: only the one field the mod reads off it is real.
-            --- @diagnostic disable-next-line: missing-fields
-            gMarioStates[index].marioObj = { globalPlayerIndex = gNetworkPlayers[index].globalIndex }
-        end
-        return gMarioStates[index].marioObj
-    end
+    -- -----------------------------------------------------------------------
+    -- Asking the engine to ignore the act
+    -- -----------------------------------------------------------------------
+
+    s.test("the mod asks the engine to let acts meet", function()
+        harness.load()
+        t.eq(gLevelValues.crossActPlayers, 1,
+            "the mod did not set crossActPlayers on a build that has it")
+    end)
+
+    s.test("a build without the field is left alone", function()
+        local api = harness.load()
+        local plain = {}
+        api.enable_cross_act_players(plain)
+        t.is_nil(next(plain), "wrote a field the engine does not have")
+    end)
+
+    -- -----------------------------------------------------------------------
+    -- The same-place question
+    -- -----------------------------------------------------------------------
 
     s.test("nobody shares a world outside a round", function()
         local api, ctl = fresh()
@@ -56,8 +64,8 @@ return function(t, harness)
     end)
 
     s.test("a player never shares a world with themselves", function()
-        -- Self-comparison reaching the geometry rules would let a player block
-        -- their own visibility, and makes every caller loop over itself.
+        -- Self-comparison makes every caller loop over itself, and a player who
+        -- shares a world with themselves can be refused their own contact.
         local api, ctl = fresh()
         place(api, ctl, LEVEL_BOB, 1, 1)
         t.ok(not api.players_can_share_world(0, 0), "player 0 shared a world with player 0")
@@ -67,7 +75,6 @@ return function(t, harness)
         local api, ctl = fresh()
         place(api, ctl, LEVEL_BOB, 1, 1)
         t.ok(api.players_can_share_world(0, 1), "two players on one star did not share")
-        t.ok(not api.players_have_private_variant(0, 1), "one star reported a private variant")
     end)
 
     s.test("a different level or a different area is never shared", function()
@@ -106,175 +113,144 @@ return function(t, harness)
             "a player in Bob-omb Battlefield shared a world with one in Cool, Cool Mountain")
     end)
 
-    s.test("Tick Tock Clock isolates act 6 from the acts that keep running", function()
-        -- Act 6 stops the clock; the others run it. Those object states cannot
-        -- share one simulation anywhere in the course.
+    -- -----------------------------------------------------------------------
+    -- The act is not a reason to separate anybody
+    -- -----------------------------------------------------------------------
+
+    s.test("two players in one course share a world whatever acts they hold", function()
+        -- Each course here was once isolated by a rule of its own, and each
+        -- rule is now the engine's job: the two players load different acts,
+        -- keep their own act's objects, and meet anyway.
+        --
+        --   TTC -- act 6 stops the clock while the other acts run it.
+        --   JRB -- the sunken hull sits at y = -5520 in act 1 and the raised
+        --          one at y = +820 in acts 2-6.
+        --   WF  -- the tower and its platforms exist from act 2 onward.
+        --   BBH -- the hidden staircase steps exist from act 2 onward.
+        --   DDD -- only the manta ray is act-gated. The submarine, its door and
+        --          the nine poles read SAVE_FLAG_HAVE_KEY_2 |
+        --          SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR (ddd_sub.inc.c:4,
+        --          ddd_pole.inc.c:3) out of a save file every client is handed.
+        --   WDW -- every object in both areas of levels/wdw/script.c is
+        --          ALL_ACTS, and the water level is not derived from the act.
         local api, ctl = fresh()
-        place(api, ctl, LEVEL_TTC, 6, 1)
-        t.ok(api.players_have_private_variant(0, 1), "act 6 shared a world with act 1")
-        t.ok(not api.players_can_share_world(0, 1), "act 6 was visible to act 1")
-
-        place(api, ctl, LEVEL_TTC, 1, 2)
-        t.ok(not api.players_have_private_variant(0, 1),
-            "two running-clock acts were isolated from each other")
-    end)
-
-    s.test("Wet-Dry World is one world for every act", function()
-        -- Nothing in Wet-Dry World is act-gated: every object in both areas of
-        -- levels/wdw/script.c is ALL_ACTS, and no data under levels/wdw/ reads
-        -- the act at all. The water level is the one state that can differ
-        -- between two clients, and the act is not what decides it --
-        -- geo_wdw_set_initial_water_level (moving_texture.c:305) derives it
-        -- from gPaintingMarioYEntry, written only when a player enters through
-        -- a painting (paintings.c:632), so a direct warp leaves whatever value
-        -- that client happened to hold. Every pair that can meet has been
-        -- handed the same level anyway: is_player_active
-        -- (obj_behaviors.c:542-559) refuses a remote player whose course, act,
-        -- level or area differs, the engine's area sync matches on those same
-        -- four fields (network_player.c:129-142), and the area packet carries
-        -- gEnvironmentLevels[0], copied into gEnvironmentRegions[6] for WDW
-        -- (packet_area.c:52, :155-157).
-        local api, ctl = fresh()
-        place(api, ctl, LEVEL_WDW, 1, 4)
-        t.ok(not api.players_have_private_variant(0, 1),
-            "two WDW acts were isolated from each other")
-        t.ok(api.players_can_share_world(0, 1),
-            "two WDW acts standing together could not see each other")
-
-        -- A zone belongs to the level whose rule names it and must not be
-        -- reached from another course. These two positions sit inside the boxes
-        -- is_wf_tower_zone and is_jrb_ship_zone test.
-        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 2000, z = 0 } end
-        t.ok(api.players_can_share_world(0, 1),
-            "two WDW acts were isolated by Whomp's tower zone")
-        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 0, z = -2000 } end
-        t.ok(api.players_can_share_world(0, 1),
-            "two WDW acts were isolated by the Jolly Roger Bay ship zone")
-
-        -- Downtown is area 2, with its own water level and its own diamonds.
-        for i = 0, 1 do gNetworkPlayers[i].currAreaIndex = 2 end
-        t.ok(api.players_can_share_world(0, 1),
-            "two WDW acts were isolated in downtown")
-    end)
-
-    s.test("Dire Dire Docks is one world for every act", function()
-        -- The manta ray is the only act-gated object in the course
-        -- (levels/ddd/script.c:31). The submarine and the nine poles come and go
-        -- on SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR
-        -- (ddd_sub.inc.c:4, ddd_pole.inc.c:3), and every client reads the host's
-        -- save file, so the geometry is the same for everybody whatever act they
-        -- were sent to.
-        local api, ctl = fresh()
-        place(api, ctl, LEVEL_DDD, 1, 3)
-        -- The submarine, its door and the poles are all in area 2.
-        for i = 0, 1 do
-            gNetworkPlayers[i].currAreaIndex = 2
-            body_of(i)
+        for _, course in ipairs({
+            { level = LEVEL_TTC, acts = { 6, 1 } },
+            { level = LEVEL_JRB, acts = { 1, 4 } },
+            { level = LEVEL_WF,  acts = { 1, 2 } },
+            { level = LEVEL_BBH, acts = { 1, 2 } },
+            { level = LEVEL_DDD, acts = { 1, 3 } },
+            { level = LEVEL_WDW, acts = { 1, 4 } },
+        }) do
+            place(api, ctl, course.level, course.acts[1], course.acts[2])
+            t.ok(api.players_can_share_world(0, 1),
+                "level " .. course.level .. " separated acts "
+                .. course.acts[1] .. " and " .. course.acts[2])
         end
-        t.ok(not api.players_have_private_variant(0, 1),
-            "two DDD acts were isolated where the submarine sits")
-        t.ok(api.players_can_share_world(0, 1),
-            "two DDD acts standing together could not see each other")
-
-        for i = 0, 1 do gMarioStates[i].pos = { x = 5760, y = 1005, z = 360 } end
-        t.ok(api.players_can_share_world(0, 1),
-            "two DDD acts were isolated at the outermost pole")
-
-        -- Deep water in DDD, and also inside the box is_jrb_ship_zone tests.
-        -- A zone belongs to the level whose rule names it and must not be
-        -- reached from another course.
-        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = -2000, z = -2000 } end
-        t.ok(api.players_can_share_world(0, 1),
-            "two DDD acts were isolated by another level's zone")
     end)
 
-    s.test("Jolly Roger Bay is private only around the ship", function()
-        -- The two ship layouts conflict, but the rest of the bay does not, so
-        -- players stay visible until one of them reaches the ship.
+    s.test("where the two players stand makes no difference", function()
+        -- The separation that used to exist was decided by position: boxes
+        -- around Whomp's tower and the Jolly Roger Bay ship, and any interior
+        -- room in Big Boo's Haunt. Nothing reads a player's position to answer
+        -- this question any more, and these are the places it used to.
         local api, ctl = fresh()
         place(api, ctl, LEVEL_JRB, 1, 4)
-        for i = 0, 1 do gMarioStates[i].pos = { x = 0, y = 0, z = 5000 } end
-        t.ok(not api.players_have_private_variant(0, 1),
-            "two JRB acts were isolated away from the ship")
+        for _, spot in ipairs({
+            { x = 5385, y = -5520, z = 2428 },   -- the sunken hull, act 1
+            { x = 4880, y = 820,   z = 2375 },   -- the raised hull, acts 2-6
+            { x = 0,    y = 2000,  z = 0 },      -- above Whomp's tower height
+            { x = 0,    y = 0,     z = -2000 },
+        }) do
+            for i = 0, 1 do gMarioStates[i].pos = spot end
+            t.ok(api.players_can_share_world(0, 1),
+                "two acts were separated at " .. spot.x .. "," .. spot.y .. "," .. spot.z)
+        end
 
-        gMarioStates[1].pos = { x = 0, y = 0, z = -2000 }   -- inside the ship region
-        t.ok(api.players_have_private_variant(0, 1),
-            "a player reached the conflicting ship layout and stayed visible")
+        place(api, ctl, LEVEL_BBH, 1, 2)
+        for i = 0, 1 do gMarioStates[i].currentRoom = 3 end
+        t.ok(api.players_can_share_world(0, 1),
+            "two acts were separated inside Big Boo's Haunt")
     end)
 
-    s.test("Team and Chaos share a world wherever the players actually meet", function()
+    s.test("Team and Chaos ask where the players are, not what they were sent to get", function()
         -- Both are PvP races rather than parallel runs: if two players are
-        -- standing in the same place they fight, whatever acts they were sent
-        -- for. The per-act geometry rules are skipped entirely.
+        -- standing in the same place they fight, whatever they were sent to
+        -- collect. That is a branch of its own, and the goal a player holds is
+        -- what tells it apart from the Normal-mode answer below it -- these two
+        -- hold stars in different courses, which Normal mode refuses.
         local api, ctl = fresh()
+        local ccm
+        for id, goal in ipairs(api.goals) do
+            if goal.level == LEVEL_CCM and goal.act == 1 then ccm = id end
+        end
         for _, mode in ipairs({ api.team_mode, api.chaos_mode }) do
             place(api, ctl, LEVEL_TTC, 6, 1, mode)
             t.ok(api.players_can_share_world(0, 1),
-                "mode " .. mode .. " isolated two players in the same place")
-            -- Asked directly, too: visibility and nametags call this one rather
-            -- than going through players_can_share_world, so the Team/Chaos
-            -- exemption has to live in both or players vanish mid-fight.
-            t.ok(not api.players_have_private_variant(0, 1),
-                "mode " .. mode .. " reported a private variant for two players "
-                .. "standing together")
+                "mode " .. mode .. " separated two players in the same place")
+
+            gPlayerSyncTable[1].sh5_goal = ccm
+            t.ok(api.players_can_share_world(0, 1),
+                "mode " .. mode .. " read the goals instead of where the players stand")
+
+            gNetworkPlayers[1].currLevelNum = LEVEL_CCM
+            t.ok(not api.players_can_share_world(0, 1),
+                "mode " .. mode .. " shared a world across two levels")
+
+            place(api, ctl, LEVEL_TTC, 6, 1, mode)
             gNetworkPlayers[1].currAreaIndex = 2
             t.ok(not api.players_can_share_world(0, 1),
                 "mode " .. mode .. " shared a world across two areas")
+
+            place(api, ctl, LEVEL_TTC, 6, 1, mode)
+            gNetworkPlayers[1].connected = false
+            t.ok(not api.players_can_share_world(0, 1),
+                "mode " .. mode .. " shared a world with a player who had left")
+            gNetworkPlayers[1].connected = true
         end
     end)
 
-    s.test("a player hidden for an incompatible world is not a body to walk into", function()
-        -- Hiding the model was only half of it. interact_player is the engine's
-        -- one route into resolve_player_collision, so until the interaction was
-        -- refused the hidden player stayed an invisible wall to bump into and
-        -- stand on.
+    s.test("a player with no goal yet shares a world with nobody", function()
+        -- A player who joins mid-round holds no goal until the host deals one,
+        -- and the absent goal reads as goal 0, which is not a star.
         local api, ctl = fresh()
-        place(api, ctl, LEVEL_TTC, 6, 1)
-        t.ok(api.players_have_private_variant(0, 1), "the fixture stopped being a private pair")
-        t.ok(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER) == false,
-            "walked into a player the mod had hidden")
-        -- Both directions: the engine moves whichever player it is processing,
-        -- and a remote body landing on the local one squishes it, so the same
-        -- contact has to be refused when the remote player is the one asking.
-        t.ok(api.allow_interact(gMarioStates[1], body_of(0), INTERACT_PLAYER) == false,
-            "a hidden player walked into the local one")
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        gPlayerSyncTable[1].sh5_goal = nil
+        t.ok(not api.players_can_share_world(0, 1),
+            "the other player having no goal was not enough to separate them")
+
+        -- Each side on its own: whichever of the two is missing a goal, the
+        -- answer is no, and a fixture that drops both at once cannot tell the
+        -- two reads apart.
+        place(api, ctl, LEVEL_BOB, 1, 1)
+        gPlayerSyncTable[0].sh5_goal = nil
+        t.ok(not api.players_can_share_world(0, 1),
+            "this player having no goal was not enough to separate them")
     end)
 
-    s.test("players who share a world still touch each other", function()
-        -- The refusal is not a blanket one: two players the mod has not hidden
-        -- from each other keep the ordinary bumping, standing and PvP contact.
-        local api, ctl = fresh()
-        place(api, ctl, LEVEL_TTC, 1, 2)
-        t.ok(not api.players_have_private_variant(0, 1), "the fixture became a private pair")
-        t.ne(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER), false,
-            "two players on compatible acts were made intangible to each other")
-    end)
+    -- -----------------------------------------------------------------------
+    -- Damage
+    -- -----------------------------------------------------------------------
 
-    s.test("bodies stop passing through each other when the round ends", function()
+    s.test("two players on different acts may hit each other", function()
+        -- The engine asks this hook before it lets one player's attack land on
+        -- another. Both directions: either of them may be the attacker.
         local api, ctl = fresh()
         place(api, ctl, LEVEL_TTC, 6, 1)
-        gGlobalSyncTable.sh5_active = 0
-        t.ne(api.allow_interact(gMarioStates[0], body_of(1), INTERACT_PLAYER), false,
-            "the private-world rule outlived the round it belongs to")
+        t.ok(api.allow_pvp_attack(gMarioStates[0], gMarioStates[1], 0),
+            "an attack on a player from another act was refused")
+        t.ok(api.allow_pvp_attack(gMarioStates[1], gMarioStates[0], 0),
+            "an attack by a player from another act was refused")
     end)
 
-    s.test("an object that is nobody's body is left alone", function()
-        -- The hook answers for whatever object carries the flag, and the owner
-        -- field it reads is 0 on every ordinary object, so an object that is
-        -- not a player's body would otherwise read as the host's and be refused
-        -- on the hidden player's behalf.
+    s.test("two players in different courses still may not hit each other", function()
+        -- Each of them is standing in their own goal's course, which is the
+        -- ordinary shape of a round. Whatever the engine now allows between
+        -- acts, two players who are not in one place do not fight.
         local api, ctl = fresh()
         place(api, ctl, LEVEL_TTC, 6, 1)
-        body_of(0)
-        body_of(1)
-        t.ne(api.allow_interact(gMarioStates[1], { globalPlayerIndex = 0 }, INTERACT_PLAYER), false,
-            "an object carrying player 0's owner index but not player 0's body was refused")
-        t.ne(api.allow_interact(gMarioStates[0], {}, INTERACT_PLAYER), false,
-            "an object belonging to no player was refused")
-        -- The engine never hands the hook a missing object, but the mod's own
-        -- callers do, and reading a field off it would be a crash rather than a
-        -- refusal.
-        t.ne(api.allow_interact(gMarioStates[0], nil, INTERACT_PLAYER), false,
-            "a missing object was refused")
+        gNetworkPlayers[1].currAreaIndex = 2
+        t.ok(not api.allow_pvp_attack(gMarioStates[0], gMarioStates[1], 0),
+            "an attack landed across two areas")
     end)
 end

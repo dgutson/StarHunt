@@ -54,28 +54,34 @@ between the two clients. The server still runs StarHunt as the host: it picks th
 
 ## What each case measures
 
-`split`, `hidden` and `shared` are played in Tick Tock Clock, `ddd` in Dire Dire Docks and
+`split` and `shared` are played in Tick Tock Clock, `ddd` in Dire Dire Docks and
 `wdw` in Wet-Dry World. Every goal used is cap-free deliberately — a vanish cap makes `interact_player` return before it reaches
 `resolve_player_collision`, which would pass for the wrong reason.
 
 - **split** — the two players hold goals for different acts and each stands in its own act,
-  which is what an ordinary round produces. It **tests nothing the mod does**: a player's goal
-  act becomes its `currActNum`, and `is_player_active` rejects a remote player whose course,
-  act, level or area differs, so the engine refuses the contact by itself. The run records
-  that rather than claiming credit for it.
-- **hidden** — the same goals, but the second player warps itself back into the other's act
-  without its goal changing. Both acts now agree, so the engine is willing, while
-  `players_have_private_variant` still calls the pair private because it reads the assigned
-  goals rather than the loaded act. R-030's branch in `on_allow_interact` is then the only
-  thing between the two bodies. **This is the only case that says anything about StarHunt and
-  the only one that can fail.** It is a real state, not a contrivance: `NEXT_GOAL_DELAY` is 90
-  frames, so a player just given a different act of the level it is standing in sits there for
-  three seconds.
-- **shared** — both players hold the same goal, so the predicate is false, the mod leaves the
-  contact alone and the engine must push them apart to about 74. **This is the control.** If
-  it fails, nothing else in the run means anything.
-- **ddd** — two Dire Dire Docks goals on different acts, the second player standing in the
-  first's act as in `hidden`. The predicate must answer **false** here: only the manta ray is
+  which is what an ordinary round produces, and the engine must push them apart to about 74. A
+  player's goal act becomes its `currActNum`, and the published game's `is_player_active`
+  rejects a remote player whose act differs, so this case passes only where the engine has been
+  asked to leave the act out of its player-to-player tests — `gLevelValues.crossActPlayers`,
+  set by the mod at load. **This is the case that fails when that request is removed**, and the
+  gates line shows why: `active_them=0` with `active_them_cross_act=1` is the shape of a pair
+  the behaviours still treat as elsewhere while the collision, attack and nametag paths do not.
+  It is also the worst arrangement in the course, since act 6 stops the clock while act 1 runs
+  it, so the two clients disagree about where every moving platform is.
+- **shared** — both players hold the same goal, so they are in one act and the engine pushes
+  them apart with or without that request. **This is the control.** If it fails, nothing else
+  in the run means anything.
+- **hull** — the disagreement rather than the contact. The anchor holds the Jolly Roger Bay
+  act 4 goal and drops onto the deck of the ship that exists only in acts 2 to 6; the other
+  holds the act 1 goal, where it was never spawned. Neither re-warps, so the pair stays
+  cross-act. The landing is accepted only on `bhvInSunkenShip3`, the one object of that group
+  carrying `LOAD_COLLISION_DATA`, so the case cannot pass by landing on the sea floor. **No push
+  is reported** — a body with no deck under it falls — and the check is that both clients find
+  the ground under that body at least 500 units apart. The jitter numbers beside it are the
+  point of the case; `split` is the same measurement over ground the two clients agree about.
+- **ddd** — two Dire Dire Docks goals on different acts, with the second player warping
+  itself into the first's act so the pair is in one act. Nothing may keep these two apart:
+  only the manta ray is
   act-gated in that course, and the submarine, its door and the nine poles read
   `SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR` out of the save file every client
   receives from the host. The two must be pushed apart, and both clients report the flags they
@@ -176,19 +182,23 @@ in `test/live/mods/starhunt_probe/main.lua`:
 1. `CASE` — add the name. The order of that list is the run order, and `run.sh` waits for
    the referee's `end` line rather than for a verdict count, so nothing there needs changing
    to match its length.
-2. `WANT_PRIVATE` — what `players_have_private_variant` must answer for the pair. The probe
-   fails the run when the predicate disagrees, which catches a case that is not set up the way
-   it reads.
+2. `WANT_CROSS_ACT` — whether the two players are in different acts for this case. The probe
+   fails the run when the pair disagrees with that, which catches a case that is not set up the
+   way it reads: a rewarp that never landed, or a goal that was reassigned behind its back.
 3. the `open_case` state in `update_server` — which goals the two players get. A case whose
    claim is that a course is *not* private by act needs nothing written here: add it to
    `SHARED_COURSE` with its level, the act both bodies stand in and the act the other goal
-   names, and `pick_act_pair` finds the two goals. A case in a course that needs neither, like
+   names, and `pick_act_pair` finds the two goals. `CROSS_COURSE` is the same table for a case
+   where the two players stay in their own acts, and carries the point the anchor stands on and
+   the behaviour its floor has to belong to; a case there reports a `floor_gap` instead of a
+   push, because one of the two bodies has no floor under it. A case in a course that needs neither, like
    Tick Tock Clock's, needs its own picker — `pick_ttc_goals` is that. **A case that must not
    re-warp a player must not reassign its goal**, because a client re-warps whenever
-   `sh5_goal` changes; `hidden` is the worked example.
+   `sh5_goal` changes.
 4. the `settle` state in `update_player` — any per-case setup before the pair is placed, such as
-   the self-warp that makes `hidden`. A `SHARED_COURSE` entry already gets that self-warp, and
-   an optional `meet` function on it replaces the floor search with a fixed point.
+   the self-warp that puts both bodies in one act. A `SHARED_COURSE` entry already gets that
+   self-warp, and an optional `meet` function on it replaces the floor search with a fixed
+   point.
 5. `run.sh` — the verdict block needs a `grep -c` line for the new case and a failure message
    naming what its being red means. That block is the only place outside the probe that has to
    learn the case exists.
