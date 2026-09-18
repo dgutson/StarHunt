@@ -177,8 +177,6 @@ local function host_assign_goal(player_index, avoid_modifier_kind, avoid_level)
     jump_modifier = SH.effective_modifier_for_goal(goal, jump_modifier)
     sync.sh5_jump_count = jump_modifier ~= nil and jump_modifier.value or -1
     sync.sh5_goal_seq = (sync.sh5_goal_seq or 0) + 1
-    sync.sh5_manual_reroll_ready_frame =
-        get_global_timer() + SH.manualRerollCooldown
     return true
 end
 
@@ -375,7 +373,11 @@ local function host_prepare_player(player_index)
     sync.sh5_forfeit = 0
     sync.sh5_manual_reroll_request = 0
     sync.sh5_manual_reroll_ack = 0
-    sync.sh5_manual_reroll_ready_frame = 0
+    -- The two minutes belong to the button, not to the level: they start when
+    -- the player enters the round and only the button itself starts them again.
+    -- A goal handed out because they died, or because they finished a star,
+    -- leaves the deadline alone.
+    sync.sh5_manual_reroll_ready_frame = get_global_timer() + SH.manualRerollCooldown
     sync.sh5_jump_count = -1
     sync.sh5_enrolled = 1
     sync.sh5_boss_victory = 0
@@ -752,8 +754,11 @@ local function host_update_round()
                         local old_goal = get_goal(sync.sh5_goal or 0)
                         local old_modifier = old_goal
                             and old_goal.mods[sync.sh5_modifier or 0] or nil
-                        host_assign_goal(i, old_modifier and old_modifier.kind or nil,
-                            old_goal and old_goal.level or nil)
+                        if host_assign_goal(i, old_modifier and old_modifier.kind or nil,
+                            old_goal and old_goal.level or nil) then
+                            sync.sh5_manual_reroll_ready_frame =
+                                get_global_timer() + SH.manualRerollCooldown
+                        end
                     end
                 end
 

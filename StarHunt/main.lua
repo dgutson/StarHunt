@@ -331,6 +331,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         update_manual_reroll_menu = SH.update_manual_reroll_menu,
         update_config_menu_lock = SH.update_config_menu_lock,
         manual_reroll_cooldown = SH.manualRerollCooldown,
+        host_timer = SH.host_timer,
+        update_host_timer = SH.update_host_timer,
         toggle_menu = open_config_menu,
         chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
@@ -340,6 +342,9 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
     }
 end
 
+-- First, so every deadline read this frame is read against a current clock.
+-- HOOK_UPDATE fires in every play mode, including while the game is paused.
+hook_event(HOOK_UPDATE, SH.update_host_timer)
 -- The built-in HUD is rendered before HOOK_ON_HUD_RENDER on some clients.
 -- Keep its star/coin flags disabled during the update, before it can draw.
 hook_event(HOOK_UPDATE, update_native_hud_visibility)

@@ -157,7 +157,10 @@ delays and the scratch directory; on this machine the defaults are already right
 A full run ends with `PASSED:` and one `PROBE verdict` line per player per case:
 `split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false`,
 `ddd passed_through=false` and `wdw passed_through=false`. Both players also print a
-`PROBE saveflags` line, and the two must carry the same `ddd_gate` value. `run.sh` waits for
+`PROBE saveflags` line, and the two must carry the same `ddd_gate` value, and a `PROBE clock`
+line, which must read `ok=true`: their frame counter is behind the host's (`skew` is positive,
+because the server is started first) and the ANOTHER LEVEL countdown is no longer than the
+cooldown anyway. `run.sh` waits for
 the referee's `PROBE end role=server`, which it prints once every player has reported every
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.

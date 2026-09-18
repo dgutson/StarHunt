@@ -545,6 +545,26 @@ local function update_player()
             return
         end
         if since < AREA_SETTLE_FRAMES then return end
+        -- **The ANOTHER LEVEL countdown, measured on a joined client.** The
+        -- deadline is a frame number on the host's counter, and this instance's
+        -- counter is behind that by the head start the server's process had:
+        -- run.sh starts the server first and each client joins JOIN_DELAY
+        -- seconds later, with the loading screen hidden so nothing but the game
+        -- loop moves either counter. So `skew` is always positive here, and a
+        -- client that subtracted its own counter would count that head start on
+        -- top of the two-minute cooldown. run.sh reads `ok`.
+        if CASE[phase] == "split" then
+            local mine_now = get_global_timer()
+            local host_now = api.host_timer()
+            local skew = host_now - mine_now
+            local remaining = api.manual_reroll_remaining() or -1
+            local cooldown = api.manual_reroll_cooldown
+            say("clock", "role=player" .. MY_GLOBAL
+                .. " local=" .. mine_now .. " host=" .. host_now .. " skew=" .. skew
+                .. " ready=" .. tostring(api.player_sync[0].sh5_manual_reroll_ready_frame)
+                .. " remaining=" .. remaining .. " cooldown=" .. cooldown
+                .. " ok=" .. tostring(skew > 0 and remaining >= 0 and remaining <= cooldown))
+        end
         -- What the submarine and the poles actually read. Both clients must
         -- report the same number, or the premise that the course looks the same
         -- from every act is wrong and the "ddd" verdict below means nothing.

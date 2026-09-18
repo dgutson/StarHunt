@@ -417,7 +417,7 @@ SH.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
                 29, 0.48, maximum_width, 255, 145, 80)
         end
         local reroll = math.max(0,
-            (gGlobalSyncTable.sh5_chaos_next_reroll or 0) - get_global_timer())
+            (gGlobalSyncTable.sh5_chaos_next_reroll or 0) - SH.host_timer())
         SH.draw_scaled_centered_text(
             translated("NEW MODIFIERS IN: ", "NUEVOS MODIFICADORES EN: ")
                 .. tostring(math.ceil(reroll / FRAMES_PER_SECOND)),
@@ -622,7 +622,8 @@ local function draw_hud()
     local goal = get_local_goal()
     local modifiers = SH.get_local_modifiers()
     local modifier_data = modifiers[1]
-    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or get_global_timer()) - get_global_timer())
+    local now = SH.host_timer()
+    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or now) - now)
     local score = gPlayerSyncTable[0].sh5_score or 0
     SH.draw_gun_mod_hud_compatibility()
     SH.draw_round_status_panels(remaining, score)

@@ -983,6 +983,75 @@ return function(t, harness)
         t.eq(gPlayerSyncTable[0].sh5_goal, after_first, "one request kept rerolling")
     end)
 
+    -- what starts the cooldown, and what leaves it alone -------------------
+    -- The two minutes belong to the button, not to the level. Only the round's
+    -- first goal and the button itself move the deadline; a player who loses a
+    -- star to a fall, or finishes one, goes on counting the time they had left.
+
+    s.test("the round's first goal starts the cooldown", function()
+        local api, ctl = race(2, {})
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_ready_frame,
+            ctl.timer + api.manual_reroll_cooldown,
+            "a player entering a round did not get the full cooldown")
+    end)
+
+    s.test("a death leaves the cooldown where it was", function()
+        local api, ctl = race(2, {})
+        local ready_at = gPlayerSyncTable[0].sh5_manual_reroll_ready_frame
+        local before = gPlayerSyncTable[0].sh5_goal
+        ctl.timer = 1800                          -- one minute into the cooldown
+        gPlayerSyncTable[0].sh5_forfeit = 1       -- what a death publishes
+        api.host_update()
+        t.ne(gPlayerSyncTable[0].sh5_goal, before, "the death handed out no new goal")
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_ready_frame, ready_at,
+            "dying pushed the button's cooldown back to the full two minutes")
+    end)
+
+    s.test("a collected star leaves the cooldown where it was", function()
+        local api, ctl = race(2, {})
+        local ready_at = gPlayerSyncTable[0].sh5_manual_reroll_ready_frame
+        local before = gPlayerSyncTable[0].sh5_goal
+        ctl.timer = 1800
+        gPlayerSyncTable[0].sh5_done = 1
+        api.host_update()
+        t.ne(gPlayerSyncTable[0].sh5_goal, before, "the star handed out no new goal")
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_ready_frame, ready_at,
+            "finishing a star pushed the button's cooldown back")
+    end)
+
+    s.test("the button itself starts the cooldown again", function()
+        local api, ctl = race(2, {})
+        gPlayerSyncTable[0].sh5_manual_reroll_request = 1
+        ctl.timer = 4000
+        api.host_update()
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_ready_frame,
+            4000 + api.manual_reroll_cooldown,
+            "the button did not start its own cooldown again")
+    end)
+
+    s.test("a reroll that finds no goal leaves the button ready", function()
+        local api, ctl = harness.load()
+        connect(2)
+        gGlobalSyncTable.sh5_mode = api.normal_mode
+        only_goals(api, ctl, { 1, 2 })            -- exactly two, one each
+        api.host_start(15)
+        ctl.timer = 4000
+        local before = gPlayerSyncTable[0].sh5_goal
+        gPlayerSyncTable[0].sh5_manual_reroll_request = 1
+        api.host_update()
+        t.eq(gPlayerSyncTable[0].sh5_goal, before, "a goal came out of an empty pool")
+        t.ok(gPlayerSyncTable[0].sh5_manual_reroll_ready_frame <= 4000,
+            "a reroll that handed out nothing still made the player wait again")
+    end)
+
+    s.test("a reconnecting player keeps the cooldown they left with", function()
+        -- The round opens at frame 0, so the deadline they left with is the
+        -- cooldown itself.
+        local api = reconnect(nil)
+        t.eq(gPlayerSyncTable[1].sh5_manual_reroll_ready_frame, api.manual_reroll_cooldown,
+            "a player who dropped out came back with a fresh two minutes")
+    end)
+
     -- ---------------------------------------------------------------------
     -- The Boss round loop
     -- ---------------------------------------------------------------------

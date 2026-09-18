@@ -138,6 +138,17 @@ makes `interact_player` return before it reaches `resolve_player_collision`.
   (`packet_area.c:52`, `:155-157`). **This is the case that fails if Wet-Dry World is isolated
   by act again**, with the same `fail reason=wrong_pair_state`.
 
+Alongside `split`, each client also prints one `PROBE clock` line, which is not about the pair
+at all. It reports its own frame counter, the host's as `SH.host_timer()` answers it, the
+difference between them, and what the ANOTHER LEVEL countdown says. The deadline behind that
+countdown is a frame number on the host's counter, and a client's counter is behind by the head
+start the server's process had — the run starts the server first and each client joins
+`JOIN_DELAY` seconds later, with `--hide-loading-screen` so nothing but the game loop moves
+either counter. So `skew` is always positive, and `ok=true` means the client's countdown is no
+longer than the cooldown despite it. `--without r035` takes the difference out and both clients
+report `skew=0` with a countdown longer than the cooldown, which is the bug as a player meets
+it: joining three minutes after the host made ANOTHER LEVEL read 5:00 instead of 2:00.
+
 That "hidden" arrangement is not an artificial one. When a player's goal changes, StarHunt waits
 `NEXT_GOAL_DELAY` — 90 frames, three seconds — before warping them, and a player who has just
 been given a different act of the level they are standing in is in exactly this state for that

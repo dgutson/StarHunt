@@ -13,6 +13,47 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-18 — R-035: every countdown a joined client shows is the host's, and dying no longer restarts the cooldown
+
+A deadline in a sync table is a frame number on the host's counter, and every machine compared
+it against its own. `get_global_timer()` returns `gGlobalTimer`, which counts frames since that
+process started (`src/game/game_init.c:54`, incremented in `display_and_vsync`) and never
+crosses the network, so a joined client was wrong by the head start the host's game had. A
+client whose game started three minutes after the host's read the ANOTHER LEVEL cooldown as
+5:00 where the host read 2:00, and since every new goal reset the deadline, the button never
+became available at all. The round clock on the HUD, the round clock in the `/starhunt` menu
+and the Chaos "new modifiers in" countdown were wrong by the same amount.
+
+`SH.host_timer()` (`modules/core.lua`) is the repair: the host publishes its counter in
+`gGlobalSyncTable.sh5_host_timer` once a second, each client keeps the difference the moment a
+new value arrives, and the four reads outside host code go through it. The host's answer is
+`get_global_timer()` unchanged, because nothing on the host ever measures a difference. Host
+code keeps `get_global_timer()` for the same reason, and so does everything that never leaves
+one machine — the warp delays, the modifier clocks, the moat refresh.
+
+The second half of the item is what a player asked for: dying restarted the two minutes.
+`host_assign_goal` set the deadline for every reassignment it made, including the one the
+forfeit branch asks for after a death, so a player who died at 1:55 waited two minutes again.
+The deadline now belongs to the two callers that mean it — a player entering the round, in
+`host_prepare_player`, and the button itself — so a goal handed out by a death or by finishing
+a star leaves it alone.
+
+The defect shipped in released v1.1: `v1.1-monolithic` carries the same subtraction at
+`main.lua:3933-3934` and sets the same deadline inside its goal assignment at `main.lua:1702`.
+
+`test/suite/clock.lua` is new and covers the clock and the four countdowns from a client
+19,000 frames behind its host; `test/suite/round_host.lua` gains what starts the cooldown and
+what leaves it alone. `test/live/` measures the same thing in real processes: each client
+prints a `PROBE clock` line, and `test/live/run.sh --without r035` takes the difference out and
+requires that line to go red, which it does — `skew=0 remaining=3837 cooldown=3600` against
+`skew=449 remaining=3387` with the fix.
+
+803 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
+10 problems in 2 files, `test/live/run.sh` PASSED with its ten verdicts and both clock lines,
+and both `--without` runs inverted as they should. Mutation sweeps: 14 of 14 caught on the
+clock, and every mutation of the lines this change wrote elsewhere caught; the survivors are
+all `or 0` defaults on lines it did not touch, which no reachable state makes nil.
+
 ### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
 
 `players_have_private_variant` hid two players from each other, and refused the contact between
