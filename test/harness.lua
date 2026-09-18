@@ -113,6 +113,9 @@ local function install_engine()
         owned_sync_ids = {},     -- sync id -> true; drives sync_object_is_owned_locally
         sent_objects = {},       -- every network_send_object call
         transition = false,      -- what is_transition_playing reports
+        paused = false,          -- whether the game is on the pause screen
+        pause_menu_hidden = false,  -- whether the game draws its own pause rows
+        unpauses = 0,            -- every game_unpause call
         ttc_speed = TTC_SPEED_SLOW,  -- what get_ttc_speed_setting reports
         ttc_speed_writes = 0,    -- how many times set_ttc_speed_setting was called
         mario_actions = {},      -- every set_mario_action call
@@ -286,6 +289,20 @@ local function install_engine()
     -- The generated stub returns nil for this, so a guard that holds a warp back
     -- during a level transition could be deleted without any test noticing.
     function is_transition_playing() return ctl.transition end
+
+    -- The pause screen, as far as the mod can reach it.  ctl.paused is whether
+    -- the game is on the pause screen at all, ctl.pause_menu_hidden is the flag
+    -- that decides whether the game draws its own rows and reads A and START,
+    -- and ctl.unpauses counts the mod's own way out of the pause.  game_unpause
+    -- clears ctl.paused because the engine's next frame does: play_mode_paused
+    -- returns to PLAY_MODE_NORMAL from gPauseScreenMode = 1.
+    function is_game_paused() return ctl.paused end
+    function set_pause_menu_hidden(hidden) ctl.pause_menu_hidden = hidden and true or false end
+    function is_pause_menu_hidden() return ctl.pause_menu_hidden end
+    function game_unpause()
+        ctl.unpauses = ctl.unpauses + 1
+        ctl.paused = false
+    end
 
     -- TTC's clock runs at whatever speed the castle clock face was entered at,
     -- and StarHunt warps straight in, so it sets the speed itself.  The

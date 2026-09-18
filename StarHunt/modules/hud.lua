@@ -610,6 +610,31 @@ local function draw_config_menu()
     end
 end
 
+-- The list that replaces the game's own while a round is running.  Once
+-- set_pause_menu_hidden is set the game draws nothing on the pause screen, the
+-- dim behind the rows included, so this draws that too.  The rows and the
+-- cursor belong to modules/menu.lua; this only puts them on screen, in the
+-- lower middle where the game draws its own.
+local function draw_pause_menu()
+    if not SH.pause_menu_active() then return end
+    local width = djui_hud_get_screen_width()
+    local height = djui_hud_get_screen_height()
+    djui_hud_set_color(0, 0, 0, 150)
+    djui_hud_render_rect(0, 0, width, height)
+
+    local line_y = math.floor(height * 0.56)
+    for index, label in ipairs(SH.pause_menu_labels()) do
+        local selected = local_runtime.pause_selection == index
+        if selected then
+            djui_hud_set_color(255, 255, 255, 45)
+            djui_hud_render_rect(width * 0.25, line_y - 4, width * 0.5, 22)
+        end
+        draw_centered_hud_text(label, line_y, 0.72,
+            255, selected and 215 or 255, selected and 73 or 255)
+        line_y = line_y + 26
+    end
+end
+
 local function draw_hud()
     djui_hud_set_resolution(RESOLUTION_N64)
     djui_hud_set_font(FONT_HUD)
@@ -629,6 +654,7 @@ local function draw_hud()
     SH.draw_objective_panel(goal, modifier_data, modifiers[2])
     draw_start_banner()
     draw_config_menu()
+    draw_pause_menu()
 end
 
 local function local_round_notifications()
