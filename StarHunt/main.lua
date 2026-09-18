@@ -17,6 +17,11 @@ local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 -- immediately after launching.
 gServerSettings.skipIntro = 1
 
+-- Two players hunting different stars in one course are sent to different acts.
+-- This asks the engine to let them meet anyway; modules/core.lua says what a
+-- build has to carry for it to take effect and what happens where it does not.
+core.enable_cross_act_players(gLevelValues)
+
 local SH = core.SH
 local Team = core.Team
 local local_runtime = core.local_runtime
@@ -45,7 +50,6 @@ local on_allow_interact = goals.on_allow_interact
 local on_interact = goals.on_interact
 local reset_hidden_object_tracking = goals.reset_hidden_object_tracking
 local update_star_visibility = goals.update_star_visibility
-local players_have_private_variant = goals.players_have_private_variant
 local players_can_share_world = goals.players_can_share_world
 local audit = require("modules/audit")
 local NORMAL_MODIFIER_CATALOG = audit.NORMAL_MODIFIER_CATALOG
@@ -75,8 +79,6 @@ local on_before_boss_cutscene = local_round.on_before_boss_cutscene
 local local_goal_warp_update = local_round.local_goal_warp_update
 local local_boss_warp_update = local_round.local_boss_warp_update
 local force_return_to_lobby = local_round.force_return_to_lobby
-local on_nametags_render = local_round.on_nametags_render
-local update_private_player_visibility = local_round.update_private_player_visibility
 local on_pause_exit = local_round.on_pause_exit
 local on_death = local_round.on_death
 local on_before_death_action = local_round.on_before_death_action
@@ -225,14 +227,12 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         death = on_death,
         before_death_action = on_before_death_action,
         pause_exit = on_pause_exit,
-        nametags_render = on_nametags_render,
-        private_player_visibility = update_private_player_visibility,
         allow_interact = on_allow_interact,
         interact = on_interact,
         star_visibility = update_star_visibility,
         reset_hidden_objects = reset_hidden_object_tracking,
-        players_have_private_variant = players_have_private_variant,
         players_can_share_world = players_can_share_world,
+        enable_cross_act_players = core.enable_cross_act_players,
         allow_pvp_attack = on_allow_pvp_attack,
         remove_castle_lakitu = remove_castle_lakitu,
         remove_existing_castle_lakitu = remove_existing_castle_lakitu,
@@ -355,7 +355,6 @@ hook_event(HOOK_UPDATE, keep_moat_lowered)
 hook_event(HOOK_UPDATE, remove_existing_castle_lakitu)
 hook_event(HOOK_UPDATE, local_round_notifications)
 hook_event(HOOK_UPDATE, update_star_visibility)
-hook_event(HOOK_UPDATE, update_private_player_visibility)
 hook_event(HOOK_UPDATE, flush_starhunt_save_removals)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, local_goal_warp_update)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, SH.update_chaos_warp)
@@ -385,7 +384,6 @@ hook_event(HOOK_BEFORE_SET_MARIO_ACTION, on_before_death_action)
 hook_event(HOOK_ON_DIALOG, on_dialog)
 hook_event(HOOK_ON_PAUSE_EXIT, on_pause_exit)
 hook_event(HOOK_ON_DEATH, on_death)
-hook_event(HOOK_ON_NAMETAGS_RENDER, on_nametags_render)
 hook_event(HOOK_ON_PLAYER_DISCONNECTED, remember_disconnected_player)
 hook_event(HOOK_ON_PLAYER_CONNECTED, mark_connected_player_unenrolled)
 hook_event(HOOK_JOINED_GAME, on_joined_game)

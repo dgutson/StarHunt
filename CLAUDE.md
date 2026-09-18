@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 431 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 442 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -91,16 +91,16 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,091 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
-| `goals.lua` | 890 | the 93-star catalog, its readers, star interaction and visibility |
+| `round.lua` | 1,050 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
+| `goals.lua` | 827 | the 93-star catalog, its readers, star interaction and visibility |
 | `hud.lua` | 709 | text layer, picture layer and frame; nothing requires it |
 | `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
-| `menu.lua` | 321 | the `/starhunt` config menu and its input |
-| `team.lua` | 273 | rosters, palettes and PvP |
+| `menu.lua` | 327 | the `/starhunt` config menu and its input |
+| `team.lua` | 274 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
-| `i18n.lua` | 246 | six languages and their persistence |
-| `core.lua` | 230 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
+| `core.lua` | 250 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
+| `i18n.lua` | 254 | six languages and their persistence |
 | `chaos.lua` | 154 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
@@ -180,6 +180,20 @@ required button or ability, unfair route, per-star tuning, then numeric safety l
 `goal_traits()` derives the traits the audit tests (`needs_b`, `flight`, `precision`, `race`,
 `waiting`, `slide`, `water`, `ghost_house`, …) from the level and act. Adding a trait there
 changes the whole matrix, so the counts in `BALANCE_AUDIT.md` must be re-derived.
+
+### The game this targets
+
+Two players hunting different stars in one course are warped to different acts, and the engine
+uses the act for two unrelated jobs: which objects the level script spawns, and whether another
+player counts as being present. The second one severs the pair — no position, no collision, no
+attack, no nametag — upstream of every Lua hook, and `currActNum` is read-only from Lua.
+
+So the mod targets a patched game: `dgutson/sm64coopdx`, branch `feature/cross-act-players`,
+which adds `gLevelValues.crossActPlayers` and leaves the act out of the player-to-player tests
+while it is set. `core.enable_cross_act_players` (`modules/core.lua`) sets it once at load, and
+only when the build has the field, so the published game gets no Lua error and keeps its own
+behaviour: it separates cross-act players itself and the mod leaves it to. **The mod never
+separates two players by their act**, and nothing in it should be added back that does.
 
 ### Difficulty is a separate axis from mode
 

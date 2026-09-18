@@ -97,7 +97,7 @@ return function(t, harness)
         -- missing one is a nil-index crash in the middle of a round.
         for _, field in ipairs({
             "pending_double_waves", "pending_meteors", "rejected_stars",
-            "hidden_stars", "hidden_players",
+            "hidden_stars",
         }) do
             t.eq(type(rt[field]), "table", field .. " is not a table")
             t.eq(next(rt[field]), nil, field .. " does not start empty")

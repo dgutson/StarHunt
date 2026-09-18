@@ -194,15 +194,15 @@ elif [[ $LOAD_ONLY -eq 1 ]]; then
 else
     # What the run asks, and the order the answers are read in matters.
     #
-    #   shared -- the control. Two players the mod does not hide from each other
-    #             must be pushed apart by the engine. If this fails, nothing else
-    #             in the run means anything: a setup where the bodies never touch
-    #             reports every other case as a pass, fix or no fix.
-    #   hidden -- R-030 itself. Two players the mod hides, standing in one act so
-    #             the engine is willing, must pass through. Deleting the branch in
-    #             modules/goals.lua has to turn this red.
-    #   split  -- the ordinary round arrangement, recorded rather than tested: the
-    #             engine keeps two players on different acts apart on its own.
+    #   shared -- the control. Two players in one act must be pushed apart by
+    #             the engine. If this fails, nothing else in the run means
+    #             anything: a setup where the bodies never touch reports every
+    #             other case as a pass, fix or no fix.
+    #   split  -- R-028 itself, and the ordinary round arrangement: two players
+    #             each standing in their own act of Tick Tock Clock, which stock
+    #             sm64coopdx severs before any hook. They must be pushed apart.
+    #             Removing the mod's crossActPlayers request has to turn this
+    #             red, and on a build without that field it is red by nature.
     #   ddd    -- two players holding different Dire Dire Docks acts, standing in
     #             one of them. Nothing in that course is gated on the act, so the
     #             mod must leave them alone and the engine must push them apart.
@@ -213,7 +213,7 @@ else
     #             act. The mod must leave that pair alone as well.
     # Which case each named removal is expected to break. A removal whose case is
     # not named here would report a pass for doing nothing.
-    declare -A WITHOUT_CASE=( [r030]=hidden )
+    declare -A WITHOUT_CASE=( [crossact]=split )
     # Only look the removal up when there is one: under `set -u` an empty
     # subscript on an associative array is an error, printed on every ordinary
     # run.
@@ -227,8 +227,7 @@ else
             exit 1
         fi
     fi
-    split=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=split passed_through=true")
-    hidden=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=hidden passed_through=true")
+    split=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=split passed_through=false")
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
     ddd=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=ddd passed_through=false")
     wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
@@ -240,8 +239,12 @@ else
     # that the harness can fail, so the case that fix protects MUST go red while
     # the control and the engine-only case stay exactly where they were. A run
     # that comes back green here means the removal measured nothing.
+    #
+    # Every case in an ordinary run reports passed_through=false -- the engine
+    # pushed the two bodies apart -- so a removal has been noticed when its case
+    # reports the opposite.
     if [[ -n "$WITHOUT" ]]; then
-        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=$WITHOUT_BREAKS passed_through=false")
+        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=$WITHOUT_BREAKS passed_through=true")
         if (( shared < 2 )); then
             echo "INCONCLUSIVE: the control case did not collide even with '$WITHOUT'"
             echo "removed, so this run says nothing about whether the removal mattered."
@@ -259,12 +262,12 @@ else
         echo "FAILED: the control case did not collide, so this run proves nothing"
         echo "about the other two. Two players on the same act with the same goal"
         echo "must be pushed apart to about 74; see the overlap lines above."
-    elif (( hidden < 2 )); then
-        echo "FAILED: two players StarHunt hides from each other were pushed apart"
-        echo "while standing in the same act. That is the R-030 case."
     elif (( split < 2 )); then
-        echo "FAILED: two players on different acts touched each other, which the"
-        echo "engine alone should already prevent. Something changed in Co-op DX."
+        echo "FAILED: two players each standing in their own act of one course did"
+        echo "not touch each other. Read active_them and active_them_cross_act on"
+        echo "the gates lines above: equal and false means this build has no"
+        echo "gLevelValues.crossActPlayers, or the mod did not ask for it, and the"
+        echo "engine severed the pair before StarHunt was asked anything."
     elif (( gates_seen < 2 || gates_agree != 1 )); then
         echo "FAILED: the two players in Dire Dire Docks do not read the same"
         echo "SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, so they do"
@@ -280,11 +283,10 @@ else
         echo "ALL_ACTS and its water level does not come from the act, so the mod is"
         echo "isolating a pair whose worlds agree (R-029)."
     else
-        echo "PASSED: the pair StarHunt hides passed through each other while the"
-        echo "engine was willing to collide them (R-030), the pair it does not hide"
-        echo "was pushed apart at the engine's 74 units, two players on different"
-        echo "acts never touched at all, two players on different Dire Dire Docks"
-        echo "acts fought each other over one save file (R-031), and so did two on"
+        echo "PASSED: two players each standing in their own act of Tick Tock Clock"
+        echo "were pushed apart by the engine at its 74 units (R-028), two players in"
+        echo "one act were too, two players holding different Dire Dire Docks acts"
+        echo "fought each other over one save file (R-031), and so did two holding"
         echo "different Wet-Dry World acts (R-029)."
         status=0
     fi

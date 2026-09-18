@@ -538,108 +538,37 @@ local function goal_matches_star_object(goal_data, object)
     return star_id == goal_data.act - 1
 end
 
--- Whether two players are looking at the same world.
+-- Whether two players are in the same place.
 --
--- Two players in the same level on different acts may be standing in geometry
--- that does not agree -- JRB's two ship layouts, BBH's interior rooms, Whomp's
--- tower, TTC's stopped clock. Where the conflict is local to one region, only
--- that region is private and the rest of the course stays shared; where the
--- whole course differs between acts, the whole course is private. Team and
--- Chaos are PvP races rather than parallel runs, so they share a world whenever
--- the players are genuinely in the same place and skip the per-act geometry
--- rules entirely.
+-- Two players in one course hold different stars and so load different acts,
+-- and they are meant to meet: the engine is asked at load to leave the act out
+-- of its player-to-player tests (`enable_cross_act_players`, modules/core.lua),
+-- so each keeps the objects their own act spawns and both keep the collision,
+-- the damage and the nametags. What is left to answer here is the plain
+-- question -- are these two in the same level and area of a round that is
+-- running -- which is what the PvP rule in modules/team.lua reads.
 --
--- Geometry that turns on a save flag rather than on the act is the same for
--- everybody and is never private: sm64coopdx hands each joiner the host's whole
--- save file (`packet_join.c`), has the client read from that copy
--- (`ultra_reimplementation.c`) and broadcasts every later flag change
--- (`save_file.c`). Dire Dire Docks is the course this covers -- its submarine,
--- sub door and nine poles all test SAVE_FLAG_HAVE_KEY_2 |
--- SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, and only its manta ray is act-gated.
+-- Two courses look act-dependent and are not:
 --
--- Wet-Dry World is not act-dependent either: every object in both of its areas
--- is ALL_ACTS. Its water level is the one state two clients can disagree on,
--- and the act does not decide it -- `geo_wdw_set_initial_water_level`
--- (`moving_texture.c:305`) derives it from `gPaintingMarioYEntry`, written only
--- when a player enters through a painting (`paintings.c:632`), so a direct warp
--- leaves whatever value that client happened to hold.
+-- Dire Dire Docks: the manta ray is its only act-gated object. The submarine,
+-- its door and the nine poles test SAVE_FLAG_HAVE_KEY_2 |
+-- SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR (`ddd_sub.inc.c:4`, `ddd_pole.inc.c:3`), and
+-- sm64coopdx hands each joiner the host's whole save file (`packet_join.c`),
+-- has the client read from that copy (`ultra_reimplementation.c`) and
+-- broadcasts every later flag change (`save_file.c`), so every player reads the
+-- same submarine and the same poles.
 --
--- Every pair that can meet has been handed the same level anyway.
--- `is_player_active` (`obj_behaviors.c:542-559`) refuses a remote player whose
--- course, act, level or area differs from the local one, and after a warp that
--- act is the goal's -- `DynOS_Warp_ToLevel` sets `gCurrActStarNum`
--- (`data/dynos_warps.cpp:189`) and `level_update.c:558` publishes it as
--- `currActNum`. The engine's area sync matches on those same four fields
--- (`get_network_player_from_area`, `network_player.c:129-142`) and the area
--- packet carries `gEnvironmentLevels[0]`, copied into `gEnvironmentRegions[6]`
--- for WDW (`packet_area.c:52`, `:155-157`). So two players who can touch each
--- other hold the same water, and two who could hold different water cannot
--- touch each other.
---
--- The mod must not set that level itself. `set_water_level` and
--- `set_environment_region` write `gEnvironmentRegions[6]`, which
--- `bhv_init_changing_water_level_loop` rewrites from `gEnvironmentLevels[0]`
--- every frame from its eleventh onward (`wdw_water_level.inc.c:35`), and
--- `gEnvironmentLevels` is not exposed to Lua -- so such a write lasts one frame
--- and the diamonds in the course change the level for everybody anyway.
---
--- Both answers feed visibility, nametags and whether PvP damage lands.
--- JRB has two incompatible ship layouts. When a player reaches the ship
--- region while another player has a different JRB act, that remote player is
--- locally hidden and PvP is disabled until they leave the conflicting area.
-local function is_jrb_ship_zone(m)
-    if m == nil then return false end
-    return m.pos.x > -2600 and m.pos.x < 2600
-        and m.pos.y > -2600 and m.pos.y < 1000
-        and m.pos.z > -4200 and m.pos.z < -350
-end
-
-local function is_wf_tower_zone(m)
-    if m == nil then return false end
-    return m.pos.y > 1050 and math.abs(m.pos.x) < 2600 and math.abs(m.pos.z) < 2600
-end
-
-local function players_have_private_variant(a, b)
-    local first = get_goal(gPlayerSyncTable[a].sh5_goal or 0)
-    local second = get_goal(gPlayerSyncTable[b].sh5_goal or 0)
-    if first == nil or second == nil then
-        return false
-    end
-    local first_network = gNetworkPlayers[a]
-    local second_network = gNetworkPlayers[b]
-    if first_network ~= nil and second_network ~= nil
-        and (first_network.currAreaIndex or 1) ~= (second_network.currAreaIndex or 1) then
-        return true
-    end
-    -- TEAM is a PvP race: if two players deliberately meet in the same
-    -- loaded level and area, keep both models and nametags visible even when
-    -- their assigned star acts differ. Normal mode keeps the conservative
-    -- geometry isolation below.
-    if SH.is_team_mode() or SH.is_chaos_mode() then return false end
-    -- TTC Act 6 deliberately stops the clock while the other acts run slowly.
-    -- Those object states cannot share one visible/PvP simulation.
-    if first.level == LEVEL_TTC and second.level == LEVEL_TTC
-        and (first.act == 6) ~= (second.act == 6) then
-        return true
-    end
-    -- BBH changes several rooms and objects between acts. Keep PvP outside
-    -- the mansion, but isolate players once either one enters an interior
-    -- room whose geometry may not match the other's act.
-    if first.level == LEVEL_BBH and second.level == LEVEL_BBH and first.act ~= second.act then
-        local first_room = gMarioStates[a] ~= nil and (gMarioStates[a].currentRoom or 13) or 13
-        local second_room = gMarioStates[b] ~= nil and (gMarioStates[b].currentRoom or 13) or 13
-        if first_room ~= 13 or second_room ~= 13 then return true end
-    end
-    -- Whomp's tower changes between Act 1 and later acts. Only hide players
-    -- around the conflicting upper structure; the rest of the level stays PvP.
-    if first.level == LEVEL_WF and second.level == LEVEL_WF and first.act ~= second.act then
-        return is_wf_tower_zone(gMarioStates[a]) or is_wf_tower_zone(gMarioStates[b])
-    end
-    if first.level ~= LEVEL_JRB or second.level ~= LEVEL_JRB then return false end
-    if first.act == second.act then return false end
-    return is_jrb_ship_zone(gMarioStates[a]) or is_jrb_ship_zone(gMarioStates[b])
-end
-
+-- Wet-Dry World: every object in both of its areas is ALL_ACTS. Its water level
+-- is the one state two clients can disagree on, and the act does not decide it
+-- -- `geo_wdw_set_initial_water_level` (`moving_texture.c:305`) derives it from
+-- `gPaintingMarioYEntry`, written only when a player enters through a painting
+-- (`paintings.c:632`), so a direct warp leaves whatever value that client held.
+-- The mod must not set it either: `set_water_level` and `set_environment_region`
+-- write `gEnvironmentRegions[6]`, which `bhv_init_changing_water_level_loop`
+-- rewrites from `gEnvironmentLevels[0]` every frame from its eleventh onward
+-- (`wdw_water_level.inc.c:35`), and `gEnvironmentLevels` is not exposed to Lua,
+-- so such a write lasts one frame -- and the diamonds in the course change the
+-- level for everybody anyway.
 local function players_can_share_world(a, b)
     if not is_round_active() or a == b then return false end
     if SH.is_team_mode() or SH.is_chaos_mode() then
@@ -648,7 +577,7 @@ local function players_can_share_world(a, b)
         return first_network ~= nil and second_network ~= nil
             and first_network.connected and second_network.connected
             and first_network.currLevelNum == second_network.currLevelNum
-            and (first_network.currAreaIndex or 1) == (second_network.currAreaIndex or 1)
+            and first_network.currAreaIndex == second_network.currAreaIndex
     end
     local first = get_goal(gPlayerSyncTable[a].sh5_goal or 0)
     local second = get_goal(gPlayerSyncTable[b].sh5_goal or 0)
@@ -656,10 +585,7 @@ local function players_can_share_world(a, b)
     if gNetworkPlayers[a].currLevelNum ~= first.level or gNetworkPlayers[b].currLevelNum ~= second.level then
         return false
     end
-    if (gNetworkPlayers[a].currAreaIndex or 1) ~= (gNetworkPlayers[b].currAreaIndex or 1) then
-        return false
-    end
-    return not players_have_private_variant(a, b)
+    return gNetworkPlayers[a].currAreaIndex == gNetworkPlayers[b].currAreaIndex
 end
 
 -- Required caps: the `power` a goal asks for (Wing, Metal, Vanish or both of
@@ -760,18 +686,6 @@ local function has_interaction(interaction, interaction_flag)
     return interaction_flag ~= nil and (interaction & interaction_flag) ~= 0
 end
 
--- Which player's body an object is. The engine writes the owner onto every
--- Mario object itself, once per frame in bhv_mario_update, so this is a lookup
--- and not a walk over the player list. Comparing back against that player's own
--- marioObj is what makes it an answer rather than an assumption: an ordinary
--- object carries globalPlayerIndex 0 and would otherwise read as the host.
-local function player_index_of_body(object)
-    if object == nil then return nil end
-    local index = SH.local_index_from_global(object.globalPlayerIndex)
-    if index == nil or gMarioStates[index].marioObj ~= object then return nil end
-    return index
-end
-
 -- A spawned star can receive later object-sync updates. Once the player has
 -- attempted an object that did not belong to the current goal, paying COIN
 -- TOLL must not turn that same rejected object into a valid target.
@@ -795,18 +709,6 @@ local function on_allow_interact(m, object, interaction)
     end
 
     if not is_round_active() then return true end
-
-    -- A player hidden for an incompatible world must not stay solid either.
-    -- interact_player is the engine's only route into resolve_player_collision,
-    -- and this hook gates it, so refusing the contact here is what stops the
-    -- hidden player from being an invisible wall to bump into and stand on.
-    -- HOOK_ALLOW_PVP_ATTACK already refuses the damage; this is the touching
-    -- itself, refused in both directions because the engine moves whichever
-    -- player it is processing.
-    if has_interaction(interaction, INTERACT_PLAYER) then
-        local other = player_index_of_body(object)
-        return other == nil or not players_have_private_variant(m.playerIndex, other)
-    end
 
     if is_boss_mode() then return true end
     if SH.is_chaos_mode() then
@@ -878,7 +780,6 @@ end
 local function reset_hidden_object_tracking()
     local_runtime.hidden_stars = {}
     local_runtime.rejected_stars = {}
-    local_runtime.hidden_players = {}
     local_runtime.star_visibility_next = 0
 end
 
@@ -911,7 +812,6 @@ end
 
 return {
     GOALS = GOALS,
-    players_have_private_variant = players_have_private_variant,
     players_can_share_world = players_can_share_world,
     get_goal = get_goal,
     get_local_goal = get_local_goal,

@@ -7,12 +7,11 @@
 local stub = {}
 
 -- --------------------------------------------------------------------
--- constants (119)
+-- constants (116)
 -- --------------------------------------------------------------------
 id_bhvBowser = 72 --- @type BehaviorId
 id_bhvBowserBomb = 74 --- @type BehaviorId
 id_bhvBowserShockWave = 82 --- @type BehaviorId
-id_bhvBowsersSub = 83 --- @type BehaviorId
 id_bhvCameraLakitu = 99 --- @type BehaviorId
 id_bhvExplosion = 161 --- @type BehaviorId
 id_bhvFlameMovingForwardGrowing = 182 --- @type BehaviorId
@@ -28,7 +27,6 @@ INTERACT_STAR_OR_KEY = (1 << 12) --- @type InteractionType
 INTERACT_WARP = (1 << 13) --- @type InteractionType
 INTERACT_CANNON_BASE = (1 << 14) --- @type InteractionType
 INTERACT_FLAME = (1 << 18) --- @type InteractionType
-INTERACT_PLAYER = (1 << 31) --- @type InteractionType
 LEVEL_BBH = 4 --- @type LevelNum
 LEVEL_CCM = 5 --- @type LevelNum
 LEVEL_CASTLE = 6 --- @type LevelNum
@@ -118,7 +116,6 @@ HOOK_ON_EXIT = 34 --- @type LuaHookedEventType
 HOOK_ON_HUD_RENDER_BEHIND = 36 --- @type LuaHookedEventType
 HOOK_ON_OBJECT_LOAD = 40 --- @type LuaHookedEventType
 HOOK_ON_MODS_LOADED = 45 --- @type LuaHookedEventType
-HOOK_ON_NAMETAGS_RENDER = 46 --- @type LuaHookedEventType
 HOOK_ON_FIND_WATER_LEVEL = 63 --- @type LuaHookedEventType
 HUD_DISPLAY_COINS = 1 --- @type HudDisplayValue
 HUD_DISPLAY_FLAGS = 5 --- @type HudDisplayValue
@@ -130,10 +127,11 @@ E_MODEL_BOWSER_WAVE = 128 --- @type ModelExtendedId
 MAX_PLAYERS = 16
 
 -- --------------------------------------------------------------------
--- engine tables (7)
+-- engine tables (8)
 -- --------------------------------------------------------------------
 gBehaviorValues = {}
 gGlobalSyncTable = {}
+gLevelValues = {}
 gMarioStates = {}
 gNetworkPlayers = {}
 gPlayerSyncTable = {}

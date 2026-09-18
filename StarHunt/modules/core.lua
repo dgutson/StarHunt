@@ -149,7 +149,6 @@ local local_runtime = {
     star_visibility_next = 0,
     rejected_stars = {},
     hidden_stars = {},
-    hidden_players = {},
 }
 
 -- Bounds a value, used wherever a synchronized field or a menu index has to be
@@ -159,6 +158,26 @@ local function clamp(value, low, high)
     if value < low then return low end
     if value > high then return high end
     return value
+end
+
+-- Ask sm64coopdx to leave the act out of its player-to-player tests, so that
+-- two players sent to different acts of one course see each other, collide and
+-- damage each other while each keeps the objects their own act spawns. The
+-- engine compares the two acts in `is_player_active` (`obj_behaviors.c`), in
+-- `interact_player` and `interact_player_pvp`, when it hides a remote Mario
+-- (`mario.c`), when it receives that player's position (`packet_player.c`) and
+-- when it draws their nametag -- all upstream of every Lua hook, so no mod can
+-- reach such a pair without this.
+--
+-- `gLevelValues.crossActPlayers` exists only in a build that carries that
+-- change. Writing a field a build does not have prints a Lua error and changes
+-- nothing (`smlua_cobject.c`, `_set_field on invalid key`), so the field list is
+-- read first; where it is absent the engine keeps the two players apart and the
+-- mod leaves them to it.
+local function enable_cross_act_players(level_values)
+    for key in pairs(level_values) do
+        if key == "crossActPlayers" then level_values.crossActPlayers = 1 end
+    end
 end
 
 -- Whether the local player is standing on the ground. It is a plain read of
@@ -219,6 +238,7 @@ return {
     Team = Team,
     local_runtime = local_runtime,
     clamp = clamp,
+    enable_cross_act_players = enable_cross_act_players,
     is_local_player_on_floor = is_local_player_on_floor,
     FRAMES_PER_SECOND = FRAMES_PER_SECOND,
     NEXT_GOAL_DELAY = NEXT_GOAL_DELAY,

@@ -1,0 +1,2 @@
+main.lua
+core.enable_cross_act_players(gLevelValues)

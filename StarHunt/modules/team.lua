@@ -246,8 +246,9 @@ end
 -- Who may damage whom. Every mode answers differently: Chaos excludes players
 -- already eliminated, Team allows only opposing colours, Boss allows none at
 -- all, and Normal allows anyone who is genuinely in the same place. The
--- same-place question is players_can_share_world, so two players racing
--- different stars in one course cannot hit each other.
+-- same-place question is players_can_share_world: two players racing different
+-- stars in one course fight, whichever acts they were sent to, and two whose
+-- stars are in different courses never meet at all.
 local function on_allow_pvp_attack(attacker, victim, _)
     local attacker_index = attacker.playerIndex
     local victim_index = victim.playerIndex

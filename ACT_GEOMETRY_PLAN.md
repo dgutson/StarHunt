@@ -3,9 +3,14 @@
 How two players whose goals name different acts of one course end up in one fight while
 each keeps their own act's world.
 
-This is the implementation document for `ROADMAP.md` item R-028. It is method and engine
-reference; progress belongs in `ROADMAP.md` and `HISTORY.md`. Every engine claim below
-carries a file and line in `~/src/sm64coopdx` so nothing here has to be re-derived.
+This is method and engine reference for the act question. Every engine claim below carries a
+file and line in `~/src/sm64coopdx` so nothing here has to be re-derived.
+
+**The route taken is section 13: the engine change, which is built** — `dgutson/sm64coopdx`,
+branch `feature/cross-act-players`. Sections 4 through 12 describe the design that reaches the
+same result on the published game, by spawning every act's objects and suppressing the ones
+outside the local act per client. They are kept because that is the route to take if the engine
+change is never available, and nothing in them is installed today.
 
 ---
 
@@ -23,10 +28,10 @@ sees, exactly the objects their own goal's act puts in the course.
 The mod does not simulate any of the fight. It changes which objects exist for whom, and
 the engine does the rest.
 
-**Read section 13 before building any of this.** A change of roughly thirty lines in
-sm64coopdx removes the need for sections 4 through 12 entirely and costs nothing at runtime.
-Section 13 specifies it. What decides between them is not the code but whether a patched game
-is acceptable: everything else in this document runs on stock sm64coopdx today.
+**Sections 4 through 12 are the published-game design, and it is not what is installed.**
+Section 13's engine change reaches the same result with none of it, and is what the mod
+targets. Read this design only if a patched game stops being available: it needs no change to
+sm64coopdx at all.
 
 ---
 
@@ -562,10 +567,10 @@ this design exists to avoid.
 If a later change finds itself doing per-frame work in Lua to hold this design together, that
 is the signal to stop and re-read this section rather than to optimise the loop.
 
-## 13. The engine change that would remove all of this
+## 13. The engine change, which is what the mod targets
 
-Everything above is a workaround for one thing: sm64coopdx uses `currActNum` for two unrelated
-jobs and does not let a mod separate them.
+Everything above is a workaround for one thing: the published sm64coopdx uses `currActNum` for
+two unrelated jobs and does not let a mod separate them.
 
 1. **Which objects exist in my world.** `gCurrActNum`, read by the level script at
    `src/engine/level_script.c:534` and `:959`.
@@ -577,12 +582,11 @@ StarHunt and a fair fight. Separate them and this entire document collapses: eac
 exactly its own act at vanilla cost, with no `disableActs`, no generated table, no suppression,
 no sweep and no restore — and the two players can still see, touch and damage each other.
 
-**This requires a patched game.** The Lua design above runs on stock sm64coopdx today; the
-change below runs only where the engine carries it, so it means either an accepted upstream
-pull request or a fork every player has to install. That trade-off, not the code, is what
-decides between them.
+**This requires a patched game**, which is the price of it: the change runs only where the
+engine carries it, so it means a fork every player installs until it is upstream. The Lua
+design above is the alternative, and needs no patch.
 
-### The patch
+### The patch, as built
 
 **One new field.** `u8 crossActPlayers;` in `struct LevelValues` (`src/game/hardcoded.h:64`,
 beside `disableActs`), `FALSE` in `gDefaultLevelValues` (`src/game/hardcoded.c:46`).
@@ -662,14 +666,15 @@ Two things already in the engine shrink the patch:
 The argument for upstream: four copies of one comparison become one function, the new behaviour
 is off by default, and it makes a class of mod possible that cannot be written today.
 
-### What StarHunt becomes if the patch lands
+### What StarHunt is on top of it
 
-`round.lua:843` stays exactly as it is, warping to `goal.act`. No `disableActs`, no
-`actdata.lua`, no `world.lua`, no sweep, no suppression, no restore. One line at mod load sets
-`gLevelValues.crossActPlayers = true`; `players_have_private_variant`, both zone tests,
-`update_private_player_visibility` and the nametag blanking are deleted; and the fairness rule,
-if anyone wants one, is a per-pair comparison. Sections 4 through 12 of this document stop
-applying.
+`round.lua` warps to `goal.act` as it always did. No `disableActs`, no `actdata.lua`, no
+`world.lua`, no sweep, no suppression, no restore. `enable_cross_act_players`
+(`modules/core.lua`) sets `gLevelValues.crossActPlayers` once at load, and only where the build
+has the field; `players_have_private_variant`, both zone tests,
+`update_private_player_visibility`, the nametag blanking and R-030's `INTERACT_PLAYER` refusal
+are gone. The fairness rule is (a): nothing is refused between two players, wherever they are
+standing. Sections 4 through 12 do not apply to what is installed.
 
 ## 14. Deliberately not done
 

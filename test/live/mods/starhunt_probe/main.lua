@@ -82,20 +82,13 @@ local PUSHED_DRIFT = 20.0
 -- are about StarHunt. CASE also fixes the order they run in.
 --
 --  split  -- the two players hold TTC goals for acts 6 and 1 and are each
---            standing in their own act. This is what an ordinary StarHunt round
---            produces, and it is **not** a test of anything the mod does: the
---            engine refuses the contact by itself, because is_player_active
---            compares the two players' currActNum and a remote player on
---            another act is not active. The case is kept because it records
---            that rather than claiming credit for it.
---
---  hidden -- the same two goals, but this player walks back into the act the
---            other one is standing in, so both currActNum agree and the engine
---            is willing. players_have_private_variant still says the pair is
---            private, because it reads the assigned goals rather than the
---            loaded act. R-030's refusal in on_allow_interact is now the only
---            thing between the two bodies. **This is the case that fails when
---            that branch is deleted.**
+--            standing in their own act, which is what an ordinary StarHunt
+--            round produces. They must collide. Stock sm64coopdx refuses this
+--            contact before any hook -- is_player_active compares the two
+--            players' currActNum -- so what this case measures is the engine
+--            being asked to leave the act out of that comparison, which the mod
+--            does at load with gLevelValues.crossActPlayers. **This is the case
+--            that fails when that request is removed.**
 --
 --  shared -- both players hold the act 6 goal, so the predicate is false and
 --            the mod leaves the contact alone. The engine must push these two
@@ -122,15 +115,12 @@ local PUSHED_DRIFT = 20.0
 --            fields is_player_active does (packet_area.c:52, :155-157;
 --            network_player.c:129-142). **This is the case that fails if WDW is
 --            isolated by act again.**
-local CASE = { "split", "hidden", "shared", "ddd", "wdw" }
+local CASE = { "split", "shared", "ddd", "wdw" }
 
--- Which cases players_have_private_variant has to answer true for.
-local WANT_PRIVATE = { split = true, hidden = true, shared = false, ddd = false, wdw = false }
-
--- The act both players stand in for "hidden" and "shared". Act 6 is the one
--- that stops the clock, so it is the side of the TTC divergence the predicate
--- keys on; the other player's goal keeps whatever act pick_ttc_goals found.
-local SHARED_ACT = 6
+-- Which cases the two players are in different acts for. A case whose acts
+-- quietly stopped differing -- or started -- would report a pass for the wrong
+-- reason, so each client checks its own pair against this before measuring.
+local WANT_CROSS_ACT = { split = true, shared = false, ddd = false, wdw = false }
 
 -- The save flags the submarine, its door and the nine poles read:
 -- bhv_bowsers_sub_loop (src/game/behaviors/ddd_sub.inc.c:4) deletes the
@@ -158,8 +148,9 @@ local rewarped = false
 local moved = false
 
 --- The two TTC goals the cases need: act 6, and any other act.
--- Act 6 stops the clock while the others run it, which is the divergence
--- players_have_private_variant isolates anywhere in the course. Goals that
+-- Act 6 stops the clock while the others run it, so the two players do not even
+-- agree on where the course's moving platforms are -- the hardest case for a
+-- fight between two acts, which is why it is the one measured. Goals that
 -- require a cap are skipped: a vanish cap makes interact_player return before
 -- it can reach resolve_player_collision, which would pass for the wrong reason.
 local function pick_ttc_goals()
@@ -344,6 +335,7 @@ local function gates(other_mario, distance)
         .. " drift=" .. string.format("%.1f", drift)
         .. " active_me=" .. tostring(is_player_active(me))
         .. " active_them=" .. tostring(is_player_active(other_mario))
+        .. " active_them_cross_act=" .. tostring(is_player_active_cross_act(other_mario))
         .. " collided=" .. tostring((mine & INTERACT_PLAYER) ~= 0)
         .. " interactions=" .. server_interactions()
         .. " headless_server=" .. tostring(gServerSettings.headlessServer)
@@ -412,10 +404,6 @@ local function update_server()
         enter("open_case")
 
     elseif state == "open_case" then
-        -- "hidden" reuses the goals "split" handed out, untouched: reassigning
-        -- them would change sh5_goal, and a client re-warps to its goal's act
-        -- the moment that value changes, which is exactly the warp this case
-        -- exists to avoid. The second player moves itself instead.
         local first = ttc.act_6
         local second = (CASE[phase] == "shared") and ttc.act_6 or ttc.act_other
         -- A shared-course case hands out a fresh pair, so both clients warp
@@ -423,7 +411,7 @@ local function update_server()
         -- standing in.
         local shared = SHARED_COURSE[CASE[phase]]
         if shared then first, second = pair_for[CASE[phase]].stay, pair_for[CASE[phase]].other end
-        if CASE[phase] ~= "hidden" and not assign(first, second) then
+        if not assign(first, second) then
             say("fail", "reason=players_left")
             enter("done")
             return
@@ -489,7 +477,7 @@ local function update_player()
         -- up standing in.
         local shared = SHARED_COURSE[CASE[phase]]
         local course = shared and shared.level or LEVEL_TTC
-        local stand_in = shared and shared.act or SHARED_ACT
+        local stand_in = shared and shared.act
         -- Both of StarHunt's own warps have to have landed before anything
         -- moves a player: a case that changes sh5_goal makes the mod warp that
         -- client, and a self-warp issued first is undone when the mod's arrives.
@@ -504,14 +492,13 @@ local function update_player()
             since = 0
             return
         end
-        -- **"hidden" and the shared-course cases are made here, and they are
-        -- made by moving rather than by reassigning.** This player keeps the
-        -- goal StarHunt gave it -- so players_have_private_variant reads two
-        -- different acts -- but walks back into the act the other one is
-        -- standing in, so the engine's own act comparison stops refusing the
-        -- contact. What is left between the two bodies is the mod alone:
-        -- R-030's branch in on_allow_interact, and the predicate it asks.
-        if (CASE[phase] == "hidden" or shared) and not IS_ANCHOR then
+        -- **A shared-course case is made here, by moving rather than by
+        -- reassigning.** This player keeps the goal StarHunt gave it -- so the
+        -- two goals still name different acts -- but walks into the act the
+        -- other one is standing in. That is what makes it a case about a course
+        -- whose worlds agree: the pair is in one act, and anything that keeps
+        -- them apart is the mod isolating a pair it has no reason to.
+        if shared and not IS_ANCHOR then
             if not rewarped then
                 rewarped = true
                 warp_to_level(course, 1, stand_in)
@@ -529,8 +516,8 @@ local function update_player()
             end
         end
         -- Both players stand on the meeting point before anything is asked
-        -- about the pair, so the predicate is read where a rule isolating this
-        -- course by act would have answered true. They overlap exactly for the
+        -- about the pair, so the two acts are compared where a rule isolating
+        -- this course by act would have fired. They overlap exactly for the
         -- moment: resolve_player_collision moves along the vector between the
         -- two torsos, so a perfect overlap pushes nobody.
         if shared ~= nil and shared.meet ~= nil and not moved then
@@ -552,13 +539,17 @@ local function update_player()
             say("saveflags", "role=player" .. MY_GLOBAL
                 .. " ddd_gate=" .. tostring(save_file_get_flags() & DDD_SAVE_GATE))
         end
-        local private = api.players_have_private_variant(0, OTHER)
-        local want = WANT_PRIVATE[CASE[phase]]
+        -- The premise, not the verdict: whether the two players are actually
+        -- in different acts. `split` needs them to be and every other case
+        -- needs them not to be, and a case that drifts either way measures
+        -- something other than what it is named for.
+        local cross_act = mine.currActNum ~= theirs.currActNum
+        local want = WANT_CROSS_ACT[CASE[phase]]
         say("pair", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
-            .. " private=" .. tostring(private)
+            .. " cross_act=" .. tostring(cross_act)
             .. " my_act=" .. tostring(mine.currActNum) .. " their_act=" .. tostring(theirs.currActNum)
             .. " interactions=" .. server_interactions())
-        if private ~= want then
+        if cross_act ~= want then
             say("fail", "reason=wrong_pair_state role=player" .. MY_GLOBAL .. " case=" .. CASE[phase])
             enter("done")
             return
