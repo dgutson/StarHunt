@@ -13,6 +13,66 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-18 — R-034: a player in another act is placed by its owner, not simulated here
+
+R-028 let two players in different acts of one course see and hit each other, and left one cost.
+A remote Mario is simulated locally every frame — `bhv_mario_update`
+(`src/game/object_list_processor.c:245`) calls `execute_mario_action` for every player and the
+action switch runs the body's own action against **this** client's collision — and
+`network_receive_player` writes the owner's position over it when a packet arrives, which is
+every third frame at most. Where the two clients hold the same geometry that costs a unit or
+two. Where they do not, the body falls locally and is pulled back twenty times a second.
+
+The engine places such a body instead of simulating it. `dgutson/sm64coopdx`, branch
+`feature/cross-act-interpolation` off `feature/cross-act-players`: while `crossActPlayers` is
+set and the remote player's act differs, `execute_mario_action` sets `inLoop = FALSE` so the
+action switch does not run, and the body is moved toward the position the owner reported over
+the number of frames the previous packet took to arrive. Everything else in that function still
+runs, which is what keeps the fight working. Three fields were added to `PACKET_PLAYER` —
+`animID`, `animFrameAccelAssist`, `animAccel` — because nothing else sets a remote Mario's
+pose: `set_mario_animation` is called from inside the action functions
+(`src/game/mario.c:116`) and `header.gfx.animInfo` is not among the object fields the packet
+already carried. The frame counter then advances in the render path
+(`geo_update_animation_frame`, from `src/game/rendering_graph_node.c:1240`), so the animation
+keeps running between packets and each packet re-syncs it.
+
+Two things the action code does that had to move with it, both found by the harness rather than
+by reading. The step functions are what publish a body to the graphics
+(`vec3f_copy(marioObj->header.gfx.pos, m->pos)`, `src/game/mario_step.c:276,296,420,822`), so
+a body whose action does not run is drawn where it last ran one — and since the torso position
+comes off the render transform and `resolve_player_collision` measures the overlap between two
+players from their torsos, a stale graphical position also means no push at all: the `split`
+case reported `torso_dist=74.2` while the two positions were 17.3 apart, and the engine refused
+the push. And `update_mario_geometry_inputs` moves the body itself — out of this client's
+walls, onto the graphical position when it finds no floor, onto the spawn point when there is
+none there either — so the position is written after `update_mario_inputs`, not before.
+
+`SM64COOPDX_VERSION` is now `v1.5.1-crossact`. `packet_join.c:157-165` compares version strings
+exactly and refuses the connection on a mismatch, and that is wanted here: the packet body
+changed, so a stock v1.5.1 client would otherwise pass the handshake and read every player
+packet at the wrong offsets. The previous patch could keep upstream's string because it only
+added bit 4 to the flag byte, which a stock client ignores and so fails safe.
+
+**The mod is unchanged.** It already asks for `crossActPlayers` and asks for nothing else, so
+there is no new offline test — nothing new happens in Lua to assert. What was added is a
+verdict in the live harness: `hull` now judges `flips` on both clients and `error_max` with
+`step_max` on the client that never spawned the deck, and the probe measures horizontal error
+and labels each line with which side of the case it is on. Run against a game built from
+`feature/cross-act-players` the same harness goes red, which is what makes the green run mean
+something.
+
+Measured, `hull`, fifty counted samples per case: on the client with no deck under that body,
+`error_max` 24.3 → 0.9, `step_max` 24.3 → 0.2, `flips` 25 → 0. On the client standing on the
+deck, watching a body fall 6,600 units, `step_max` 294.9 → 135.8 and `flips` 3 → 2, but
+`error_mean` 8.9 → 98.6: a body placed by its owner is a few frames behind, and that one covers
+about 75 units a frame. So the design is exact where the two clients disagree about the ground
+and a few frames behind where they agree, which is the trade it was chosen for.
+`ACT_GEOMETRY_PLAN.md` carries both halves of the table and the velocity-prediction alternative
+that was not taken. The checks held: syntax silent, 776 passed / 0 failed, luacheck 2 warnings /
+0 errors, lua-language-server 10 problems in 2 files, live `PASSED`, `--without crossact`
+`PASSED (inverted)`. No mutation sweep applies, because no line of the mod changed. Nothing
+automated reaches a real session with real latency and real people; that is still R-010.
+
 ### 2026-09-17 — R-028: two players in different acts of one course now fight each other
 
 Every player in a round is sent to a star of their own, so two players in one course hold

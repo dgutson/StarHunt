@@ -181,8 +181,12 @@ reports `passed_through=false` — the engine pushed the two bodies apart — ex
 reports `floor_gap` and must have both clients above 500, because the player standing on a deck
 the other client never spawned is measured for disagreement rather than for a push. Both players
 also print a `PROBE saveflags` line, and the two must carry the same `ddd_gate` value, and a
-`PROBE jitter` line per case, which is a measurement rather than a verdict:
-`references/live-harness.md` says what its fields mean and why a loopback understates them. `run.sh` waits for
+`PROBE jitter` line per case. On `hull` two of its fields are judged: `flips` must be at most 2
+on both clients, and on the `anchor=false` line — the client that never spawned the deck — both
+`error_max` and `step_max` must be under 10. The anchor's own numbers on that case are a body in
+free fall and are deliberately not gated. On every other case the line is a measurement rather
+than a verdict: `references/live-harness.md` says what its fields mean, why the anchor is
+excluded, and why a loopback understates all of them. `run.sh` waits for
 the referee's `PROBE end role=server`, which it prints once every player has reported every
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.

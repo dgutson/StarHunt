@@ -79,6 +79,10 @@ between the two clients. The server still runs StarHunt as the host: it picks th
   is reported** — a body with no deck under it falls — and the check is that both clients find
   the ground under that body at least 500 units apart. The jitter numbers beside it are the
   point of the case; `split` is the same measurement over ground the two clients agree about.
+  Two of those numbers are judged: `flips` on both clients, and `error_max` with `step_max` on
+  the `anchor=false` line, which is the client whose copy of the body has no deck under it and
+  which should therefore hold it still where its owner put it. The anchor's numbers are a body
+  in free fall and are not gated; `test/live/README.md` has both sets and says why.
 - **ddd** — two Dire Dire Docks goals on different acts, with the second player warping
   itself into the first's act so the pair is in one act. Nothing may keep these two apart:
   only the manta ray is

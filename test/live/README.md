@@ -200,21 +200,26 @@ PROBE gates role=player1 case=split dist=20.0 drift=0.0 active_me=1 active_them=
       invinc=0,0 dy=0.0 their_xz=1405,-515
 ```
 
-Every case also prints a `jitter` line, which is a measurement rather than a verdict:
+Every case also prints a `jitter` line. For `hull` two of its fields are a verdict; for the
+other cases it is a measurement:
 
 ```
-PROBE jitter role=player2 case=hull error_max=... error_mean=... step_max=...
-      flips=... floor_gap=... rtt_frames=... samples=...
+PROBE jitter role=player2 case=hull anchor=false error_max=... error_mean=...
+      error_xz_max=... step_max=... flips=... floor_gap=... rtt_frames=... samples=...
 ```
 
 Each client publishes where its own player actually is through the sync table — the only channel
 that crosses acts, since `PACKET_PLAYER` is the thing under test — and compares that against the
 body it is simulating for the other player. `error_max` and `error_mean` are that difference in
-units; `step_max` is the largest single-frame move of that body and `flips` the number of
+units, vertically; `error_xz_max` is the same horizontally, which is the one that does not
+grow with the body's speed and so is comparable between a body standing still and a body
+falling; `step_max` is the largest single-frame move of that body and `flips` the number of
 direction changes in it, which is the fall-and-snap sawtooth itself rather than its size;
 `floor_gap` is how far apart the two clients' floors under that body are; `rtt_frames` is a
 round trip through the mod's own sync table, in frames, measured by echoing back the tick the
-other client sent.
+other client sent. `anchor` says which side of the case this client is on — in `hull` the
+anchor is the one standing on the deck, so `anchor=false` is the client whose copy of that
+body has no deck under it.
 
 Two things are thrown away rather than measured. The first samples of each case go
 uncounted, because both players teleport into place and for the few frames before the first
@@ -224,11 +229,26 @@ they keep the previous case's numbers until the new one starts publishing, and a
 from another course compared against a position in this one reads as a disagreement of
 thousands of units. `samples=` on the line is how many frames actually counted.
 
-**What produces the jitter**: between packets each client runs the remote Mario's own action
-against its own collision, and `network_receive_player` snaps it back when a packet arrives. Two
-clients holding the same geometry cost a unit or two; two clients that disagree about the ground
-give a body that falls locally and is pulled back thirty times a second. That is what the `hull`
-case exists to put a number on, and `split` is its baseline: same measurement, agreed ground.
+**What the numbers mean now.** A body whose act differs from the local player's is placed by
+its owner and not simulated here, so on the client that never spawned the deck it stands still
+exactly where its owner says: `error_max=0.9 step_max=0.2 flips=0`. On a game without that —
+where each client runs the remote Mario's own action against its own collision between packets
+and `network_receive_player` snaps it back on arrival — the same client reports
+`error_max=24.3 step_max=24.3 flips=25`, a body falling onto the local sea floor and being
+pulled back twenty times a second. `flips` is the field that moves most, which is why the run
+checks it on both clients.
+
+**The anchor's own numbers are excluded from the verdict, and are large for an honest reason.**
+Its copy of the other body is in free fall for the whole measurement — 6,600 units down to the
+sea floor, because that body has no deck under it on its own machine — and a body placed by its
+owner is a few frames behind by construction. At roughly 75 units a frame that is
+`error_max=295.5 error_mean=98.6`, against `219.9` and `8.9` for a locally simulated one, which
+tracks a fall well because gravity is the same on both machines. What did improve there is the
+jerk: `step_max` 294.9 down to 135.8 and `flips` 3 down to 2. So the trade this design makes,
+stated in the numbers it is measured by: exact where the two clients disagree about the ground,
+and a few frames behind where they agree. `split` shows the same thing from the other end —
+`error_xz_max` around 30 while a player walks in, against 0 for a locally simulated body over
+ground both clients hold.
 
 **Three processes on one machine understate it.** The loopback delivers a position packet every
 frame with no loss, so the local simulation never runs far before it is corrected. A real

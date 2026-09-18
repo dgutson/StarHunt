@@ -175,6 +175,7 @@ local sim_dir = 0
 local sim_step_max = 0
 local sim_flips = 0
 local error_max = 0
+local error_xz_max = 0
 local error_sum = 0
 local error_n = 0
 local floor_gap = 0
@@ -394,6 +395,7 @@ local function place_at(m, x, y, z)
     sim_step_max = 0
     sim_flips = 0
     error_max = 0
+    error_xz_max = 0
     error_sum = 0
     error_n = 0
     floor_gap = 0
@@ -471,6 +473,12 @@ local function sample_disagreement(them)
         if tx ~= nil and tz ~= nil and tf ~= nil then
             local gap = math.abs(find_floor_height(tx, ty + 100, tz) - tf)
             if gap > floor_gap then floor_gap = gap end
+            -- Horizontally as well as vertically. A body displaced sideways is
+            -- invisible to the vertical error alone, and a fall is the one case
+            -- where the vertical number is large for an honest reason.
+            local dx, dz = them.pos.x - tx, them.pos.z - tz
+            local err_xz = math.sqrt(dx * dx + dz * dz)
+            if err_xz > error_xz_max then error_xz_max = err_xz end
         end
     end
 
@@ -509,6 +517,21 @@ end
 -- `is_player_active` is the decisive one: interact_player asks it about both
 -- bodies, and it is false for a headless server's player and for any remote
 -- player whose course, act, level or area does not match the local one.
+--- The vertical or horizontal gap between two players' torsos, which is what
+-- resolve_player_collision measures rather than their positions. Answers "?"
+-- when either body has no body state, so a missing one is visible instead of
+-- reading as zero.
+local function torso_gap(me, them, axis)
+    local mine = me.marioBodyState ~= nil and me.marioBodyState.torsoPos or nil
+    local theirs = them.marioBodyState ~= nil and them.marioBodyState.torsoPos or nil
+    if mine == nil or theirs == nil then return "?" end
+    if axis == "y" then
+        return string.format("%.1f", math.abs(mine.y - theirs.y))
+    end
+    local dx, dz = mine.x - theirs.x, mine.z - theirs.z
+    return string.format("%.1f", math.sqrt(dx * dx + dz * dz))
+end
+
 local function gates(other_mario, distance)
     local me = gMarioStates[0]
     local mine = me.marioObj ~= nil and me.marioObj.collidedObjInteractTypes or 0
@@ -528,8 +551,14 @@ local function gates(other_mario, distance)
         .. " my_action=" .. string.format("%08X", me.action or 0)
         .. " invinc=" .. tostring(me.invincTimer) .. "," .. tostring(other_mario.invincTimer)
         -- resolve_player_collision refuses outright when the two torsos are
-        -- further apart vertically than one hitbox height (160).
+        -- further apart vertically than one hitbox height (160), and measures the
+        -- horizontal overlap from the torsos too, not from pos
+        -- (src/game/interaction.c:1321-1332). A body whose torso is not being
+        -- updated therefore reads as far away however close its pos is, so both
+        -- pairs of numbers are reported.
         .. " dy=" .. string.format("%.1f", math.abs(me.pos.y - other_mario.pos.y))
+        .. " torso_dy=" .. torso_gap(me, other_mario, "y")
+        .. " torso_dist=" .. torso_gap(me, other_mario, "xz")
         .. " their_xz=" .. string.format("%.0f,%.0f", other_mario.pos.x, other_mario.pos.z))
 end
 
@@ -887,8 +916,15 @@ local function update_player()
                 .. " reach=" .. fmt(reach)
                 .. " samples=" .. samples)
             say("jitter", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                -- Which side of the case this client is on. In `hull` the anchor is
+                -- the one standing on the deck, so the other client is the one whose
+                -- copy of that body has no deck under it -- the disagreement the case
+                -- exists to measure. The anchor's own numbers are a body in free
+                -- fall, where being a few frames behind is a large distance.
+                .. " anchor=" .. tostring(IS_ANCHOR)
                 .. " error_max=" .. fmt(error_max)
                 .. " error_mean=" .. fmt(error_n > 0 and error_sum / error_n or 0)
+                .. " error_xz_max=" .. fmt(error_xz_max)
                 .. " step_max=" .. fmt(sim_step_max)
                 .. " flips=" .. sim_flips
                 .. " floor_gap=" .. fmt(floor_gap)
