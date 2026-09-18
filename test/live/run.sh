@@ -242,6 +242,34 @@ else
     hull=$(cat "$WORK"/*.log 2>/dev/null \
         | sed -n 's/^PROBE verdict .*case=hull floor_gap=\([0-9.]*\).*/\1/p' \
         | awk '$1 >= 500' | wc -l)
+    # A cross-act body is placed by its owner rather than simulated here, so the
+    # client that never spawned the deck must stop pulling the body down and
+    # having the next packet snap it back. Two things are checked, and the
+    # vertical error is deliberately not one of them.
+    #
+    #   flips, both clients -- the number of direction changes in the body's
+    #     vertical motion, which is the sawtooth itself. This is the measure that
+    #     says "smooth", and it is the one that moves most: 25 without this, 0
+    #     with it.
+    #   step_max and error_max, on the client that is NOT the anchor -- the one
+    #     whose copy of that body has no deck under it, so its body should be
+    #     standing still exactly where its owner says. Its largest single-frame
+    #     move and its largest disagreement are the case's real subject.
+    #
+    # The anchor's own numbers are excluded on purpose: its copy of the other
+    # body is in free fall for the whole measurement, 6,600 units down to the sea
+    # floor, and a body placed by its owner is a few frames behind by
+    # construction. At 75 units a frame that is a large distance for an honest
+    # reason, and gating on it would be gating on the speed of a fall rather than
+    # on whether anything disagrees. floor_gap staying large is correct too -- the
+    # two clients do hold different ground; what must not happen is the body
+    # following the local one.
+    hull_flips=$(cat "$WORK"/*.log 2>/dev/null \
+        | sed -n 's/^PROBE jitter .*case=hull .*flips=\([0-9]*\) .*/\1/p' \
+        | awk '$1 <= 2' | wc -l)
+    hull_still=$(cat "$WORK"/*.log 2>/dev/null \
+        | sed -n 's/^PROBE jitter .*case=hull anchor=false error_max=\([0-9.]*\) .*step_max=\([0-9.]*\) .*/\1 \2/p' \
+        | awk '$1 < 10 && $2 < 10' | wc -l)
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
     ddd=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=ddd passed_through=false")
     wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
@@ -288,6 +316,20 @@ else
         echo "to 6 have. Read the 'deck' and 'standing' lines: without both the"
         echo "anchor never got onto bhvInSunkenShip3, the case measured nothing,"
         echo "and the jitter numbers beside it describe two clients that agree."
+    elif (( hull_flips < 2 )); then
+        echo "FAILED: one of the two clients still sees the other body sawing up and"
+        echo "down. Read flips on the jitter lines: it counts direction changes in"
+        echo "that body's vertical motion, which is what falling onto local geometry"
+        echo "and being snapped back by the next packet looks like. Both clients must"
+        echo "report no more than two."
+    elif (( hull_still < 1 )); then
+        echo "FAILED: the client that never spawned the deck is not holding the other"
+        echo "body still. That body is standing on the ship on its own machine, so"
+        echo "this client should place it there and leave it: both its largest"
+        echo "single-frame move (step_max) and its largest disagreement with its owner"
+        echo "(error_max) must be under 10 units on the anchor=false jitter line. The"
+        echo "floor_gap staying large is correct -- the clients do hold different"
+        echo "ground; what must not happen is the body following the local one."
     elif (( gates_seen < 2 || gates_agree != 1 )); then
         echo "FAILED: the two players in Dire Dire Docks do not read the same"
         echo "SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, so they do"
@@ -307,11 +349,12 @@ else
         echo "were pushed apart by the engine at its 74 units (R-028), two players in"
         echo "one act were too, two players holding different Dire Dire Docks acts"
         echo "fought each other over one save file (R-031), and so did two holding"
-        echo "different Wet-Dry World acts (R-029). The jitter lines above are"
-        echo "measurements, not verdicts: error_max is how far each client's own"
-        echo "simulation of the other body drifted from where its owner said it"
-        echo "was, and the hull case is the one where the two clients hold"
-        echo "different ground under it."
+        echo "different Wet-Dry World acts (R-029). On the hull case, where the two"
+        echo "clients hold different ground under one body, that body stayed within"
+        echo "ten units of where its owner said it was and did not saw up and down"
+        echo "(R-034). The jitter lines for the other cases are measurements rather"
+        echo "than verdicts: error_max is how far each client's own copy of the other"
+        echo "body drifted from where its owner said it was."
         status=0
     fi
 fi

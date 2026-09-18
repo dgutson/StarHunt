@@ -651,12 +651,92 @@ Two things already in the engine shrink the patch:
   `interact_player_pvp` is driven from the local player's own `mario_process_interactions`, so
   only the victim's check actually has to be relaxed.
 
+### The second patch: a body in another act is placed by its owner
+
+The first patch leaves one cost, and it is the only one it leaves. A remote Mario is simulated
+locally every frame — `bhv_mario_update` (`src/game/object_list_processor.c:245`) calls
+`execute_mario_action` for every player, and the action switch runs the body's own action
+against **this** client's collision. `network_receive_player` then writes the owner's position
+over it whenever a packet arrives, which is every third frame at most
+(`network_update_player`, `packet_player.c:426`, called from `src/pc/network/network.c:590`).
+Where the two clients hold the same geometry that costs a unit or two. Where they do not, the
+body falls locally and is pulled back twenty times a second.
+
+So while `crossActPlayers` is set and the remote player's act differs, the body is not
+simulated here at all:
+
+- `execute_mario_action` sets `inLoop = FALSE` for such a body, so the action switch does not
+  run, and calls `network_owner_driven_advance` instead. The rest of the function is unchanged:
+  interactions, health, hitbox and cap model all still run, which is what keeps the fight
+  working.
+- `network_receive_player` hands the arriving position to `network_owner_driven_target` rather
+  than letting it stand, and restores the position the body is being moved from. Each frame the
+  body covers a fraction of that distance, the fraction being one over the number of frames the
+  previous packet took to arrive, so it reaches the owner's position about as the next packet
+  lands. A target further away than 150 units per frame of that interval is a warp rather than
+  motion and is covered in one frame.
+- **The pose has to travel, or this cannot work.** Nothing else sets a remote Mario's
+  animation: `set_mario_animation` is called from inside the action functions
+  (`src/game/mario.c:116`), and `header.gfx.animInfo` is not among the object fields
+  `PACKET_PLAYER` already carries (`packet_player.c:95`). So `animID`,
+  `animFrameAccelAssist` and `animAccel` are added to `struct PacketPlayerData` and applied on
+  arrival. The frame counter then advances in the render path
+  (`geo_update_animation_frame`, called from `src/game/rendering_graph_node.c:1240`), so the
+  animation keeps running between packets and each packet re-syncs it.
+
+What this costs, stated plainly: such a body no longer produces footstep sounds, landing sounds
+or dust, because the action code that produces them does not run for it — `network_receive_player`
+resets the sound-played flags at `packet_player.c:308` for exactly that reason, and there is now
+nothing to play them. And the body renders about one packet interval behind its owner. A body
+that is smooth and slightly behind is the trade this takes over one that vibrates.
+
+**Measured, both ways, by the live harness's `hull` case.** One client stands on the sunken
+ship's deck; the other holds the act 1 goal and never spawned it. Fifty counted samples per
+case, three processes on one loopback:
+
+| | placed by its owner | simulated locally |
+|---|---|---|
+| the client with no deck under that body: `error_max` | 0.9 | 24.3 |
+| `step_max` | 0.2 | 24.3 |
+| `flips` | 0 | 25 |
+| the client on the deck, watching a body fall: `error_max` | 295.5 | 219.9 |
+| `error_mean` | 98.6 | 8.9 |
+| `step_max` | 135.8 | 294.9 |
+| `flips` | 2 | 3 |
+
+So the sawtooth is gone where the two clients disagree about the ground, which is what this is
+for. The second half of the table is the price: a body placed by its owner is a few frames
+behind, and the falling body in that case covers about 75 units a frame, so being three frames
+behind reads as hundreds of units. A locally simulated body tracks a fall almost exactly,
+because gravity is the same on both machines — it is only geometry the two disagree about. The
+same trade shows in `split`, where a player walks in over ground both clients hold:
+`error_xz_max` around 30 placed by its owner, 0 simulated locally.
+
+**The alternative not taken**, so it can be: aim at where the owner's own velocity puts the body
+by the time it gets there, rather than at the position the packet reported. `vel` is already in
+the packet, so it costs nothing on the wire, and it would remove most of that lag — a fall is
+the case prediction is best at. It is not done because it puts the body somewhere its owner has
+not been yet, so an abrupt stop overshoots and is pulled back, which is a different artefact
+rather than none.
+
+**Same-act remote players are untouched.** The predicate is
+`network_player_is_cross_act`, which asks only whether the acts differ while the field is set,
+so every pair that shares an act keeps today's local simulation — which is correct for them,
+holds the same collision, and hides latency.
+
+**The packet body changes, so the version string does too.** `packet_join.c:157-165` compares
+version strings exactly and refuses the connection on a mismatch, and the first patch left
+`SM64COOPDX_VERSION` at upstream's `v1.5.1`. That was safe while only the flag byte changed: a
+stock client does not know bit 4 and simply keeps treating player packets as act-matched. It is
+not safe once `struct PacketPlayerData` grows, because a stock client would pass the handshake
+and then read every player packet at the wrong offsets. The fork reports
+`v1.5.1-crossact`, so the game refuses the pair at the join screen instead.
+
 ### What a reviewer will ask
 
-- A remote player standing on a platform the local client does not have is simulated locally
-  against local collision between packets, and snapped back by each arriving packet
-  (`network_update_player` runs from `src/pc/network/network.c:590`). Expect jitter over
-  geometry the two clients disagree about. This is the thing to test first.
+- A remote player in another act is placed by its owner and not simulated locally, so the
+  jitter the first patch would have left is gone. What is left to judge is the trade above: no
+  footsteps, no dust, and one packet interval of lag on that body.
 - `resolve_player_collision` will let a player stand on another who is standing on nothing
   visible.
 - `take_damage_and_knock_back` will knock a player into geometry that exists only for them.

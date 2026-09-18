@@ -26,14 +26,22 @@ Esto no esta en ningun paquete todavia, y **necesita una version parcheada del
 juego**: el sm64coopdx publicado descarta todo contacto entre dos jugadores con
 actos distintos antes de que el mod pueda opinar, asi que sobre el juego
 publicado el mod se comporta igual que en v1.1.2. La rama que lo permite es
-`feature/cross-act-players` en `github.com/dgutson/sm64coopdx`; agrega un solo
-campo y viene apagada de fabrica.
+`feature/cross-act-interpolation` en `github.com/dgutson/sm64coopdx`, que sale
+de `feature/cross-act-players`; agrega un solo campo y viene apagada de fabrica.
+Ese juego se identifica como `v1.5.1-crossact`, asi que no se puede jugar con
+alguien que tenga el sm64coopdx normal: la partida se rechaza al entrar en lugar
+de desincronizarse.
 
 - Dos jugadores que estan en el mismo curso con estrellas de actos distintos se
   ven, se empujan y se pegan, y cada uno sigue teniendo los objetos de su propio
   acto: el barco hundido de Jolly Roger Bay para quien juega el acto 1, el
   levantado para quien juega otro. El mod ya no esconde a nadie por su acto ni
   le quita el cuerpo.
+- El cuerpo del otro jugador se mueve suave. Cuando alguien esta parado sobre
+  algo que en tu acto no existe, tu juego ya no intenta adivinar donde cae: lo
+  pone donde su dueno dice que esta. A cambio, ese cuerpo va un poco atrasado
+  respecto de lo que el otro jugador ve en su pantalla, y no hace ruido de pasos
+  ni levanta polvo, porque esos los produce la simulacion que ya no corre.
 
 ## v1.1.2 - 17 de septiembre de 2026
 
