@@ -7,12 +7,11 @@
 local stub = {}
 
 -- --------------------------------------------------------------------
--- constants (119)
+-- constants (118)
 -- --------------------------------------------------------------------
 id_bhvBowser = 72 --- @type BehaviorId
 id_bhvBowserBomb = 74 --- @type BehaviorId
 id_bhvBowserShockWave = 82 --- @type BehaviorId
-id_bhvBowsersSub = 83 --- @type BehaviorId
 id_bhvCameraLakitu = 99 --- @type BehaviorId
 id_bhvExplosion = 161 --- @type BehaviorId
 id_bhvFlameMovingForwardGrowing = 182 --- @type BehaviorId
@@ -141,7 +140,7 @@ gServerSettings = {}
 gTextures = {}
 
 -- --------------------------------------------------------------------
--- engine functions (55), inert by default
+-- engine functions (58), inert by default
 -- --------------------------------------------------------------------
 stub.functions = {
     "atan2s",
@@ -159,6 +158,7 @@ stub.functions = {
     "djui_hud_set_resolution",
     "djui_popup_create",
     "djui_popup_create_global",
+    "game_unpause",
     "get_behavior_from_id",
     "get_current_save_file_num",
     "get_global_timer",
@@ -172,6 +172,7 @@ stub.functions = {
     "hud_is_hidden",
     "hud_set_value",
     "hud_show",
+    "is_game_paused",
     "is_transition_playing",
     "mod_storage_load",
     "mod_storage_save",
@@ -190,6 +191,7 @@ stub.functions = {
     "save_file_get_star_flags",
     "save_file_remove_star_flags",
     "set_mario_action",
+    "set_pause_menu_hidden",
     "set_ttc_speed_setting",
     "set_water_level",
     "soft_reset_camera",

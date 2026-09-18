@@ -1,9 +1,16 @@
--- StarHunt v1.1.2 - the /starhunt config menu.
+-- StarHunt v1.1.2 - the two menus: the /starhunt config menu, and the pause
+-- list that replaces the game's own while a round is running.
 --
 -- Six options for the host -- language, mode, difficulty, round length, status
 -- and the start/stop action -- and two for everyone else, who may change only
--- the language and read the status.  This menu is the mod's whole user
--- interface: there is no other way to pick a mode, a difficulty or a length.
+-- the language and read the status.  This is the only way to pick a mode, a
+-- difficulty or a length.
+--
+-- The pause list is further down, under `PAUSE_ROWS`.  It needs an input
+-- function of its own: the game does not update Mario while it is paused, so
+-- HOOK_BEFORE_MARIO_UPDATE, the hook `update_config_input` runs under, never
+-- fires there.  `update_pause_menu` runs under HOOK_UPDATE, which fires every
+-- frame whatever the play mode is.
 --
 -- `update_config_input` owns the controller while the menu is up.  It reads the
 -- buttons and the stick, then zeroes both before Mario's movement code can see
@@ -268,6 +275,92 @@ local function update_config_input(m)
     m.vel.z = 0
     if (m.action & ACT_FLAG_AIR) == 0 then set_mario_action(m, ACT_IDLE, 0) end
     if local_runtime.config_open then SH.freeze_menu_mario(m) end
+end
+
+-- The rows that replace the game's own pause list while a round is running.
+-- The game's fourth row, the camera one, is not among them: its submenu is
+-- drawn in C from the same cursor (`ingame_menu.c:2568`) and no Lua call opens
+-- it.
+local PAUSE_ROWS = { "continue", "another_level" }
+
+-- `set_pause_menu_hidden` stops the game drawing CONTINUE / EXIT COURSE / EXIT
+-- TO CASTLE and stops it reading A and START (`ingame_menu.c:2980-3018`), so
+-- while it is set this module owns the rows, the cursor and the buttons, and
+-- `game_unpause` is the only way out of the pause.  A build without the three
+-- calls keeps its own list and the mod leaves it alone, the same way the
+-- cross-act request does nothing where `gLevelValues` has no field for it.
+local can_replace_pause_menu = type(set_pause_menu_hidden) == "function"
+    and type(game_unpause) == "function" and type(is_game_paused) == "function"
+
+local pause_stick_latched = false
+
+-- Whether the mod owns the pause screen this frame.  Outside a round it never
+-- does, so EXIT COURSE and EXIT TO CASTLE work as the game intends; during a
+-- round they are refused anyway, by on_pause_exit in modules/round.lua.
+SH.pause_menu_active = function()
+    return can_replace_pause_menu and is_round_active() and is_game_paused()
+end
+
+-- The row labels in order, which is what the drawing code iterates. ANOTHER
+-- LEVEL carries its own countdown, the same text the Co-op DX mod-menu row
+-- shows.
+SH.pause_menu_labels = function()
+    local labels = {}
+    for index, row in ipairs(PAUSE_ROWS) do
+        if row == "another_level" then
+            labels[index] = SH.manual_reroll_label()
+        else
+            labels[index] = translated("CONTINUE", "CONTINUAR")
+        end
+    end
+    return labels
+end
+
+-- Runs every frame, pause screen or not, because the flag has to be cleared
+-- again the moment the round ends or the player resumes.  The buttons come from
+-- `buttonPressed` rather than a latch of `buttonDown`: this is the controller
+-- the game's own pause screen reads, and nothing neutralizes it here the way
+-- update_config_input does for the menu it owns.
+SH.update_pause_menu = function()
+    if not can_replace_pause_menu then return end
+    local ours = is_round_active() and is_game_paused()
+    if ours ~= local_runtime.pause_menu_hidden then
+        set_pause_menu_hidden(ours)
+        local_runtime.pause_menu_hidden = ours
+        local_runtime.pause_selection = 1
+        pause_stick_latched = false
+    end
+    if not ours then return end
+
+    local controller = gMarioStates[0].controller
+    local pressed = controller.buttonPressed
+    local stick_y = controller.stickY
+    if math.abs(stick_y) < 18 then pause_stick_latched = false end
+    local stick_ready = not pause_stick_latched
+    local stick_up = stick_ready and stick_y > 24
+    local stick_down = stick_ready and stick_y < -24
+    if stick_up or stick_down then pause_stick_latched = true end
+
+    if (pressed & U_JPAD) ~= 0 or stick_up then
+        local_runtime.pause_selection = local_runtime.pause_selection - 1
+        if local_runtime.pause_selection < 1 then
+            local_runtime.pause_selection = #PAUSE_ROWS
+        end
+    elseif (pressed & D_JPAD) ~= 0 or stick_down then
+        local_runtime.pause_selection = local_runtime.pause_selection + 1
+        if local_runtime.pause_selection > #PAUSE_ROWS then
+            local_runtime.pause_selection = 1
+        end
+    elseif (pressed & (A_BUTTON | START_BUTTON)) ~= 0 then
+        -- A reroll the player cannot have yet leaves the pause open, which is
+        -- what a refused EXIT COURSE already does; request_manual_reroll has
+        -- put the reason on screen.
+        if PAUSE_ROWS[local_runtime.pause_selection] == "another_level" then
+            if SH.request_manual_reroll() then game_unpause() end
+        else
+            game_unpause()
+        end
+    end
 end
 
 local function show_help()

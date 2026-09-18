@@ -329,6 +329,10 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         manual_reroll_remaining = SH.manual_reroll_remaining,
         manual_reroll_label = SH.manual_reroll_label,
         update_manual_reroll_menu = SH.update_manual_reroll_menu,
+        update_pause_menu = SH.update_pause_menu,
+        pause_menu_active = SH.pause_menu_active,
+        pause_menu_labels = SH.pause_menu_labels,
+        pause_selection = function() return local_runtime.pause_selection end,
         update_config_menu_lock = SH.update_config_menu_lock,
         manual_reroll_cooldown = SH.manualRerollCooldown,
         toggle_menu = open_config_menu,
@@ -349,6 +353,9 @@ hook_event(HOOK_UPDATE, Team.update_palettes)
 hook_event(HOOK_UPDATE, host_update_round)
 hook_event(HOOK_UPDATE, SH.update_config_menu_lock)
 hook_event(HOOK_UPDATE, SH.update_manual_reroll_menu)
+-- Not under a Mario hook: the game stops updating Mario while it is paused,
+-- which is exactly when this has to run.
+hook_event(HOOK_UPDATE, SH.update_pause_menu)
 hook_event(HOOK_UPDATE, ensure_boss_health_owner)
 hook_event(HOOK_UPDATE, host_reset_scores_after_result)
 hook_event(HOOK_UPDATE, keep_moat_lowered)
