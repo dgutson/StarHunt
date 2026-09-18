@@ -176,9 +176,13 @@ names the directory holding the full logs. `COOPDX`, `ROM`, `PORT`, `TIMEOUT`, `
 `PAIR_DELAY` and `WORK` override the binary, the ROM, the port, the deadline, the two join
 delays and the scratch directory; on this machine the defaults are already right.
 
-A full run ends with `PASSED:` and one `PROBE verdict` line per player per case, and every
-case reports `passed_through=false` — the engine pushed the two bodies apart. Both players also
-print a `PROBE saveflags` line, and the two must carry the same `ddd_gate` value. `run.sh` waits for
+A full run ends with `PASSED:` and one `PROBE verdict` line per player per case. Every case
+reports `passed_through=false` — the engine pushed the two bodies apart — except `hull`, which
+reports `floor_gap` and must have both clients above 500, because the player standing on a deck
+the other client never spawned is measured for disagreement rather than for a push. Both players
+also print a `PROBE saveflags` line, and the two must carry the same `ddd_gate` value, and a
+`PROBE jitter` line per case, which is a measurement rather than a verdict:
+`references/live-harness.md` says what its fields mean and why a loopback understates them. `run.sh` waits for
 the referee's `PROBE end role=server`, which it prints once every player has reported every
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.

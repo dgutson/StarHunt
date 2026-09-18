@@ -122,6 +122,14 @@ makes `interact_player` return before it reaches `resolve_player_collision`.
 - **shared** — both players hold the act 6 goal, so they are in one act and the engine would
   push them apart with or without that request. **This case is the control**; without it a
   setup where the bodies never touch reports the other cases as passes, fix or no fix.
+- **hull** — the case that measures the disagreement instead of the contact. One player holds
+  the Jolly Roger Bay act 4 goal and stands on the deck of the ship that exists only in acts 2
+  to 6 (`bhvInSunkenShip3` at `4880, 820, 2375`, `levels/jrb/script.c:29`); the other holds the
+  act 1 goal, where that ship was never spawned and the sea floor is thousands of units below.
+  Neither re-warps. **It reports no push**, because the body with no deck under it falls and
+  falling is not being pushed. It reports a `floor_gap` — how far apart the two clients' idea of
+  the ground under one body is — and `run.sh` requires both clients to find that gap above 500
+  units, since below that the case is measuring two clients that agree.
 - **ddd** — two Dire Dire Docks goals on different acts, with the second player walking back into
   the first's act, so the pair is in one act. Nothing may keep them apart: the only
   act-gated object in that course is the manta ray (`levels/ddd/script.c:31`), and the submarine,
@@ -192,8 +200,49 @@ PROBE gates role=player1 case=split dist=20.0 drift=0.0 active_me=1 active_them=
       invinc=0,0 dy=0.0 their_xz=1405,-515
 ```
 
-It names every gate in `interact_player` and `resolve_player_collision` that can be read from
-Lua. `collided=false` means the bodies never touched and `their_pos_valid=false` means the
+Every case also prints a `jitter` line, which is a measurement rather than a verdict:
+
+```
+PROBE jitter role=player2 case=hull error_max=... error_mean=... step_max=...
+      flips=... floor_gap=... rtt_frames=... samples=...
+```
+
+Each client publishes where its own player actually is through the sync table — the only channel
+that crosses acts, since `PACKET_PLAYER` is the thing under test — and compares that against the
+body it is simulating for the other player. `error_max` and `error_mean` are that difference in
+units; `step_max` is the largest single-frame move of that body and `flips` the number of
+direction changes in it, which is the fall-and-snap sawtooth itself rather than its size;
+`floor_gap` is how far apart the two clients' floors under that body are; `rtt_frames` is a
+round trip through the mod's own sync table, in frames, measured by echoing back the tick the
+other client sent.
+
+Two things are thrown away rather than measured. The first samples of each case go
+uncounted, because both players teleport into place and for the few frames before the first
+position packet lands each client holds the other's body wherever it was standing beforehand —
+a real disagreement, but about the teleport. And the published values carry a case stamp, since
+they keep the previous case's numbers until the new one starts publishing, and a floor height
+from another course compared against a position in this one reads as a disagreement of
+thousands of units. `samples=` on the line is how many frames actually counted.
+
+**What produces the jitter**: between packets each client runs the remote Mario's own action
+against its own collision, and `network_receive_player` snaps it back when a packet arrives. Two
+clients holding the same geometry cost a unit or two; two clients that disagree about the ground
+give a body that falls locally and is pulled back thirty times a second. That is what the `hull`
+case exists to put a number on, and `split` is its baseline: same measurement, agreed ground.
+
+**Three processes on one machine understate it.** The loopback delivers a position packet every
+frame with no loss, so the local simulation never runs far before it is corrected. A real
+session with real latency has more frames to diverge in, and the same numbers will be larger.
+To see that shape without two machines, add delay to the loopback before the run — it needs
+root and it slows everything on `lo`, so put it back afterwards:
+
+```bash
+sudo tc qdisc add dev lo root netem delay 50ms    # before
+sudo tc qdisc del dev lo root                     # after
+```
+
+The `gates` line names every gate in `interact_player` and `resolve_player_collision` that can
+be read from Lua. `collided=false` means the bodies never touched and `their_pos_valid=false` means the
 positions are not being exchanged at all. The two `active_them` fields are the ones to read
 first: `is_player_active` keeps comparing the act, so it is `0` for a cross-act pair and stays
 that way — that is deliberate, because forty-odd behaviours choose their target through it.

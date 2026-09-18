@@ -72,6 +72,13 @@ local SEPARATED = PUSH_DISTANCE - 4.0
 -- refused, so the pair is never placed at a single point.
 local PLACE_OFFSET = 20.0
 
+-- Samples thrown away at the start of each measurement, before the
+-- disagreement between the two clients is believed. Both players teleport into
+-- place, and for the few frames before the first position packet lands each
+-- holds the other's body wherever it was standing beforehand -- which is a real
+-- disagreement, but about the teleport rather than about the ground.
+local SETTLE_SAMPLES = 10
+
 -- How far a player has to have moved from where it was put down for that to
 -- count as a push. An idle Mario on flat ground with zero velocity does not
 -- drift, so anything above a few units is the engine.
@@ -89,6 +96,17 @@ local PUSHED_DRIFT = 20.0
 --            being asked to leave the act out of that comparison, which the mod
 --            does at load with gLevelValues.crossActPlayers. **This is the case
 --            that fails when that request is removed.**
+--
+--  hull   -- the case that measures the disagreement rather than the contact.
+--            One player holds a Jolly Roger Bay goal for act 4 and stands on
+--            the deck of the ship that exists only in acts 2-6; the other holds
+--            the act 1 goal, where that ship is not there at all and the sea
+--            floor is thousands of units below. Neither re-warps. **It reports
+--            no push**: the body with no deck under it falls, and falling is not
+--            being pushed. What it reports is how far apart the two clients'
+--            idea of the ground under a body is, and the jitter that comes of
+--            it -- each client simulates the other's Mario against its own
+--            collision between packets, and every arriving packet snaps it back.
 --
 --  shared -- both players hold the act 6 goal, so the predicate is false and
 --            the mod leaves the contact alone. The engine must push these two
@@ -115,12 +133,12 @@ local PUSHED_DRIFT = 20.0
 --            fields is_player_active does (packet_area.c:52, :155-157;
 --            network_player.c:129-142). **This is the case that fails if WDW is
 --            isolated by act again.**
-local CASE = { "split", "shared", "ddd", "wdw" }
+local CASE = { "split", "shared", "hull", "ddd", "wdw" }
 
 -- Which cases the two players are in different acts for. A case whose acts
 -- quietly stopped differing -- or started -- would report a pass for the wrong
 -- reason, so each client checks its own pair against this before measuring.
-local WANT_CROSS_ACT = { split = true, shared = false, ddd = false, wdw = false }
+local WANT_CROSS_ACT = { split = true, shared = false, hull = true, ddd = false, wdw = false }
 
 -- The save flags the submarine, its door and the nine poles read:
 -- bhv_bowsers_sub_loop (src/game/behaviors/ddd_sub.inc.c:4) deletes the
@@ -146,6 +164,21 @@ local reach = 0
 local samples = 0
 local rewarped = false
 local moved = false
+local landed = false
+local deck_at = nil
+-- What this client's simulation of the other player's body disagrees with.
+-- `sim_*` describe the body as this client moves it; `error_*` compare that
+-- against where its owner says it is, published through the sync table, which
+-- crosses acts because Lua sync tables are PLMT_NONE.
+local last_sim_y = nil
+local sim_dir = 0
+local sim_step_max = 0
+local sim_flips = 0
+local error_max = 0
+local error_sum = 0
+local error_n = 0
+local floor_gap = 0
+local rtt_max = 0
 
 --- The two TTC goals the cases need: act 6, and any other act.
 -- Act 6 stops the clock while the others run it, so the two players do not even
@@ -251,6 +284,35 @@ local function open_ground_near(m)
     return nil
 end
 
+--- A patch of deck belonging to an object only some acts spawn.
+--
+-- The ship's collision comes out of the ROM (`ROM_ASSET_LOAD_COLLISION`,
+-- levels/jrb/wooden_ship/collision.inc.c), so its extent is not something this
+-- file can know, and the column above the object's own spawn point turns out to
+-- hold no surface at all. So the deck is searched for rather than assumed, and
+-- `collision_find_floor` answers with the surface itself, which lets the search
+-- require that the floor belongs to the behaviour carrying that collision.
+--
+-- The search starts well above the deck: `collision_find_floor` answers with the
+-- highest floor below the y it is given.
+local function deck_near(cross)
+    local x0, _, z0 = cross.stand()
+    local probe_y = cross.deck_search_y
+    for _, radius in ipairs({ 0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200 }) do
+        for step = 0, 11 do
+            local angle = step * math.pi / 6
+            local x = x0 + math.cos(angle) * radius
+            local z = z0 + math.sin(angle) * radius
+            local surface = collision_find_floor(x, probe_y, z)
+            if surface ~= nil and surface.object ~= nil
+                and obj_has_behavior_id(surface.object, cross.floor_beh) ~= 0 then
+                return x, find_floor_height(x, probe_y, z), z
+            end
+        end
+    end
+    return nil
+end
+
 --- Where the "ddd" pair meets, in Dire Dire Docks area 1.
 -- Fixed rather than searched, for two reasons. The shaft the players drop into
 -- ends in a whirlpool -- hitbox radius 200, height 500 at -3174, -4915, 102
@@ -290,6 +352,35 @@ local SHARED_COURSE = {
     wdw = { level = LEVEL_WDW, act = 1, other_act = 3 },
 }
 
+-- Where the anchor stands for "hull", and what its floor has to be.
+--
+-- Jolly Roger Bay puts a second ship at 4880, 820, 2375 in acts 2 to 6
+-- (levels/jrb/script.c:25-29) and nothing there in act 1, whose ship is sunk at
+-- 5385, -5520, 2428. The deck's collision belongs to `bhvInSunkenShip3`, the one
+-- object of that group carrying LOAD_COLLISION_DATA
+-- (`jrb_seg7_collision_in_sunken_ship_3`, data/behavior_data.c:2718-2728); the
+-- four `bhvShipPart3` objects beside it are models only. So the drop starts above
+-- the deck and the landing is checked against that behaviour: the case must not
+-- be able to pass by landing on the sea floor instead.
+--
+-- The ship rocks -- `bhv_ship_part_3_loop` drives its pitch and roll from a sine
+-- (src/game/behaviors/ship_part.inc.c) -- which is why this case reads a
+-- disagreement rather than a drift.
+local HULL_X, HULL_Y, HULL_Z = 4880.0, 820.0, 2375.0
+local HULL_DROP = 500.0
+
+-- Courses where the two players stay in their own acts, so the pair is
+-- genuinely cross-act and the clients disagree about the ground. `act` is the
+-- anchor's goal act, `other_act` the other player's; both are cap-free, since
+-- only Jolly Roger Bay act 6 carries one.
+local CROSS_COURSE = {
+    hull = { level = LEVEL_JRB, act = 4, other_act = 1,
+             stand = function() return HULL_X, HULL_Y + HULL_DROP, HULL_Z end,
+             deck_search_y = HULL_Y + 2000.0,
+             floor_beh = id_bhvInSunkenShip3 },
+}
+
+
 local function place_at(m, x, y, z)
     m.pos.x, m.pos.y, m.pos.z = x, y, z
     m.vel.x, m.vel.y, m.vel.z = 0, 0, 0
@@ -298,6 +389,98 @@ local function place_at(m, x, y, z)
     drift = 0
     reach = 0
     samples = 0
+    last_sim_y = nil
+    sim_dir = 0
+    sim_step_max = 0
+    sim_flips = 0
+    error_max = 0
+    error_sum = 0
+    error_n = 0
+    floor_gap = 0
+    rtt_max = 0
+end
+
+local function fmt(value)
+    return string.format("%.1f", value)
+end
+
+--- Publish where this player actually is, for the other client to check its own
+-- simulation against. One write per frame per field while a case is being
+-- measured; the sync table is the only channel between two players in different
+-- acts, since PACKET_PLAYER is the thing under test.
+local function publish_truth(m)
+    local mine = gPlayerSyncTable[0]
+    mine.sh_probe_tx = m.pos.x
+    mine.sh_probe_ty = m.pos.y
+    mine.sh_probe_tz = m.pos.z
+    mine.sh_probe_tf = m.floorHeight
+    mine.sh_probe_tick = samples
+    -- **Stamped with the case.** These fields carry on holding the last case's
+    -- numbers until the next one starts publishing, and a floor height from the
+    -- previous course compared against a position in this one reads as a
+    -- disagreement of thousands of units.
+    mine.sh_probe_tcase = phase
+end
+
+--- How far this client's idea of the other player's body is from its owner's,
+-- and how the ground under it compares.
+--
+-- Between packets each client runs the remote Mario's action against its own
+-- collision, and `network_receive_player` snaps it back when a packet arrives
+-- (src/pc/network/packets/packet_player.c). Where the two clients hold the same
+-- geometry that costs a unit or two; where they do not -- a deck one of them
+-- has never spawned -- the body falls locally and is pulled back thirty times a
+-- second, which is the jitter this measures.
+--
+-- `flips` counts direction changes in the body's vertical motion as this client
+-- sees it, which is the sawtooth itself rather than its size. `rtt_frames` is a
+-- round trip through the mod's sync table in this client's own frames: the
+-- other client echoes the tick it last saw, so the comparison never needs the
+-- two frame counters to agree.
+local function sample_disagreement(them)
+    local truth = gPlayerSyncTable[OTHER]
+    local sim_y = them.pos.y
+    if samples <= SETTLE_SAMPLES then
+        last_sim_y = sim_y
+        return
+    end
+    if (truth.sh_probe_tcase or -1) ~= phase then
+        last_sim_y = sim_y
+        return
+    end
+    if last_sim_y ~= nil then
+        local step = sim_y - last_sim_y
+        if math.abs(step) > sim_step_max then sim_step_max = math.abs(step) end
+        if step > 0.5 then
+            if sim_dir < 0 then sim_flips = sim_flips + 1 end
+            sim_dir = 1
+        elseif step < -0.5 then
+            if sim_dir > 0 then sim_flips = sim_flips + 1 end
+            sim_dir = -1
+        end
+    end
+    last_sim_y = sim_y
+
+    local ty = truth.sh_probe_ty
+    if ty ~= nil then
+        local err = math.abs(sim_y - ty)
+        if err > error_max then error_max = err end
+        error_sum = error_sum + err
+        error_n = error_n + 1
+        local tx, tz, tf = truth.sh_probe_tx, truth.sh_probe_tz, truth.sh_probe_tf
+        if tx ~= nil and tz ~= nil and tf ~= nil then
+            local gap = math.abs(find_floor_height(tx, ty + 100, tz) - tf)
+            if gap > floor_gap then floor_gap = gap end
+        end
+    end
+
+    local tick = truth.sh_probe_tick
+    if tick ~= nil then gPlayerSyncTable[0].sh_probe_echo = tick end
+    local echo = truth.sh_probe_echo
+    if echo ~= nil and echo > 0 then
+        local rtt = samples - echo
+        if rtt >= 0 and rtt > rtt_max then rtt_max = rtt end
+    end
 end
 
 local function enter(next_state)
@@ -371,14 +554,16 @@ local function update_server()
             enter("done")
             return
         end
-        for name, course in pairs(SHARED_COURSE) do
-            local stay, other = pick_act_pair(course)
-            if stay == nil or other == nil then
-                say("fail", "reason=no_goal_pair case=" .. name)
-                enter("done")
-                return
+        for _, courses in ipairs({ SHARED_COURSE, CROSS_COURSE }) do
+            for name, course in pairs(courses) do
+                local stay, other = pick_act_pair(course)
+                if stay == nil or other == nil then
+                    say("fail", "reason=no_goal_pair case=" .. name)
+                    enter("done")
+                    return
+                end
+                pair_for[name] = { stay = stay, other = other }
             end
-            pair_for[name] = { stay = stay, other = other }
         end
         api.global_sync.sh5_mode = 0        -- SH.Mode.NORMAL
         api.global_sync.sh5_difficulty = 1  -- SH.Difficulty.MEDIUM
@@ -409,7 +594,7 @@ local function update_server()
         -- A shared-course case hands out a fresh pair, so both clients warp
         -- into that course; the anchor's goal is the act they will both end up
         -- standing in.
-        local shared = SHARED_COURSE[CASE[phase]]
+        local shared = SHARED_COURSE[CASE[phase]] or CROSS_COURSE[CASE[phase]]
         if shared then first, second = pair_for[CASE[phase]].stay, pair_for[CASE[phase]].other end
         if not assign(first, second) then
             say("fail", "reason=players_left")
@@ -467,6 +652,8 @@ local function update_player()
         phase = want
         rewarped = false
         moved = false
+        landed = false
+        deck_at = nil
         gPlayerSyncTable[0].sh_probe_ready = 0
         gPlayerSyncTable[0].sh_probe_placed = 0
         enter("settle")
@@ -476,7 +663,8 @@ local function update_player()
         -- The course this case is played in, and the act the second player ends
         -- up standing in.
         local shared = SHARED_COURSE[CASE[phase]]
-        local course = shared and shared.level or LEVEL_TTC
+        local cross = CROSS_COURSE[CASE[phase]]
+        local course = (shared and shared.level) or (cross and cross.level) or LEVEL_TTC
         local stand_in = shared and shared.act
         -- Both of StarHunt's own warps have to have landed before anything
         -- moves a player: a case that changes sh5_goal makes the mod warp that
@@ -565,6 +753,72 @@ local function update_player()
         -- the standing one. Both sides agree on plain coordinates instead.
         local me = gMarioStates[0]
         if IS_ANCHOR then
+            local cross = CROSS_COURSE[CASE[phase]]
+            if cross ~= nil and not landed then
+                -- **The player is held above the ship while the deck is
+                -- searched for, not left to fall.** An object's surfaces reach
+                -- the collision grid only from `load_object_collision_model` in
+                -- its own behaviour loop, and only while it is within
+                -- `oCollisionDistance` -- 4000 for this one
+                -- (data/behavior_data.c:2718-2728). A player dropped once and
+                -- left alone is out of that range within a second, and then no
+                -- amount of waiting will find the deck.
+                if deck_at == nil then
+                    place_at(me, cross.stand())
+                    local dx, dy, dz = deck_near(cross)
+                    if dx == nil then
+                        if since > 240 then
+                            say("fail", "reason=no_deck_found case=" .. CASE[phase]
+                                .. " act=" .. tostring(gNetworkPlayers[0].currActNum))
+                            enter("done")
+                        elseif since % 120 == 0 then
+                            say("waiting", "role=player" .. MY_GLOBAL .. " reason=deck_search")
+                        end
+                        return
+                    end
+                    deck_at = { x = dx, y = dy, z = dz }
+                    place_at(me, dx, dy + 10.0, dz)
+                    say("deck", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                        .. " x=" .. fmt(dx) .. " y=" .. fmt(dy) .. " z=" .. fmt(dz)
+                        .. " act=" .. tostring(gNetworkPlayers[0].currActNum))
+                    return
+                end
+                local surface = me.floor
+                local floor_object = surface ~= nil and surface.object or nil
+                local on_deck = floor_object ~= nil
+                    and obj_has_behavior_id(floor_object, cross.floor_beh) ~= 0
+                    and math.abs(me.pos.y - me.floorHeight) < 40
+                if not on_deck then
+                    -- Held on the deck it was just put on, for the same reason:
+                    -- a player sliding off the rocking ship takes the ship's
+                    -- surfaces out of range with it.
+                    place_at(me, deck_at.x, deck_at.y + 10.0, deck_at.z)
+                    if since > 420 then
+                        say("fail", "reason=no_deck_landing case=" .. CASE[phase]
+                            .. " y=" .. fmt(me.pos.y) .. " floor=" .. fmt(me.floorHeight)
+                            .. " deck=" .. fmt(deck_at.y))
+                        enter("done")
+                    elseif since % 120 == 0 then
+                        say("waiting", "role=player" .. MY_GLOBAL .. " reason=landing"
+                            .. " y=" .. fmt(me.pos.y) .. " floor=" .. fmt(me.floorHeight))
+                    end
+                    return
+                end
+                landed = true
+                place_at(me, me.pos.x, me.pos.y, me.pos.z)
+                local mine = gPlayerSyncTable[0]
+                mine.sh_probe_x, mine.sh_probe_y, mine.sh_probe_z = me.pos.x, me.pos.y, me.pos.z
+                mine.sh_probe_ready = phase
+                -- The behaviour is the one the check above required, so it is
+                -- printed from the case rather than read back off the object:
+                -- `Object.behavior` is a pointer the type checker will not
+                -- follow, and the line is only reached when the floor matched.
+                say("standing", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                    .. " y=" .. fmt(me.pos.y)
+                    .. " beh=" .. tostring(cross.floor_beh)
+                    .. " act=" .. tostring(gNetworkPlayers[0].currActNum))
+                return
+            end
             if since == 1 then
                 -- A case with a meeting point of its own meets there rather
                 -- than on a patch of floor. Dire Dire Docks is the one that
@@ -623,15 +877,35 @@ local function update_player()
         drift = math.max(drift, horizontal_distance(me.pos, placed_at))
         reach = math.max(reach, horizontal_distance(me.pos, them.pos))
         samples = samples + 1
+        publish_truth(me)
+        sample_disagreement(them)
         if samples == 30 then gates(them, horizontal_distance(me.pos, them.pos)) end
         if samples >= 60 then
             local pushed = drift >= PUSHED_DRIFT or reach >= SEPARATED
             say("overlap", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
-                .. " drift=" .. string.format("%.1f", drift)
-                .. " reach=" .. string.format("%.1f", reach)
+                .. " drift=" .. fmt(drift)
+                .. " reach=" .. fmt(reach)
                 .. " samples=" .. samples)
-            say("verdict", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
-                .. " passed_through=" .. tostring(not pushed))
+            say("jitter", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                .. " error_max=" .. fmt(error_max)
+                .. " error_mean=" .. fmt(error_n > 0 and error_sum / error_n or 0)
+                .. " step_max=" .. fmt(sim_step_max)
+                .. " flips=" .. sim_flips
+                .. " floor_gap=" .. fmt(floor_gap)
+                .. " rtt_frames=" .. rtt_max
+                .. " samples=" .. error_n)
+            -- A case that stands one player on geometry the other has never
+            -- spawned cannot report a push: the body with no floor under it
+            -- falls, and falling is not being pushed. It reports the
+            -- disagreement instead.
+            if CROSS_COURSE[CASE[phase]] ~= nil then
+                say("verdict", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                    .. " floor_gap=" .. fmt(floor_gap)
+                    .. " error_max=" .. fmt(error_max))
+            else
+                say("verdict", "role=player" .. MY_GLOBAL .. " case=" .. CASE[phase]
+                    .. " passed_through=" .. tostring(not pushed))
+            end
             gPlayerSyncTable[0].sh_probe_done = phase
             enter("await_case")
         end

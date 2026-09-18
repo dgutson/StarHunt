@@ -71,6 +71,14 @@ between the two clients. The server still runs StarHunt as the host: it picks th
 - **shared** — both players hold the same goal, so they are in one act and the engine pushes
   them apart with or without that request. **This is the control.** If it fails, nothing else
   in the run means anything.
+- **hull** — the disagreement rather than the contact. The anchor holds the Jolly Roger Bay
+  act 4 goal and drops onto the deck of the ship that exists only in acts 2 to 6; the other
+  holds the act 1 goal, where it was never spawned. Neither re-warps, so the pair stays
+  cross-act. The landing is accepted only on `bhvInSunkenShip3`, the one object of that group
+  carrying `LOAD_COLLISION_DATA`, so the case cannot pass by landing on the sea floor. **No push
+  is reported** — a body with no deck under it falls — and the check is that both clients find
+  the ground under that body at least 500 units apart. The jitter numbers beside it are the
+  point of the case; `split` is the same measurement over ground the two clients agree about.
 - **ddd** — two Dire Dire Docks goals on different acts, with the second player warping
   itself into the first's act so the pair is in one act. Nothing may keep these two apart:
   only the manta ray is
@@ -180,7 +188,10 @@ in `test/live/mods/starhunt_probe/main.lua`:
 3. the `open_case` state in `update_server` — which goals the two players get. A case whose
    claim is that a course is *not* private by act needs nothing written here: add it to
    `SHARED_COURSE` with its level, the act both bodies stand in and the act the other goal
-   names, and `pick_act_pair` finds the two goals. A case in a course that needs neither, like
+   names, and `pick_act_pair` finds the two goals. `CROSS_COURSE` is the same table for a case
+   where the two players stay in their own acts, and carries the point the anchor stands on and
+   the behaviour its floor has to belong to; a case there reports a `floor_gap` instead of a
+   push, because one of the two bodies has no floor under it. A case in a course that needs neither, like
    Tick Tock Clock's, needs its own picker — `pick_ttc_goals` is that. **A case that must not
    re-warp a player must not reassign its goal**, because a client re-warps whenever
    `sh5_goal` changes.

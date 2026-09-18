@@ -203,6 +203,13 @@ else
     #             sm64coopdx severs before any hook. They must be pushed apart.
     #             Removing the mod's crossActPlayers request has to turn this
     #             red, and on a build without that field it is red by nature.
+    #   hull   -- the disagreement itself, rather than the contact. One player
+    #             stands on the Jolly Roger Bay ship that exists only in acts 2
+    #             to 6 while the other holds the act 1 goal, where it was never
+    #             spawned. It reports no push -- a body with no deck under it
+    #             falls, and falling is not being pushed -- but a floor_gap,
+    #             which is how far apart the two clients' idea of the ground
+    #             under one body is, and the jitter that comes of it.
     #   ddd    -- two players holding different Dire Dire Docks acts, standing in
     #             one of them. Nothing in that course is gated on the act, so the
     #             mod must leave them alone and the engine must push them apart.
@@ -228,6 +235,13 @@ else
         fi
     fi
     split=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=split passed_through=false")
+    # The hull case reports a gap rather than a verdict, so its check is that
+    # both clients found the ground under that body far apart. Below that the
+    # jitter numbers beside it are measuring two clients that agree, which is
+    # not what the case is for.
+    hull=$(cat "$WORK"/*.log 2>/dev/null \
+        | sed -n 's/^PROBE verdict .*case=hull floor_gap=\([0-9.]*\).*/\1/p' \
+        | awk '$1 >= 500' | wc -l)
     shared=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=shared passed_through=false")
     ddd=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=ddd passed_through=false")
     wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
@@ -268,6 +282,12 @@ else
         echo "the gates lines above: equal and false means this build has no"
         echo "gLevelValues.crossActPlayers, or the mod did not ask for it, and the"
         echo "engine severed the pair before StarHunt was asked anything."
+    elif (( hull < 2 )); then
+        echo "FAILED: the two clients did not both report a floor at least 500"
+        echo "units apart under the player standing on the ship that only acts 2"
+        echo "to 6 have. Read the 'deck' and 'standing' lines: without both the"
+        echo "anchor never got onto bhvInSunkenShip3, the case measured nothing,"
+        echo "and the jitter numbers beside it describe two clients that agree."
     elif (( gates_seen < 2 || gates_agree != 1 )); then
         echo "FAILED: the two players in Dire Dire Docks do not read the same"
         echo "SAVE_FLAG_HAVE_KEY_2 | SAVE_FLAG_UNLOCKED_UPSTAIRS_DOOR, so they do"
@@ -287,7 +307,11 @@ else
         echo "were pushed apart by the engine at its 74 units (R-028), two players in"
         echo "one act were too, two players holding different Dire Dire Docks acts"
         echo "fought each other over one save file (R-031), and so did two holding"
-        echo "different Wet-Dry World acts (R-029)."
+        echo "different Wet-Dry World acts (R-029). The jitter lines above are"
+        echo "measurements, not verdicts: error_max is how far each client's own"
+        echo "simulation of the other body drifted from where its owner said it"
+        echo "was, and the hull case is the one where the two clients hold"
+        echo "different ground under it."
         status=0
     fi
 fi

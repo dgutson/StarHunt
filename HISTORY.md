@@ -79,6 +79,32 @@ level packet, but a client only ever asks for level state from a player whose ac
 alone. Each act therefore keeps its own clock speed, and the symmetric rule
 `ACT_GEOMETRY_PLAN.md` proposed for the one-shared-instance design does not apply to this one.
 
+**What the two clients disagree about, measured.** The live harness gained a case for the one
+cost this design has, and a measurement to go with it. Every case now reports a `jitter` line:
+each client publishes where its own player actually is through the sync table — the only
+channel that crosses acts, since `PACKET_PLAYER` is the thing under test — and compares that
+against the body it is simulating for the other player, which between packets runs the remote
+Mario's own action against the local client's collision and is snapped back by
+`network_receive_player` when a packet arrives.
+
+Over ground the two clients agree about, the difference is nothing worth a number: `split`,
+`shared` and `wdw` report `error_max=0.0` with no direction changes, and `ddd`, whose pair sinks
+through water together, 1.2 units. A position packet lands every frame on the loopback. The new `hull` case puts one player on the deck of the Jolly
+Roger Bay ship that exists only in acts 2 to 6 (`bhvInSunkenShip3`, whose collision comes from
+the ROM, so the deck is searched for by behaviour rather than assumed) while the other holds the
+act 1 goal, where it was never spawned. Both clients then report a floor about 6,655 units apart
+under that body, and the act-1 client's copy of it oscillates — 25 direction changes in 50
+frames, up to 24 units from where its owner says it is. The other direction is coarser: the
+act-4 client lands the falling player on its deck and is pulled back down by each packet, a
+single-frame step of 295 units.
+
+So the jitter is real, it is confined to the geometry the two acts disagree about, and on a
+loopback it is about 24 units. **A real session will be worse in proportion to its latency**,
+since the divergence is a fall between corrections: three frames each way instead of one leaves
+several times as long to fall. That is an estimate, not a measurement — nothing here has run
+over a real connection. `test/live/README.md` records how to put delay on the loopback with
+`tc netem` to see the shape without two machines.
+
 **Not covered:** a real multiplayer session. What a player sees when the other stands on
 geometry they do not have — Jolly Roger Bay's raised hull, a Tick Tock Clock platform the other
 client has stopped — is exactly what three headless processes on one machine cannot show.
