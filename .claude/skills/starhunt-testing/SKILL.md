@@ -191,6 +191,23 @@ the referee's `PROBE end role=server`, which it prints once every player has rep
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.
 
+### Checking the jitter verdict against a game that does not place bodies from their owner
+
+`--without crossact` removes the mod's request and turns `split` red; it says nothing about the
+`hull` jitter verdict, which is the engine's doing and cannot be removed from the Lua side. To
+show that verdict can fail, point the harness at a build of the branch before it:
+
+```bash
+git -C ~/src/sm64coopdx worktree add ~/src/sm64coopdx-routea feature/cross-act-players
+make -C ~/src/sm64coopdx-routea -j"$(nproc)"
+COOPDX=~/src/sm64coopdx-routea/build/us_pc/sm64coopdx test/live/run.sh
+```
+
+That run reports `FAILED` on the direction changes, with the client that never spawned the deck
+at `flips=25 error_max=24.3 step_max=24.3` against `0`, `0.9` and `0.2` from the current branch.
+Build it in a worktree rather than by switching branches, so both binaries exist at once and the
+comparison does not need a rebuild each way.
+
 ### Before citing a green run as evidence
 
 ```bash
