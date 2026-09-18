@@ -13,6 +13,38 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
+### 2026-09-18 — R-036: ANOTHER LEVEL replaces the two exits in the game's own pause list
+
+While a round is running, START inside a course now shows two rows of the mod's own —
+CONTINUE and ANOTHER LEVEL with its countdown — instead of CONTINUE / EXIT COURSE / EXIT TO
+CASTLE / SET CAMERA ANGLE WITH R. Outside a round the game's own list is untouched.
+
+`set_pause_menu_hidden(true)` stops `render_pause_screen` drawing its rows and stops it reading
+A and START (`src/game/ingame_menu.c:2980-3018`), so while it is set the mod owns the rows, the
+cursor and the buttons; CONTINUE ends the pause with `game_unpause()`, which `play_mode_paused`
+completes on the next frame from `gPauseScreenMode = 1` (`src/game/level_update.c:1365-1371`).
+The input runs under `HOOK_UPDATE`, not a Mario hook: `smlua_update` calls that hook once per
+frame from `produce_one_frame` whatever the play mode is (`src/pc/lua/smlua.c:403`), while Mario
+is not updated at all during a pause. It reads `gMarioStates[0].controller`, which is
+`gControllers[0]` (`src/game/mario.c:2366`), the same struct the game's own pause screen reads.
+A reroll still on cooldown leaves the pause open, the way a refused EXIT COURSE does.
+
+The camera row is gone while a round runs: its submenu is drawn in C from the same cursor
+(`ingame_menu.c:2568`) and no Lua call opens it.
+
+Measured in a real sm64coopdx under Xvfb, Tall Tall Mountain, round active: `paused=true
+hidden=true active=true row1=CONTINUAR row2=OTRO NIVEL - 1:53`, the cursor moved to row 2 by an
+injected D-pad press while paused, and the screen dimmed from a mean brightness of 22397 to
+9101 — the 59% a black rectangle at alpha 150 gives.
+
+Checks: 814 passed / 0 failed (786 before, plus 28 in the new `test/suite/pause_menu.lua`),
+luacheck 2 warnings / 0 errors in 48 files, lua-language-server 10 problems in 2 files,
+`test/live/run.sh` PASSED with its ten verdicts and `--load-only` PASSED. Mutation sweep: 93 of
+94 caught over the new block in `modules/menu.lua`, the survivor being `local` deleted from
+`pause_stick_latched`, which luacheck reports as four warnings instead; 76 of 76 over
+`draw_pause_menu` in `modules/hud.lua`; 32 of 44 over `request_manual_reroll` in
+`modules/modifiers.lua`, where the twelve survivors are all the `lines` argument of
+`djui_popup_create` and the `/60` of its own clock, on lines this change did not touch.
 ### 2026-09-18 — R-034: a player in another act is placed by its owner, not simulated here
 
 R-028 let two players in different acts of one course see and hit each other, and left one cost.

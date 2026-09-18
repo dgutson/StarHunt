@@ -80,6 +80,14 @@ que copiar `main.lua` solo no alcanza.
 
 ## Cambios de v1.1
 
+- Mantenimiento del 18 de septiembre: durante una ronda, el menú de pausa del
+  juego (START dentro de un curso) muestra CONTINUAR y OTRO NIVEL con su cuenta
+  atrás, en lugar de EXIT COURSE y EXIT TO CASTLE. Esas dos salidas no hacían
+  nada durante una ronda: el mod ya las rechazaba con un aviso. Fuera de una
+  ronda el menú del juego queda igual que siempre y se puede salir del curso
+  con normalidad. Si OTRO NIVEL todavía está en espera, la pausa se queda
+  abierta y el aviso dice cuánto falta.
+
 - Mantenimiento del 17 de septiembre: en Wet-Dry World los jugadores se ven, se
   tocan y pelean entre sí aunque tengan actos distintos. Nada en ese curso
   depende del acto, y el nivel del agua —lo único en lo que dos jugadores

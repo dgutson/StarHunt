@@ -662,30 +662,34 @@ SH.manual_reroll_label = function()
         math.floor(seconds / 60), seconds % 60)
 end
 
+-- Returns whether the request reached the host.  The pause list reads that
+-- answer: a refused row leaves the pause open so the popup can be read, the
+-- way a refused EXIT COURSE does.
 SH.request_manual_reroll = function(_)
     local remaining = SH.manual_reroll_remaining()
     if remaining == nil then
         djui_popup_create(translated(
             "ANOTHER LEVEL IS ONLY AVAILABLE IN NORMAL OR TEAM.",
             "OTRO NIVEL SOLO ESTA DISPONIBLE EN NORMAL O TEAM."), 2)
-        return
+        return false
     end
     if remaining > 0 then
         local seconds = math.ceil(remaining / FRAMES_PER_SECOND)
         djui_popup_create(translated("ANOTHER LEVEL AVAILABLE IN ",
             "OTRO NIVEL DISPONIBLE EN ")
                 .. string.format("%d:%02d", math.floor(seconds / 60), seconds % 60), 2)
-        return
+        return false
     end
     local sync = gPlayerSyncTable[0]
     if (sync.sh5_manual_reroll_request or 0) ~= (sync.sh5_manual_reroll_ack or 0) then
         djui_popup_create(translated("A LEVEL CHANGE IS ALREADY PENDING.",
             "YA HAY UN CAMBIO DE NIVEL PENDIENTE."), 1)
-        return
+        return false
     end
     sync.sh5_manual_reroll_request = (sync.sh5_manual_reroll_request or 0) + 1
     djui_popup_create(translated("NEW LEVEL REQUESTED.",
         "NUEVO NIVEL SOLICITADO."), 1)
+    return true
 end
 
 SH.register_mod_compatibility = function()
