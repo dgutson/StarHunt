@@ -645,7 +645,7 @@ SH.manual_reroll_remaining = function()
         return nil
     end
     return math.max(0, (gPlayerSyncTable[0].sh5_manual_reroll_ready_frame or 0)
-        - SH.host_timer())
+        - get_global_timer())
 end
 
 SH.manual_reroll_label = function()

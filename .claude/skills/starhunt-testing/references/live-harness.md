@@ -87,13 +87,6 @@ between the two clients. The server still runs StarHunt as the host: it picks th
   190 units and more — a false push. The point used is the column the level's `MARIO_POS`
   drops Mario down, 300 units under the water surface, which is still water and also inside
   the region such a rule would have covered.
-- **clock** — not a pair at all, and printed alongside `split`: each client reports its own
-  frame counter, the host's as `SH.host_timer()` answers it, the difference, and what the
-  ANOTHER LEVEL countdown says. A synchronized deadline is a frame number on the host's
-  counter, and a client's counter is behind by the head start the server's process had, so
-  `skew` is always positive here and `ok=true` means the countdown is no longer than the
-  cooldown despite it. `--without r035` removes the difference and both clients report
-  `skew=0` with a longer countdown.
 - **wdw** — the same claim for Wet-Dry World, set up the same way. Every object in both of its
   areas is `ALL_ACTS`, and its water level does not come from the act:
   `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:305`) derives it from

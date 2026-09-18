@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 449 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 444 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -94,13 +94,13 @@ is the same information by size, so you can judge what a file costs to read:
 | `round.lua` | 1,096 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 927 | the 93-star catalog, its readers, star interaction and visibility |
 | `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
-| `hud.lua` | 710 | text layer, picture layer and frame; nothing requires it |
+| `hud.lua` | 709 | text layer, picture layer and frame; nothing requires it |
 | `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
 | `menu.lua` | 327 | the `/starhunt` config menu and its input |
 | `team.lua` | 273 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
 | `i18n.lua` | 254 | six languages and their persistence |
-| `core.lua` | 271 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
+| `core.lua` | 230 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
 | `chaos.lua` | 154 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
@@ -131,12 +131,17 @@ Clients never write authoritative values: functions named `host_*` run only unde
 `network_is_server()`, and clients read the synced result. When adding state that late joiners
 or a host migration must survive, it belongs in a sync table, not in a local variable.
 
-**A deadline in a sync table is a frame number on the host's counter.** `get_global_timer()`
-counts frames since that process started and never crosses the network, so any machine that
-reads one compares it against `SH.host_timer()` (`core.lua`), which the host publishes once a
-second and each client offsets by the difference. Host code keeps `get_global_timer()`, which
-on the host is that same counter, and so does everything that never leaves one machine — the
-warp delays, the modifier clocks, the moat refresh.
+**A deadline in a sync table is a frame number on the host's counter, and every machine reads
+it against its own.** `get_global_timer()` counts frames this process has drawn, so it starts
+at zero when that copy of the game opens, advances at 60 per second on the loading screen
+(`src/pc/pc_main.c:403`) against 30 in the game loop, and never catches up after a stutter
+because the main loop has no catch-up (`src/pc/gfx/gfx_sdl.c:192-194`). A client therefore
+reads `sh5_end_frame`, `sh5_chaos_next_reroll` and `sh5_manual_reroll_ready_frame` wrong.
+R-035 in `ROADMAP.md` is the fix; until it lands, do not add another deadline in frames.
+`get_time()` returns Unix epoch seconds (`src/pc/lua/utils/smlua_misc_utils.c:461`) and
+`clock_elapsed()` real seconds since this process started, on `CLOCK_MONOTONIC` where the
+platform has one (`src/pc/utils/misc.c:46-54`). State that never leaves one machine — the warp
+delays, the modifier clocks, the moat refresh — is what `get_global_timer()` is right for.
 
 Boss attacks use a circular queue of 8 slots (`sh5_boss_attack_queue_1..8`) rather than a single
 "latest attack" field, because a single field lost attacks under lag. Timed effects compare

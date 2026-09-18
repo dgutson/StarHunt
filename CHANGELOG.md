@@ -57,14 +57,10 @@ que copiar `main.lua` solo no alcanza.
 
 ## Cambios de v1.1
 
-- Mantenimiento del 18 de septiembre: los relojes que ve un jugador que se unió
-  a la partida ahora son los mismos que ve el host. OTRO NIVEL, el reloj de la
-  ronda y la cuenta atrás de Chaos se medían contra el contador de cuadros de
-  cada máquina, que empieza en cero al abrir el juego, así que a quien entraba
-  tres minutos después del host OTRO NIVEL le decía 5:00 en vez de 2:00 y nunca
-  llegaba a cero. Además, morir ya no reinicia la espera de OTRO NIVEL: los dos
-  minutos corren desde que empieza la ronda y solo el propio botón los vuelve a
-  empezar.
+- Mantenimiento del 18 de septiembre: morir ya no reinicia la espera de OTRO
+  NIVEL. Los dos minutos corren desde que el jugador entra en la ronda y solo el
+  propio botón los vuelve a empezar, así que perder una vida a falta de cinco
+  segundos ya no obliga a esperar otros dos minutos.
 - Mantenimiento del 17 de septiembre: en Wet-Dry World los jugadores se ven, se
   tocan y pelean entre sí aunque tengan actos distintos. Nada en ese curso
   depende del acto, y el nivel del agua —lo único en lo que dos jugadores

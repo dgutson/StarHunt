@@ -150,9 +150,6 @@ local local_runtime = {
     rejected_stars = {},
     hidden_stars = {},
     hidden_players = {},
-    host_timer_offset = 0,
-    host_timer_seen = 0,
-    host_timer_publish_at = 0,
 }
 
 -- Bounds a value, used wherever a synchronized field or a menu index has to be
@@ -215,44 +212,6 @@ end
 -- the mod.
 local function is_round_active()
     return gGlobalSyncTable.sh5_active == 1
-end
-
--- The host's frame counter, as any machine can read it.
---
--- `get_global_timer()` counts frames since this process started, so the same
--- number is a different moment on each machine: a client's counter is behind
--- the host's by the head start the host's game had, and by every frame either
--- has since dropped. A deadline in a sync table -- the ANOTHER LEVEL cooldown,
--- the round's end, the Chaos reroll -- is a frame number on the host's counter,
--- because the host is what wrote it.
---
--- So a machine that READS one compares it against this, never against its own
--- `get_global_timer()`. State that never leaves the machine -- the warp delays,
--- the modifier clocks, the moat refresh -- stays on `get_global_timer()`, which
--- is exactly what it means.
---
--- The difference is zero on the host, where nothing measures one, so this is
--- the host's own counter there without asking whether it is the host.
-SH.host_timer = function()
-    return get_global_timer() + local_runtime.host_timer_offset
-end
-
--- Publishes the counter on the host and follows it on a client, once per frame.
--- A client measures the difference the moment a new value arrives, so what it
--- carries is wrong only by the time that packet spent in flight, not by the
--- second between two of them.
-SH.update_host_timer = function()
-    local now = get_global_timer()
-    local published = gGlobalSyncTable.sh5_host_timer or 0
-    if network_is_server() then
-        if now >= local_runtime.host_timer_publish_at then
-            gGlobalSyncTable.sh5_host_timer = now
-            local_runtime.host_timer_publish_at = now + FRAMES_PER_SECOND
-        end
-    elseif published ~= local_runtime.host_timer_seen then
-        local_runtime.host_timer_seen = published
-        local_runtime.host_timer_offset = published - now
-    end
 end
 
 return {

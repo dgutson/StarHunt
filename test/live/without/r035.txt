@@ -1,4 +1,0 @@
-modules/core.lua
-    elseif published ~= local_runtime.host_timer_seen then
-        local_runtime.host_timer_seen = published
-        local_runtime.host_timer_offset = published - now
