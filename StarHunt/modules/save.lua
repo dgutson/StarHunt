@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - keeping StarHunt's stars out of the player's real save file.
+-- StarHunt v1.1.2 - keeping StarHunt's stars out of the player's real save file.
 --
 -- StarHunt scores its own stars, so a star collected during a round must never
 -- be left in the player's normal save. The removal is retried throughout the

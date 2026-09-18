@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - difficulty, which is a separate axis from the four modes.
+-- StarHunt v1.1.2 - difficulty, which is a separate axis from the four modes.
 --
 -- Every mode runs at Easy, Medium, Hard or Nightmare, and difficulty changes
 -- the modifiers rather than the objective. Medium is the baseline and returns

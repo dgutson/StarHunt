@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - Chaos mode.
+-- StarHunt v1.1.2 - Chaos mode.
 --
 -- Chaos has no star to hunt. Everyone warps to the same randomly chosen main
 -- course and act, and the only thing that matters is outliving the others:

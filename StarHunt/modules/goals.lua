@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - the 93 stars a round can ask for.
+-- StarHunt v1.1.2 - the 93 stars a round can ask for.
 --
 -- Every goal is chosen by hand. The fifteen 100-coin stars are deliberately
 -- left out, and test/suite/catalog.lua fails if one reappears.

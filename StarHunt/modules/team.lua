@@ -1,4 +1,4 @@
--- StarHunt v1.1.1 - what Team mode adds on top of the star race.
+-- StarHunt v1.1.2 - what Team mode adds on top of the star race.
 --
 -- Team mode runs the same round as Normal. The only things it adds are these:
 -- players are split into two balanced rosters, and each player is painted
