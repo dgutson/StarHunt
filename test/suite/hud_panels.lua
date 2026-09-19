@@ -415,7 +415,7 @@ return function(t, harness)
         ctl.hud.rect_calls = {}
         ctl.hud.texture_calls = {}
         ctl.hud.color = nil
-        api.draw_round_status_panels(1800, score)
+        api.draw_round_status_panels(60, score)
     end
 
     s.test("a star race shows the star, the score and the timer", function()
@@ -563,7 +563,7 @@ return function(t, harness)
         -- nil, which is what the fallback behind the coin counter is for.
         _G.hud_get_value = function() return nil end
         ctl.hud.text = {}
-        api.draw_round_status_panels(1800, 3)
+        api.draw_round_status_panels(60, 3)
         at(ctl, "x 0", 1840, 32, 0.52, 255, 238, 156)
     end)
 
@@ -573,7 +573,7 @@ return function(t, harness)
         gMarioStates[0].health = 0x880
         ctl.hud.values[HUD_DISPLAY_COINS] = 7
         ctl.hud.text = {}
-        api.draw_round_status_panels(95 * 30 + 29, 0)
+        api.draw_round_status_panels(95, 0)
         at(ctl, "TIME 1:35", 1824, 14, 0.48, 255, 220, 96)
         at(ctl, "x 7", 1840, 32, 0.52, 255, 238, 156)
     end)
@@ -675,8 +675,7 @@ return function(t, harness)
     s.test("Chaos names the objective and counts down to the reroll", function()
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        gGlobalSyncTable.sh5_chaos_next_reroll = 150
-        ctl.timer = 0
+        api.runtime.chaos_mark = ctl.elapsed - (api.chaos_reroll_seconds - 5)
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, GRAVITY)
         at(ctl, "LAST PLAYER STANDING", centered_x(160, 0.64), 3, 0.64, 255, 255, 255)
@@ -689,18 +688,16 @@ return function(t, harness)
     s.test("a reroll already due counts down to zero rather than past it", function()
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        gGlobalSyncTable.sh5_chaos_next_reroll = 10
-        ctl.timer = 400
+        api.runtime.chaos_mark = ctl.elapsed - api.chaos_reroll_seconds * 4
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, nil)
         at(ctl, "NEW MODIFIERS IN: 0", centered_x(149, 0.40), 41, 0.40, 200, 210, 230)
     end)
 
-    s.test("a client that has not received the reroll frame yet counts zero", function()
+    s.test("a machine that has not seen a reroll yet counts zero", function()
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        gGlobalSyncTable.sh5_chaos_next_reroll = nil
-        ctl.timer = 0
+        api.runtime.chaos_mark = nil
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, nil)
         at(ctl, "NEW MODIFIERS IN: 0", centered_x(149, 0.40), 41, 0.40, 200, 210, 230)

@@ -644,8 +644,7 @@ SH.manual_reroll_remaining = function()
         or get_local_goal() == nil then
         return nil
     end
-    return math.max(0, (gPlayerSyncTable[0].sh5_manual_reroll_ready_frame or 0)
-        - get_global_timer())
+    return SH.seconds_left(local_runtime.reroll_mark, SH.manualRerollCooldownSeconds)
 end
 
 SH.manual_reroll_label = function()
@@ -657,9 +656,8 @@ SH.manual_reroll_label = function()
     if remaining <= 0 then
         return base .. " - " .. translated("READY", "LISTO")
     end
-    local seconds = math.ceil(remaining / FRAMES_PER_SECOND)
     return base .. " - " .. string.format("%d:%02d",
-        math.floor(seconds / 60), seconds % 60)
+        math.floor(remaining / 60), remaining % 60)
 end
 
 SH.request_manual_reroll = function(_)
@@ -671,10 +669,10 @@ SH.request_manual_reroll = function(_)
         return
     end
     if remaining > 0 then
-        local seconds = math.ceil(remaining / FRAMES_PER_SECOND)
         djui_popup_create(translated("ANOTHER LEVEL AVAILABLE IN ",
             "OTRO NIVEL DISPONIBLE EN ")
-                .. string.format("%d:%02d", math.floor(seconds / 60), seconds % 60), 2)
+                .. string.format("%d:%02d",
+                    math.floor(remaining / 60), remaining % 60), 2)
         return
     end
     local sync = gPlayerSyncTable[0]

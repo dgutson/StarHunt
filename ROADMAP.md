@@ -28,23 +28,6 @@ session fills the context window and invites mistakes.
 
 ## Now
 
-### R-035 — Every countdown a joined client shows must be the one the host acts on
-
-- **Category:** Bugfix
-- **What:** Stop expressing synchronized deadlines as frame counts. `sh5_end_frame`, `sh5_chaos_next_reroll` and `sh5_manual_reroll_ready_frame` are written as `get_global_timer() + n` by the host (`round.lua:527-528`, `round.lua:380`, `round.lua:760`) and read against the reader's own `get_global_timer()` in four places outside host code (`hud.lua:420`, `hud.lua:625`, `menu.lua:70`, `modifiers.lua:648`). Express them in Unix epoch seconds from `get_time()` instead, on both sides, so host and client run the identical line and no clock is published, offset or synchronized. Keep `get_global_timer()` for everything that never leaves one machine — the warp delays, the modifier clocks, the moat refresh, the palette and star-visibility refreshes.
-- **Engine facts already verified against `coop-deluxe/sm64coopdx`,** so the next session does not re-derive them:
-  - `get_time()` returns `time(NULL)`, Unix epoch seconds (`src/pc/lua/utils/smlua_misc_utils.c:461`), bound for every mod (`smlua_functions_autogen.c:39241`) and documented at `docs/lua/functions-7.md:3325`. Epoch seconds carry no per-process zero point and no timezone, so the same number is the same instant everywhere.
-  - `get_global_timer()` returns `gGlobalTimer`, a count of frames this process has drawn (`src/game/game_init.c:317`, in `display_and_vsync`). It starts at zero per process, advances at 60 per second during the loading screen (`src/pc/pc_main.c:403`, which also calls `display_and_vsync`) against 30 in the game loop, and never catches up after a stutter, because `gfx_sdl_main_loop` runs one iteration per call (`src/pc/gfx/gfx_sdl.c:192-194`) and `produce_interpolation_frames_and_delay` only delays. **It is a frame counter, not a clock**, so a 10-minute round measured in 18,000 frames runs longer than 10 minutes whenever the host's frame rate dips.
-  - `clock_elapsed()`, `clock_elapsed_f64()` and `clock_elapsed_ticks()` measure real time since **this process** started (`src/pc/utils/misc.c:73-88`) on `CLOCK_MONOTONIC` where the platform has one (`:46-54`). Right for a local duration, wrong for a deadline another machine wrote.
-  - `get_network_area_timer()` is synchronized (`packet_area.c:51`, `:153`) but `network_on_init_area` resets it to 0 on every area load (`src/pc/network/network.c:204`) and the re-sync is rejected unless the sender is in the same course, act, level and area (`packet_area.c:147-150`), so StarHunt's per-player warping loses it.
-  - There is no scheduler and no alarm: no timer hook exists, and `os` and `io` are loaded only under `DEVELOPMENT && LUA_UNSAFE` (`src/pc/lua/smlua.c:323-328`), so `os.time` and `os.clock` are absent from a release build.
-  - A sync table carries integers as `s64` (`src/pc/lua/smlua_utils.c:331-335`), so an epoch timestamp passes through intact.
-- **The one thing this depends on, to state in the pull request:** each player's operating-system clock. NTP is on by default on Windows, macOS and Linux, so two machines normally agree within milliseconds, but a badly-set clock gives that player a badly-wrong countdown.
-- **Why:** A joined client read ANOTHER LEVEL as 5:00 where the host read 2:00 and the button never became available, because the deadline is a frame number on the host's counter and the client subtracted its own. The round clock on the HUD, the round clock in the `/starhunt` menu and the Chaos "new modifiers in" countdown are wrong by the same amount. The defect shipped in released v1.1: `v1.1-monolithic` carries the same subtraction at `main.lua:3933-3934`.
-- **Outcome:** Every player in a session sees the same number on every countdown, and it is the number the host acts on, with no clock synchronized between machines and no host/client branch in the reading code. A round asked to last ten minutes lasts ten real minutes. Covered by a suite that reads each countdown from a machine whose frame counter and process start differ from the host's, and by a live case in `test/live/` with a `--without` removal that must go red. Not covered, as ever: a real multiplayer session, which is the only thing that reaches two genuinely different machine clocks.
-- **Blocked-by:** —
-- **Enables:** —
-
 ### R-028 — Fair PvP between players sent to different acts of one course
 
 - **Category:** Feature

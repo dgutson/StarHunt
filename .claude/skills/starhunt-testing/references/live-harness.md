@@ -87,6 +87,15 @@ between the two clients. The server still runs StarHunt as the host: it picks th
   190 units and more — a false push. The point used is the column the level's `MARIO_POS`
   drops Mario down, 300 units under the water surface, which is still water and also inside
   the region such a rule would have covered.
+- **clock** — not a pair at all, and printed alongside `split`: each client reports its own
+  frame counter, its own `clock_elapsed()` seconds, and what the round clock and the ANOTHER
+  LEVEL wait read. Nothing about a countdown is synchronized, so the point of the case is that
+  the two clients' frame counters differ by hundreds of frames — the server starts first and
+  each client joins `JOIN_DELAY` seconds later, with `--hide-loading-screen` so only the game
+  loop moves either one — while the countdowns agree. **The probe is its own mod, so its
+  `gGlobalSyncTable` is not StarHunt's**; it reads the round's length through
+  `api.global_sync`. `--without r035` removes the marking from `SH.update_local_clocks` and both
+  clients report `ok=false`.
 - **wdw** — the same claim for Wet-Dry World, set up the same way. Every object in both of its
   areas is `ALL_ACTS`, and its water level does not come from the act:
   `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:305`) derives it from

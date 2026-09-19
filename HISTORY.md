@@ -13,22 +13,49 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
-### 2026-09-18 — Dying no longer restarts the ANOTHER LEVEL cooldown
+### 2026-09-18 — R-035: every countdown is counted on the machine showing it
 
-`host_assign_goal` set `sh5_manual_reroll_ready_frame` for every reassignment it made,
-including the one the forfeit branch asks for after a death, so a player who died at 1:55
-waited two minutes again. The two minutes belong to the button: the deadline now belongs to the
-two callers that mean it — a player entering the round, in `host_prepare_player`, and the
-button itself, which sets it only when a level actually came back. A goal handed out by a death
-or by finishing a star leaves it alone.
+The round clock, the ANOTHER LEVEL wait and the Chaos reroll countdown were deadlines in the
+sync tables, written as `get_global_timer() + n` by the host and compared against
+`get_global_timer()` by whoever read them. `gGlobalTimer` counts frames this process has drawn
+(`src/game/game_init.c:317`), so it starts at zero when that copy of the game opens, runs at
+60 a second during the loading screen (`src/pc/pc_main.c:403`) against 30 in the game loop, and
+never catches up after a stutter, because the main loop runs one iteration per call
+(`src/pc/gfx/gfx_sdl.c:192-194`) and only delays. A player who joined three minutes after the
+host read ANOTHER LEVEL as 5:00 where the host read 2:00, and the button never became
+available.
 
-The defect shipped in released v1.1: `v1.1-monolithic` sets the same deadline inside its goal
-assignment at `main.lua:1702`.
+No countdown is synchronized any more. Each machine counts its own in real seconds from
+`clock_elapsed()` (`src/pc/utils/misc.c:90`, on `CLOCK_MONOTONIC` where the platform has one at
+`:46-54`), from a mark it set when it saw the countdown start. `SH.seconds_left(mark, length)`
+and `SH.update_local_clocks` in `modules/core.lua` are the whole mechanism; the host keeps its
+own marks for its own decisions — `host_round_mark` and `host_reroll_mark` in `round.lua`,
+`host_chaos_mark` in `chaos.lua` — and they never leave that machine. The same code runs on a
+host, on a client and in single-player.
 
-`test/suite/round_host.lua` gains what starts the cooldown and what leaves it alone.
+What crosses the network is the event, never the time: `sh5_round`, the new
+`sh5_manual_reroll_seq`, which the host bumps only when a level actually came back, and
+`sh5_chaos_modifier_seq`. `sh5_end_frame`, `sh5_chaos_next_reroll` and
+`sh5_manual_reroll_ready_frame` are gone; the round's length rides along in
+`sh5_config_minutes`, which was already published.
 
-792 passed / 0 failed, luacheck 2 warnings / 0 errors in 47 files, lua-language-server
-10 problems in 2 files, and `test/live/run.sh` PASSED with its ten verdicts.
+Dying no longer restarts the two minutes either. `host_assign_goal` set the deadline for every
+reassignment it made, including the one the forfeit branch asks for after a death. The mark now
+belongs to the two callers that mean it — a player entering the round, in `host_prepare_player`,
+and the button itself.
+
+The defect shipped in released v1.1: `v1.1-monolithic` carries the same subtraction at
+`main.lua:3933-3934` and sets the same deadline inside its goal assignment at `main.lua:1702`.
+
+`test/suite/clock.lua` is new and holds the rule down, including that no countdown moves when
+only the frame counter does. In `test/live/`, each client prints a `PROBE clock` line: the two
+clients' frame counters differ by hundreds of frames, because each process starts seconds after
+the last, and their countdowns agree to the second. `test/live/run.sh --without r035` takes the
+marking out and requires that line to go red, which it does.
+
+805 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
+10 problems in 2 files, and `test/live/run.sh` PASSED with its eleven verdicts, as did both
+`--without` runs inverted.
 
 ### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
 

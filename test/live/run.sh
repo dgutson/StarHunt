@@ -211,16 +211,28 @@ else
     #   wdw    -- the same question for Wet-Dry World, whose objects are ALL_ACTS
     #             in both areas and whose water level is not derived from the
     #             act. The mod must leave that pair alone as well.
+    #   clock  -- not a pair at all. Each client prints its frame counter, its
+    #             seconds, and what the round clock and ANOTHER LEVEL read. The
+    #             frame counters differ by hundreds of frames, because each
+    #             process started JOIN_DELAY seconds after the last; the
+    #             countdowns must not, because each is counted on the machine
+    #             showing it, in real seconds, from its own mark.
     # Which case each named removal is expected to break. A removal whose case is
     # not named here would report a pass for doing nothing.
-    declare -A WITHOUT_CASE=( [r030]=hidden )
+    declare -A WITHOUT_CASE=( [r030]=hidden [r035]=clock )
+    # And what "that case went red" reads as: the pair cases report a verdict
+    # per case, the clock reports its own answer.
+    declare -A WITHOUT_RED=( [r030]="case=hidden passed_through=false"
+                             [r035]="^PROBE clock role=player.*ok=false" )
     # Only look the removal up when there is one: under `set -u` an empty
     # subscript on an associative array is an error, printed on every ordinary
     # run.
     WITHOUT_BREAKS=""
+    WITHOUT_RED_PATTERN=""
     if [[ -n "$WITHOUT" ]]; then
         WITHOUT_BREAKS="${WITHOUT_CASE[$WITHOUT]:-}"
-        if [[ -z "$WITHOUT_BREAKS" ]]; then
+        WITHOUT_RED_PATTERN="${WITHOUT_RED[$WITHOUT]:-}"
+        if [[ -z "$WITHOUT_BREAKS" || -z "$WITHOUT_RED_PATTERN" ]]; then
             echo "FAILED: '$WITHOUT' has no expected case in WITHOUT_CASE, so there is"
             echo "nothing to check it against. Add it beside this line."
             echo "logs: $WORK"
@@ -234,6 +246,8 @@ else
     wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
     # One distinct value across the clients means every player in Dire Dire Docks
     # reads the same submarine and the same poles.
+    clock_seen=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE clock role=player")
+    clock_ok=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE clock role=player.*ok=true")
     gates_seen=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE saveflags")
     gates_agree=$(cat "$WORK"/*.log 2>/dev/null | sed -n 's/^PROBE saveflags .*ddd_gate=//p' | sort -u | wc -l)
     # With `--without <name>` the whole run is inverted: the point is to show
@@ -241,7 +255,7 @@ else
     # the control and the engine-only case stay exactly where they were. A run
     # that comes back green here means the removal measured nothing.
     if [[ -n "$WITHOUT" ]]; then
-        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=$WITHOUT_BREAKS passed_through=false")
+        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "$WITHOUT_RED_PATTERN")
         if (( shared < 2 )); then
             echo "INCONCLUSIVE: the control case did not collide even with '$WITHOUT'"
             echo "removed, so this run says nothing about whether the removal mattered."
@@ -279,13 +293,19 @@ else
         echo "apart while standing in the same act. Every object in that course is"
         echo "ALL_ACTS and its water level does not come from the act, so the mod is"
         echo "isolating a pair whose worlds agree (R-029)."
+    elif (( clock_seen < 2 || clock_ok < 2 )); then
+        echo "FAILED: a joined client's countdowns do not read as the round's own."
+        echo "Each process started seconds after the last, so their frame counters"
+        echo "differ by hundreds of frames; a countdown that followed one of those"
+        echo "is wrong by that much (R-035). See the clock lines above."
     else
         echo "PASSED: the pair StarHunt hides passed through each other while the"
         echo "engine was willing to collide them (R-030), the pair it does not hide"
         echo "was pushed apart at the engine's 74 units, two players on different"
         echo "acts never touched at all, two players on different Dire Dire Docks"
         echo "acts fought each other over one save file (R-031), and so did two on"
-        echo "different Wet-Dry World acts (R-029)."
+        echo "different Wet-Dry World acts (R-029), and every countdown a joined"
+        echo "client showed was the round's own despite its frame counter (R-035)."
         status=0
     fi
 fi

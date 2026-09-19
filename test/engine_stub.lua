@@ -161,6 +161,7 @@ stub.functions = {
     "djui_popup_create_global",
     "get_behavior_from_id",
     "get_current_save_file_num",
+    "clock_elapsed",
     "get_global_timer",
     "get_level_course_num",
     "get_ttc_speed_setting",

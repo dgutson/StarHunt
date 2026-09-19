@@ -33,7 +33,6 @@
 local core = require("core")
 local SH = core.SH
 local local_runtime = core.local_runtime
-local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local clamp = core.clamp
 local is_round_active = core.is_round_active
 local selected_mode = core.selected_mode
@@ -67,9 +66,9 @@ end
 
 local function config_status_text()
     if not is_round_active() then return translated("WAITING", "ESPERANDO") end
-    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or 0) - get_global_timer())
-    local minutes = math.floor(remaining / (60 * FRAMES_PER_SECOND))
-    local seconds = math.floor((remaining / FRAMES_PER_SECOND) % 60)
+    local remaining = SH.round_seconds_left()
+    local minutes = math.floor(remaining / 60)
+    local seconds = remaining % 60
     return translated("ACTIVE ", "ACTIVA ") .. string.format("%d:%02d", minutes, seconds)
 end
 

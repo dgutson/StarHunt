@@ -30,7 +30,7 @@ local FRAMES_PER_SECOND = 30
 -- in any one of chaos.lua, round.lua or boss.lua.
 local NEXT_GOAL_DELAY = 90
 
-local SH = { manualRerollCooldown = 120 * FRAMES_PER_SECOND,
+local SH = { manualRerollCooldownSeconds = 120,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
 local Team = { initial = {},
@@ -150,6 +150,14 @@ local local_runtime = {
     rejected_stars = {},
     hidden_stars = {},
     hidden_players = {},
+    -- Where each countdown started, in `clock_elapsed()` seconds on this
+    -- machine. `nil` means this machine has not seen that countdown start.
+    round_mark = nil,
+    reroll_mark = nil,
+    chaos_mark = nil,
+    clock_round_seen = -1,
+    clock_reroll_seq_seen = -1,
+    clock_chaos_seq_seen = -1,
 }
 
 -- Bounds a value, used wherever a synchronized field or a menu index has to be
@@ -212,6 +220,55 @@ end
 -- the mod.
 local function is_round_active()
     return gGlobalSyncTable.sh5_active == 1
+end
+
+-- Every countdown StarHunt shows is counted on the machine showing it, from the
+-- moment that machine saw the countdown start. `mark` is that moment in
+-- `clock_elapsed()` seconds and `length` is how long the countdown runs, so the
+-- same call answers on a host, on a client and in single-player.
+--
+-- `clock_elapsed()` is real seconds since this process started
+-- (`src/pc/utils/misc.c:90`, from `CLOCK_MONOTONIC` where the platform has one
+-- at `:46-54`), so a second is a second whatever the frame rate is doing.
+-- `get_global_timer()` counts frames this process has drawn and is right only
+-- for what is genuinely measured in frames -- the warp delays, the modifier
+-- clocks, the refresh intervals.
+SH.seconds_left = function(mark, length)
+    if mark == nil then return 0 end
+    return math.max(0, math.ceil(length - (clock_elapsed() - mark)))
+end
+
+-- How much of the round is left, on this machine. The length is synchronized
+-- because it is a property of the round, the way its mode and difficulty are;
+-- only the counting is local.
+SH.round_seconds_left = function()
+    return SH.seconds_left(local_runtime.round_mark,
+        (gGlobalSyncTable.sh5_config_minutes or 0) * 60)
+end
+
+-- Starts each countdown on this machine, at the moment this machine learns the
+-- countdown began. A new round starts all three; the host granting this
+-- player's ANOTHER LEVEL restarts that one; a Chaos reroll restarts that one.
+-- Nothing here reads a deadline, so nothing depends on another machine's clock.
+SH.update_local_clocks = function()
+    local now = clock_elapsed()
+    local round = gGlobalSyncTable.sh5_round or 0
+    if round ~= local_runtime.clock_round_seen then
+        local_runtime.clock_round_seen = round
+        local_runtime.round_mark = now
+        local_runtime.reroll_mark = now
+        local_runtime.chaos_mark = now
+    end
+    local reroll_seq = gPlayerSyncTable[0].sh5_manual_reroll_seq or 0
+    if reroll_seq ~= local_runtime.clock_reroll_seq_seen then
+        local_runtime.clock_reroll_seq_seen = reroll_seq
+        local_runtime.reroll_mark = now
+    end
+    local chaos_seq = gGlobalSyncTable.sh5_chaos_modifier_seq or 0
+    if chaos_seq ~= local_runtime.clock_chaos_seq_seen then
+        local_runtime.clock_chaos_seq_seen = chaos_seq
+        local_runtime.chaos_mark = now
+    end
 end
 
 return {

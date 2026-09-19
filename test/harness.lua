@@ -85,6 +85,10 @@ local function install_engine()
     local ctl = {
         is_server = true,
         timer = 0,
+        -- `timer` is this machine's frame counter, `elapsed` its wall clock in
+        -- seconds. A test that advances one and not the other is asking what
+        -- happens when frames and seconds disagree, which is the point.
+        elapsed = 0,
         storage = {},
         hooks = {},              -- hook type -> list of functions
         chat_commands = {},
@@ -177,6 +181,7 @@ local function install_engine()
     -- functions the tests observe or steer ------------------------------------
     function network_is_server() return ctl.is_server end
     function get_global_timer() return ctl.timer end
+    function clock_elapsed() return ctl.elapsed end
     function get_current_save_file_num() return 1 end
     function network_local_index_from_global(i) return i end
 
@@ -427,7 +432,10 @@ local function install_engine()
         gGlobalSyncTable.sh5_mode = mode
         gGlobalSyncTable.sh5_difficulty = difficulty
         gGlobalSyncTable.sh5_start_frame = ctl.timer
-        gGlobalSyncTable.sh5_end_frame = ctl.timer + 60 * 60
+        gGlobalSyncTable.sh5_config_minutes = 2
+        -- host_start_round does both of these; begin_round stands in for it.
+        api.arm_chaos_reroll()
+        api.update_local_clocks()
         if level ~= nil then
             for i = 0, 15 do gNetworkPlayers[i].currLevelNum = level end
         end

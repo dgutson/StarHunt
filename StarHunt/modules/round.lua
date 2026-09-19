@@ -32,7 +32,7 @@
 --     `SH.host_update_chaos_round` is Chaos's, yet neither can live in the
 --     module of the mode it belongs to.  This file requires boss.lua for the
 --     time range, the modifier slots and the health report, and chaos.lua for
---     CHAOS_REROLL_FRAMES, so an edge back the other way would be a require
+--     SH.arm_chaos_reroll, so an edge back the other way would be a require
 --     cycle.  Chaos's loop also calls host_end_round, host_add_late_joiner and
 --     remember_player_index, which are this file's own host machinery rather
 --     than shared helpers, so moving them to core.lua was not a way out.
@@ -78,7 +78,7 @@ local boss_has_modifier = boss.boss_has_modifier
 local boss_is_desperate = boss.boss_is_desperate
 local boss_is_held = boss.boss_is_held
 local host_read_boss_health_report = boss.host_read_boss_health_report
-local CHAOS_REROLL_FRAMES = require("chaos").CHAOS_REROLL_FRAMES
+require("chaos")
 local local_modifiers = require("modifiers")
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local reset_local_modifier_state = local_modifiers.reset_local_modifier_state
@@ -110,6 +110,12 @@ end
 local host_used_goals = {}
 local host_seen_done = {}
 local host_seen_forfeit = {}
+
+-- The host's own countdowns, in its own `clock_elapsed()` seconds. They never
+-- leave this machine: every other machine runs the same countdowns from the
+-- moment it saw the round begin or its ANOTHER LEVEL granted.
+local host_round_mark = nil
+local host_reroll_mark = {}
 
 local host_previous_player_interactions = nil
 local host_previous_pvp_type = nil
@@ -270,7 +276,7 @@ local function host_end_round(reason)
             sync.sh5_jump_count = -1
             sync.sh5_manual_reroll_request = 0
             sync.sh5_manual_reroll_ack = 0
-            sync.sh5_manual_reroll_ready_frame = 0
+            host_reroll_mark[i] = nil
             sync.sh5_enrolled = 0
             sync.sh5_team = Team.Color.NONE
             sync.sh5_chaos_eliminated = 0
@@ -350,8 +356,10 @@ local function host_prepare_player(player_index)
         sync.sh5_manual_reroll_request = record.manual_reroll_request or 0
         sync.sh5_manual_reroll_ack = record.manual_reroll_ack
             or sync.sh5_manual_reroll_request
-        sync.sh5_manual_reroll_ready_frame =
-            record.manual_reroll_ready_frame or get_global_timer()
+        -- A player who dropped resumes the wait they left with, so the mark
+        -- is placed as far back as that remainder needs it.
+        host_reroll_mark[player_index] = clock_elapsed()
+            - (SH.manualRerollCooldownSeconds - (record.manual_reroll_remaining or 0))
         sync.sh5_jump_count = record.jump_count
         sync.sh5_boss_victory = record.boss_victory
         sync.sh5_chaos_eliminated = record.chaos_eliminated or 0
@@ -376,8 +384,9 @@ local function host_prepare_player(player_index)
     -- The two minutes belong to the button, not to the level: they start when
     -- the player enters the round and only the button itself starts them again.
     -- A goal handed out because they died, or because they finished a star,
-    -- leaves the deadline alone.
-    sync.sh5_manual_reroll_ready_frame = get_global_timer() + SH.manualRerollCooldown
+    -- leaves the countdown alone.
+    host_reroll_mark[player_index] = clock_elapsed()
+    sync.sh5_manual_reroll_seq = 0
     sync.sh5_jump_count = -1
     sync.sh5_enrolled = 1
     sync.sh5_boss_victory = 0
@@ -524,8 +533,8 @@ local function host_start_round(minutes)
 
     gGlobalSyncTable.sh5_config_minutes = minutes
     gGlobalSyncTable.sh5_start_frame = get_global_timer()
-    gGlobalSyncTable.sh5_end_frame = get_global_timer() + minutes * 60 * FRAMES_PER_SECOND
-    gGlobalSyncTable.sh5_chaos_next_reroll = get_global_timer() + CHAOS_REROLL_FRAMES
+    host_round_mark = clock_elapsed()
+    SH.arm_chaos_reroll()
     gGlobalSyncTable.sh5_result_winner = ""
     gGlobalSyncTable.sh5_result_score = 0
     gGlobalSyncTable.sh5_result_reason = ""
@@ -571,7 +580,8 @@ local function remember_player_index(index)
         forfeit = sync.sh5_forfeit or 0,
         manual_reroll_request = sync.sh5_manual_reroll_request or 0,
         manual_reroll_ack = sync.sh5_manual_reroll_ack or 0,
-        manual_reroll_ready_frame = sync.sh5_manual_reroll_ready_frame or 0,
+        manual_reroll_remaining = SH.seconds_left(host_reroll_mark[index],
+            SH.manualRerollCooldownSeconds),
         jump_count = sync.sh5_jump_count or -1,
         boss_victory = sync.sh5_boss_victory or 0,
         chaos_eliminated = sync.sh5_chaos_eliminated or 0,
@@ -721,7 +731,8 @@ end
 local function host_update_round()
     if not network_is_server() or not is_round_active() then return end
 
-    if get_global_timer() >= (gGlobalSyncTable.sh5_end_frame or 0) then
+    local minutes = gGlobalSyncTable.sh5_config_minutes or 0
+    if host_round_mark ~= nil and clock_elapsed() - host_round_mark >= minutes * 60 then
         host_end_round(is_boss_mode() and "boss time expired" or "time expired")
         return
     end
@@ -749,15 +760,20 @@ local function host_update_round()
                 local manual_ack = sync.sh5_manual_reroll_ack or 0
                 if manual_request ~= manual_ack then
                     sync.sh5_manual_reroll_ack = manual_request
-                    if get_global_timer() >= (sync.sh5_manual_reroll_ready_frame or 0)
+                    if SH.seconds_left(host_reroll_mark[i],
+                            SH.manualRerollCooldownSeconds) <= 0
                         and (sync.sh5_goal or 0) ~= 0 then
                         local old_goal = get_goal(sync.sh5_goal or 0)
                         local old_modifier = old_goal
                             and old_goal.mods[sync.sh5_modifier or 0] or nil
                         if host_assign_goal(i, old_modifier and old_modifier.kind or nil,
                             old_goal and old_goal.level or nil) then
-                            sync.sh5_manual_reroll_ready_frame =
-                                get_global_timer() + SH.manualRerollCooldown
+                            -- Only a level that actually came back restarts the
+                            -- wait, and the counter is what tells every machine
+                            -- to restart its own.
+                            host_reroll_mark[i] = clock_elapsed()
+                            sync.sh5_manual_reroll_seq =
+                                (sync.sh5_manual_reroll_seq or 0) + 1
                         end
                     end
                 end
@@ -1071,8 +1087,17 @@ end
 -- main.lua registers every client function as a hook and publishes all ten of
 -- them through STARHUNT_TEST_API.  STARHUNT_DEATH_ACTIONS and the three
 -- local_return_warp_* variables are read nowhere else and stay private.
+-- How long this player still has to wait for ANOTHER LEVEL, as the host counts
+-- it. The host's marks never leave this machine, so this is the only way to see
+-- them; a client shows its own count from local_runtime.reroll_mark.
+local function host_reroll_seconds_left(player_index)
+    return SH.seconds_left(host_reroll_mark[player_index],
+        SH.manualRerollCooldownSeconds)
+end
+
 return {
     configured_time_range = configured_time_range,
+    host_reroll_seconds_left = host_reroll_seconds_left,
     connected_player_count = connected_player_count,
     host_start_round = host_start_round,
     host_end_round = host_end_round,

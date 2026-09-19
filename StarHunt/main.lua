@@ -69,7 +69,7 @@ local capped_horizontal_velocity = local_modifiers.capped_horizontal_velocity
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
 local run_static_modifier_checks = local_modifiers.run_static_modifier_checks
-local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
+local CHAOS_REROLL_SECONDS = require("modules/chaos").CHAOS_REROLL_SECONDS
 local local_round = require("modules/round")
 local on_before_boss_cutscene = local_round.on_before_boss_cutscene
 local local_goal_warp_update = local_round.local_goal_warp_update
@@ -319,7 +319,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         chaos_maps = SH.chaos_maps,
         pick_chaos_pair = SH.pick_chaos_pair,
         chaos_reroll = SH.host_reroll_chaos_modifiers,
-        chaos_reroll_frames = CHAOS_REROLL_FRAMES,
+        arm_chaos_reroll = SH.arm_chaos_reroll,
+        chaos_reroll_seconds = CHAOS_REROLL_SECONDS,
         next_goal_delay = NEXT_GOAL_DELAY,
         pick_second_modifier = SH.pick_second_modifier,
         draw_darkness_behind = SH.draw_darkness_behind,
@@ -330,7 +331,12 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         manual_reroll_label = SH.manual_reroll_label,
         update_manual_reroll_menu = SH.update_manual_reroll_menu,
         update_config_menu_lock = SH.update_config_menu_lock,
-        manual_reroll_cooldown = SH.manualRerollCooldown,
+        manual_reroll_cooldown_seconds = SH.manualRerollCooldownSeconds,
+        host_reroll_seconds_left = local_round.host_reroll_seconds_left,
+        seconds_left = SH.seconds_left,
+        round_seconds_left = SH.round_seconds_left,
+        chaos_reroll_seconds_left = SH.chaos_reroll_seconds_left,
+        update_local_clocks = SH.update_local_clocks,
         toggle_menu = open_config_menu,
         chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
@@ -341,6 +347,9 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
 end
 
 -- The built-in HUD is rendered before HOOK_ON_HUD_RENDER on some clients.
+-- First, so every countdown read this frame counts from a current mark.
+-- HOOK_UPDATE fires in every play mode, including while the game is paused.
+hook_event(HOOK_UPDATE, SH.update_local_clocks)
 -- Keep its star/coin flags disabled during the update, before it can draw.
 hook_event(HOOK_UPDATE, update_native_hud_visibility)
 hook_event(HOOK_UPDATE, apply_counter_visibility)
@@ -409,7 +418,6 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_return_seq = 0
     gGlobalSyncTable.sh5_mode = SH.Mode.NORMAL
     gGlobalSyncTable.sh5_difficulty = SH.Difficulty.MEDIUM
-    gGlobalSyncTable.sh5_chaos_next_reroll = 0
     gGlobalSyncTable.sh5_chaos_level = 0
     gGlobalSyncTable.sh5_chaos_act = 1
     gGlobalSyncTable.sh5_chaos_modifier_1 = 0
