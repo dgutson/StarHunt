@@ -147,6 +147,7 @@ from a newer upstream needs this before either check means anything. Read
 test/live/run.sh --load-only     # one instance: does the mod load, do the modules resolve (~40s)
 test/live/run.sh                 # a referee and two players: the collision cases (~1 min)
 test/live/run.sh --without r030  # prove the run can go red; must exit 0
+test/live/run.sh --without r035  # the same for the clock case; must exit 0
 ```
 
 Exit 0 is a pass, 1 a failure, 2 a missing game or ROM. It prints every `PROBE` line and
@@ -157,7 +158,11 @@ delays and the scratch directory; on this machine the defaults are already right
 A full run ends with `PASSED:` and one `PROBE verdict` line per player per case:
 `split passed_through=true`, `hidden passed_through=true`, `shared passed_through=false`,
 `ddd passed_through=false` and `wdw passed_through=false`. Both players also print a
-`PROBE saveflags` line, and the two must carry the same `ddd_gate` value. `run.sh` waits for
+`PROBE saveflags` line, and the two must carry the same `ddd_gate` value, and a `PROBE clock`
+line, which must read `ok=true`. That line is the only place real frame counters differ: each
+process starts `JOIN_DELAY` seconds after the last, so the two clients' `frames=` values are
+hundreds apart while their `round_left=` and `reroll_left=` agree to the second. `run.sh` waits
+for
 the referee's `PROBE end role=server`, which it prints once every player has reported every
 case, and then checks each case by name — so a case added to the probe and not to the verdict
 block in `run.sh` runs, prints its verdict and is never judged.

@@ -151,19 +151,23 @@ return function(t, harness)
         -- the modifier, short enough that nobody settles in. A reroll that
         -- ignored its deadline would rewrite everyone's modifier every frame.
         local api, ctl = chaos_round()
-        t.eq(api.chaos_reroll_frames, 15 * 30, "reroll interval in frames")
+        t.eq(api.chaos_reroll_seconds, 15, "reroll interval in seconds")
         enrol(4)
 
-        gGlobalSyncTable.sh5_chaos_next_reroll = ctl.timer + 100
         gPlayerSyncTable[0].sh5_modifier = 7
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds - 1
         api.chaos_reroll()
-        t.eq(gPlayerSyncTable[0].sh5_modifier, 7, "rerolled before the deadline")
+        t.eq(gPlayerSyncTable[0].sh5_modifier, 7, "rerolled a second early")
 
-        ctl.timer = ctl.timer + 100
+        ctl.elapsed = ctl.elapsed + 1
         api.chaos_reroll()
-        t.ne(gPlayerSyncTable[0].sh5_modifier, 7, "did not reroll on the deadline")
-        t.eq(gGlobalSyncTable.sh5_chaos_next_reroll, ctl.timer + api.chaos_reroll_frames,
-            "the next deadline was not rearmed")
+        t.ne(gPlayerSyncTable[0].sh5_modifier, 7, "did not reroll on the interval")
+
+        -- and the interval starts again from here
+        local rerolled = gPlayerSyncTable[0].sh5_modifier
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds - 1
+        api.chaos_reroll()
+        t.eq(gPlayerSyncTable[0].sh5_modifier, rerolled, "the interval was not rearmed")
     end)
 
     s.test("an eliminated player is left out of the reroll", function()
@@ -176,7 +180,7 @@ return function(t, harness)
         gPlayerSyncTable[1].sh5_modifier = 11
         gPlayerSyncTable[1].sh5_modifier_2 = 3
 
-        gGlobalSyncTable.sh5_chaos_next_reroll = 0
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
         api.chaos_reroll()
         t.eq(gPlayerSyncTable[1].sh5_modifier, 11, "an eliminated player was rerolled")
         t.eq(gPlayerSyncTable[1].sh5_modifier_2, 3, "an eliminated player's pair was rerolled")
@@ -186,8 +190,7 @@ return function(t, harness)
         gNetworkPlayers[5].connected = true
         gPlayerSyncTable[5].sh5_enrolled = 0
         gPlayerSyncTable[5].sh5_modifier = 0
-        ctl.timer = ctl.timer + 1000
-        gGlobalSyncTable.sh5_chaos_next_reroll = 0
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
         api.chaos_reroll()
         t.eq(gPlayerSyncTable[5].sh5_modifier, 0, "an unenrolled player was rerolled")
     end)
@@ -200,14 +203,35 @@ return function(t, harness)
         enrol(3)
         local seen = {}
         for i = 1, 5 do
-            ctl.timer = ctl.timer + 1000
-            gGlobalSyncTable.sh5_chaos_next_reroll = 0
+            ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
             api.chaos_reroll()
             seen[i] = gGlobalSyncTable.sh5_chaos_modifier_seq
             if i > 1 then
                 t.eq(seen[i], seen[i - 1] + 1, "sequence did not advance on reroll " .. i)
             end
         end
+    end)
+
+    s.test("no other mode rerolls anybody's modifiers", function()
+        -- The reroll runs on HOOK_UPDATE in every mode. Only Chaos hands out
+        -- modifiers on an interval; in a star race the modifier belongs to the
+        -- goal, and a Normal round that followed a Chaos one would find the
+        -- interval long since up.
+        local api, ctl = chaos_round()
+        enrol(3)
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
+        api.chaos_reroll()
+        local seq = gGlobalSyncTable.sh5_chaos_modifier_seq
+        local modifier = gPlayerSyncTable[0].sh5_modifier
+
+        gGlobalSyncTable.sh5_mode = api.normal_mode
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds * 4
+        api.chaos_reroll()
+
+        t.eq(gGlobalSyncTable.sh5_chaos_modifier_seq, seq,
+            "a star race counted down to a Chaos reroll")
+        t.eq(gPlayerSyncTable[0].sh5_modifier, modifier,
+            "a star race rerolled a player's modifier out from under their goal")
     end)
 
     s.test("the jump budget follows whichever modifier is the jump limit", function()
@@ -222,8 +246,7 @@ return function(t, harness)
         local catalog = api.normal_modifier_catalog
         local second_slot_cases = 0
         for _ = 1, 120 do
-            ctl.timer = ctl.timer + 1000
-            gGlobalSyncTable.sh5_chaos_next_reroll = 0
+            ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
             api.chaos_reroll()
             for i = 0, 3 do
                 local sync = gPlayerSyncTable[i]

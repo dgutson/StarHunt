@@ -5,7 +5,7 @@
 -- dying eliminates a player instead of handing them a new goal.
 --
 -- What it does instead of a goal is churn the modifiers. Each player carries
--- their own independent modifier, rerolled for everyone every CHAOS_REROLL_FRAMES,
+-- their own independent modifier, rerolled for everyone every CHAOS_REROLL_SECONDS,
 -- and on Nightmare a compatible second one alongside it. Because Chaos draws
 -- from the whole catalog rather than from one star's audited list, the pair
 -- rules here are the only thing keeping two modifiers from cancelling each
@@ -14,20 +14,20 @@
 -- The host side of the round loop, SH.host_update_chaos_round, lives in
 -- round.lua and cannot come here. It counts survivors and ends the round, so it
 -- calls round's host_end_round, host_add_late_joiner and remember_player_index,
--- and round.lua already requires this module for CHAOS_REROLL_FRAMES -- an edge
--- back the other way would be a require cycle. Boss's round loop is elsewhere
--- for the same reason.
+-- and round.lua already requires this module for the map list and the modifier
+-- pair picker -- an edge back the other way would be a require cycle. Boss's
+-- round loop is elsewhere for the same reason.
 
 local core = require("core")
 local SH = core.SH
 local local_runtime = core.local_runtime
-local FRAMES_PER_SECOND = core.FRAMES_PER_SECOND
 local NEXT_GOAL_DELAY = core.NEXT_GOAL_DELAY
 local is_round_active = core.is_round_active
 local NORMAL_MODIFIER_CATALOG = require("audit").NORMAL_MODIFIER_CATALOG
 local reset_local_modifier_state = require("modifiers").reset_local_modifier_state
 
-local CHAOS_REROLL_FRAMES = 15 * FRAMES_PER_SECOND
+local CHAOS_REROLL_SECONDS = 15
+
 SH.chaos_maps = {
     LEVEL_BOB, LEVEL_WF, LEVEL_JRB, LEVEL_CCM, LEVEL_BBH,
     LEVEL_HMC, LEVEL_LLL, LEVEL_SSL, LEVEL_DDD, LEVEL_SL,
@@ -81,11 +81,13 @@ SH.pick_chaos_pair = function(previous_first)
     return first_index, second_choices[math.random(#second_choices)]
 end
 
+-- The reroll interval is counted on the host the way it is counted on every
+-- other machine: host_start_round writes sh5_chaos_modifier_seq when a Chaos
+-- round begins, so the first reroll comes a full interval later rather than on
+-- the round's first frame.
 SH.host_reroll_chaos_modifiers = function()
     if not SH.is_chaos_mode() then return end
-    local now = get_global_timer()
-    if now < (gGlobalSyncTable.sh5_chaos_next_reroll or 0) then return end
-    local assigned = false
+    if SH.seconds_left("chaos") > 0 then return end
     for i = 0, MAX_PLAYERS - 1 do
         local sync = gPlayerSyncTable[i]
         if gNetworkPlayers[i].connected and (sync.sh5_enrolled or 0) == 1
@@ -95,7 +97,6 @@ SH.host_reroll_chaos_modifiers = function()
             if first ~= 0 then
                 sync.sh5_modifier = first
                 sync.sh5_modifier_2 = second
-                assigned = true
             end
             local first_data = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[first])
             local second_data = SH.effective_modifier(NORMAL_MODIFIER_CATALOG[second])
@@ -103,11 +104,12 @@ SH.host_reroll_chaos_modifiers = function()
                 or (second_data ~= nil and second_data.kind == "jump_limit" and second_data.value or -1)
         end
     end
-    if assigned then
-        gGlobalSyncTable.sh5_chaos_modifier_seq =
-            (gGlobalSyncTable.sh5_chaos_modifier_seq or 0) + 1
-    end
-    gGlobalSyncTable.sh5_chaos_next_reroll = now + CHAOS_REROLL_FRAMES
+    -- Unconditional: the counter means a reroll happened, and one did even if
+    -- it assigned nobody. It is also what restarts the interval on every
+    -- machine, this one included, so a reroll that skipped it would run again
+    -- on the next frame.
+    gGlobalSyncTable.sh5_chaos_modifier_seq =
+        (gGlobalSyncTable.sh5_chaos_modifier_seq or 0) + 1
 end
 
 SH.update_chaos_warp = function(m)
@@ -147,8 +149,8 @@ SH.update_chaos_warp = function(m)
 end
 
 -- The SH.* functions above attach to the shared SH table and need no
--- export. CHAOS_REROLL_FRAMES does: main.lua's host_start_round arms the first
--- reroll deadline when the round begins.
+-- export. CHAOS_REROLL_SECONDS does: main.lua declares the reroll countdown
+-- with it.
 return {
-    CHAOS_REROLL_FRAMES = CHAOS_REROLL_FRAMES,
+    CHAOS_REROLL_SECONDS = CHAOS_REROLL_SECONDS,
 }

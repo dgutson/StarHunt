@@ -485,6 +485,17 @@ than the dozen the appendix implied, and `chaos` on one function rather than on 
   indistinguishable from `BOSS_LEVELS[... or 0]`, because `BOSS_LEVELS` is a one-entry Lua
   array and no negative or zero index into it holds anything. **Leave all twenty-one exactly
   as they are.**
+  The countdown mechanism produced five more, across four files, and they fall into two shapes.
+  Two are the `tag` argument in
+  `hook_on_sync_table_change(sync_table, key, 0, function() ... end)`: the engine hands the tag
+  back as the callback's first argument (`src/pc/lua/smlua_sync_table.c:132`) and the callback
+  reads none of its arguments, so any tag behaves identically. The other three are `or 0`
+  defaults on fields whose only writer sets them beside the read -- `sh5_chaos_modifier_seq` is
+  seeded in `main.lua` and rewritten by `host_start_round` before any host can reach the bump,
+  `record.manual_reroll_remaining` is always a number because `remember_player_index` is the
+  only builder of a record, and `sh5_config_minutes or -1` is indistinguishable from `or 0`
+  because `SH.seconds_left` clamps the result with `math.max(0, ...)`. **Leave all five exactly
+  as they are.**
 
 - **`selene` 0.31.0 is unusable — do not retry.** The Linux release only compiles the `lua51`
   and `luau` grammars and cannot parse this file's 5.4 syntax. Do not add a `selene.toml`.

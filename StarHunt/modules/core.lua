@@ -30,7 +30,7 @@ local FRAMES_PER_SECOND = 30
 -- in any one of chaos.lua, round.lua or boss.lua.
 local NEXT_GOAL_DELAY = 90
 
-local SH = { manualRerollCooldown = 120 * FRAMES_PER_SECOND,
+local SH = { manualRerollCooldownSeconds = 120,
     rerollMenuIndex = nil, rerollMenuLabel = nil }
 
 local Team = { initial = {},
@@ -212,6 +212,66 @@ end
 -- the mod.
 local function is_round_active()
     return gGlobalSyncTable.sh5_active == 1
+end
+
+-- Every countdown StarHunt shows is counted on the machine showing it, from the
+-- moment that machine saw the countdown start. A clock watches one synchronized
+-- key and nothing else: whatever writes that key starts the countdown, here and
+-- on every machine the write reaches. No deadline is read, so nothing depends on
+-- another machine's clock and the same call answers on a host, on a client and
+-- in single-player.
+--
+-- `hook_on_sync_table_change` fires both for a local write
+-- (`src/pc/lua/smlua_sync_table.c:294`) and for a value arriving from the
+-- network (`:433`), and neither path compares the new value with the old, so
+-- writing a key the value it already holds is what restarts a countdown
+-- everywhere. It can only be registered while the mod is loading
+-- (`src/pc/lua/smlua_hooks.c:1427`), which is why every clock is declared in
+-- main.lua's body.
+--
+-- `clock_elapsed()` is real seconds since this process started
+-- (`src/pc/utils/misc.c:90`, from `CLOCK_MONOTONIC` where the platform has one
+-- at `:46-54`), so a second is a second whatever the frame rate is doing.
+-- `get_global_timer()` counts frames this process has drawn and is right only
+-- for what is genuinely measured in frames -- the warp delays, the modifier
+-- clocks, the refresh intervals.
+local clocks = {}
+
+-- Declares a countdown called `name`, `length` seconds long, started by every
+-- write of `key` in `sync_table`. `length` may be a function, for a countdown
+-- whose length is itself synchronized.
+SH.watch_clock = function(name, sync_table, key, length)
+    local clock = { length = length }
+    clocks[name] = clock
+    hook_on_sync_table_change(sync_table, key, 0, function()
+        clock.mark = clock_elapsed()
+    end)
+end
+
+local function clock_length(clock)
+    local length = clock.length
+    if type(length) == "function" then length = length() end
+    return length
+end
+
+-- How much of `name` is left on this machine. A countdown this machine has not
+-- seen start reads as its whole length, not as zero: zero is what every caller
+-- treats as run out, so an unstarted round would end and an unstarted wait
+-- would read READY. A name that was never declared has no length and reads
+-- zero, so a misspelled one cannot invent a countdown.
+SH.seconds_left = function(name)
+    local clock = clocks[name]
+    if clock == nil then return 0 end
+    if clock.mark == nil then return clock_length(clock) end
+    return math.max(0, math.ceil(clock_length(clock) - (clock_elapsed() - clock.mark)))
+end
+
+-- Places `name`'s mark back in time, so it reads `seconds` left instead of its
+-- whole length. Only the host's reconnect restore uses this: a player who
+-- dropped resumes the wait they left with.
+SH.set_clock_remaining = function(name, seconds)
+    local clock = clocks[name]
+    clock.mark = clock_elapsed() - (clock_length(clock) - seconds)
 end
 
 return {

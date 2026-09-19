@@ -664,9 +664,9 @@ return function(t, harness)
     s.test("the status row counts the round down", function()
         local api, ctl = fresh()
         ctl.begin_round(api, NORMAL, MEDIUM)
-        -- begin_round gives the round 3600 frames, which is two minutes at
-        -- thirty frames a second. Spend 2700 of them and 0:30 is left.
-        ctl.timer = ctl.timer + 2700
+        -- begin_round gives the round two minutes. Spend ninety seconds of
+        -- them, on this machine's own clock, and 0:30 is left.
+        ctl.elapsed = ctl.elapsed + 90
         open_menu(api, ctl)
         api.draw_config_menu()
         at(ctl, "  STATUS - ACTIVE 0:30", BOX_X + 16, HOST_Y + 118, 0.62,
@@ -717,7 +717,7 @@ return function(t, harness)
         ctl.hud.rect_calls = {}
         api.draw_hud()
         line(ctl, "x 4")                     -- the score card, star icon and all
-        line(ctl, "TIME 2:00")               -- begin_round's 3600 frames
+        line(ctl, "TIME 2:00")               -- begin_round's two minutes
         line(ctl, "CHOOSING YOUR NEXT GOAL...")
         t.ne(#ctl.hud.rect_calls, 0, "the round drew no panels")
     end)
