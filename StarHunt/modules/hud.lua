@@ -416,7 +416,7 @@ SH.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
         end
         SH.draw_scaled_centered_text(
             translated("NEW MODIFIERS IN: ", "NUEVOS MODIFICADORES EN: ")
-                .. tostring(SH.chaos_reroll_seconds_left()),
+                .. tostring(SH.seconds_left("chaos")),
             41, 0.40, maximum_width, 200, 210, 230)
         return
     end
@@ -618,7 +618,7 @@ local function draw_hud()
     local goal = get_local_goal()
     local modifiers = SH.get_local_modifiers()
     local modifier_data = modifiers[1]
-    local remaining = SH.round_seconds_left()
+    local remaining = SH.seconds_left("round")
     local score = gPlayerSyncTable[0].sh5_score or 0
     SH.draw_gun_mod_hud_compatibility()
     SH.draw_round_status_panels(remaining, score)

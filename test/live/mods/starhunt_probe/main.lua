@@ -551,11 +551,12 @@ local function update_player()
         -- passes --hide-loading-screen, so nothing but the game loop moves
         -- either one. Every countdown here is nevertheless counted from this
         -- machine's own mark, in real seconds, so it reads the same as the
-        -- server's. `ok` is what run.sh judges: the round clock is running and
-        -- no longer than the round, and the ANOTHER LEVEL wait is no longer
-        -- than its own cooldown.
+        -- server's. `ok` is what run.sh judges, and it requires each countdown
+        -- to have actually started and moved: strictly less than its whole
+        -- length, because a clock that was never started reads as its whole
+        -- length and would otherwise pass.
         if CASE[phase] == "split" then
-            local round_left = api.round_seconds_left()
+            local round_left = api.seconds_left("round")
             local cooldown = api.manual_reroll_cooldown_seconds
             local reroll_left = api.manual_reroll_remaining() or -1
             -- Through the test API: every mod gets its own gGlobalSyncTable,
@@ -566,8 +567,8 @@ local function update_player()
                 .. " seconds=" .. string.format("%.1f", clock_elapsed())
                 .. " round_left=" .. round_left .. " length=" .. length
                 .. " reroll_left=" .. reroll_left .. " cooldown=" .. cooldown
-                .. " ok=" .. tostring(round_left > 0 and round_left <= length
-                    and reroll_left >= 0 and reroll_left <= cooldown))
+                .. " ok=" .. tostring(round_left > 0 and round_left < length
+                    and reroll_left >= 0 and reroll_left < cooldown))
         end
         -- What the submarine and the poles actually read. Both clients must
         -- report the same number, or the premise that the course looks the same

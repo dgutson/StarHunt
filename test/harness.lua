@@ -79,8 +79,38 @@ end
 -- engine doubles
 -- ---------------------------------------------------------------------------
 
+-- A sync table is not a plain table.  Writing a field fires whatever
+-- hook_on_sync_table_change callback is registered for that key -- on the
+-- machine that wrote it (src/pc/lua/smlua_sync_table.c:294) and on every
+-- machine the value reaches (:433) -- and neither path compares the new value
+-- with the one already there, so writing a field the value it already holds
+-- fires the hook too.  StarHunt starts every countdown that way, so plain
+-- tables here would leave the whole mechanism untested.
+--
+-- The engine keeps one callback per key: a second registration overwrites the
+-- first (smlua_hooks.c:1441-1459).  So does this.
+local function make_sync_table(hook_registry)
+    local store = {}
+    local hooks = {}
+    local proxy = setmetatable({}, {
+        __index = function(_, key) return store[key] end,
+        __newindex = function(_, key, value)
+            local previous = store[key]
+            store[key] = value
+            local hook = hooks[key]
+            if hook ~= nil then hook.fn(hook.tag, previous, value) end
+        end,
+    })
+    hook_registry[proxy] = hooks
+    return proxy
+end
+
 local function install_engine()
     local stub = dofile(root .. "/test/engine_stub.lua")
+
+    -- proxy -> its per-key callbacks, rebuilt with the engine on every load
+    local sync_hooks = {}
+    gGlobalSyncTable = make_sync_table(sync_hooks)
 
     local ctl = {
         is_server = true,
@@ -139,7 +169,7 @@ local function install_engine()
 
     -- players ----------------------------------------------------------------
     for i = 0, 15 do
-        gPlayerSyncTable[i] = {}
+        gPlayerSyncTable[i] = make_sync_table(sync_hooks)
         gNetworkPlayers[i] = {
             connected = i < ctl.player_count, globalIndex = i, localIndex = i,
             name = "P" .. i, modelIndex = 0, currLevelNum = 0, currAreaIndex = 0,
@@ -187,6 +217,16 @@ local function install_engine()
 
     function mod_storage_load(key) return ctl.storage[key] end
     function mod_storage_save(key, value) ctl.storage[key] = value; return true end
+
+    -- The mod registers these while it loads, which is when main.lua's body
+    -- runs; the game refuses a later registration (smlua_hooks.c:1427).
+    function hook_on_sync_table_change(sync_table, key, tag, fn)
+        local hooks = sync_hooks[sync_table]
+        if hooks == nil then
+            error("hook_on_sync_table_change on something that is not a sync table", 2)
+        end
+        hooks[key] = { fn = fn, tag = tag }
+    end
 
     function hook_event(kind, fn)
         ctl.hooks[kind] = ctl.hooks[kind] or {}
@@ -433,9 +473,14 @@ local function install_engine()
         gGlobalSyncTable.sh5_difficulty = difficulty
         gGlobalSyncTable.sh5_start_frame = ctl.timer
         gGlobalSyncTable.sh5_config_minutes = 2
-        -- host_start_round does both of these; begin_round stands in for it.
-        api.arm_chaos_reroll()
-        api.update_local_clocks()
+        -- host_start_round writes this when a Chaos round begins, which is what
+        -- starts the reroll interval on every machine; begin_round stands in
+        -- for it.  The round's own countdown starts on the sh5_round write
+        -- above, and each player's ANOTHER LEVEL wait on the
+        -- sh5_manual_reroll_seq that host_prepare_player writes.
+        if mode == api.mode_axis.CHAOS then
+            gGlobalSyncTable.sh5_chaos_modifier_seq = 0
+        end
         if level ~= nil then
             for i = 0, 15 do gNetworkPlayers[i].currLevelNum = level end
         end

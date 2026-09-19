@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 452 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 462 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -91,17 +91,17 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,120 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
+| `round.lua` | 1,101 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 927 | the 93-star catalog, its readers, star interaction and visibility |
-| `modifiers.lua` | 839 | the local player's modifier effects and the load-time self-check |
+| `modifiers.lua` | 840 | the local player's modifier effects and the load-time self-check |
 | `hud.lua` | 705 | text layer, picture layer and frame; nothing requires it |
 | `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
 | `menu.lua` | 326 | the `/starhunt` config menu and its input |
 | `team.lua` | 273 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
 | `i18n.lua` | 254 | six languages and their persistence |
-| `core.lua` | 287 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
-| `chaos.lua` | 169 | Chaos's map, reroll and elimination |
+| `core.lua` | 290 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
+| `chaos.lua` | 156 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
 
@@ -133,11 +133,19 @@ or a host migration must survive, it belongs in a sync table, not in a local var
 
 **No deadline is ever synchronized.** Every countdown is counted on the machine showing it,
 from a mark that machine set when it saw the countdown start, in real seconds from
-`clock_elapsed()`. `SH.seconds_left(mark, length)` in `core.lua` is the only way to read one,
-and `SH.update_local_clocks` (first in the `HOOK_UPDATE` block) is the only thing that sets a
-mark. The host keeps its own marks — `host_round_mark` and `host_reroll_mark` in `round.lua`,
-`host_chaos_mark` in `chaos.lua` — for its own decisions, and they never leave that machine.
-The identical code runs on a host, on a client and in single-player.
+`clock_elapsed()`. The whole mechanism is three functions in `core.lua` — `SH.watch_clock`,
+`SH.seconds_left(name)` and `SH.set_clock_remaining` — and no other module holds clock code.
+
+A clock watches one synchronized key: `hook_on_sync_table_change` fires on a local write
+(`src/pc/lua/smlua_sync_table.c:294`) and on a value arriving from the network (`:433`), with
+no comparison against the value already there, so **writing a key the value it already holds
+is what restarts a countdown everywhere**. Registration is load-time only
+(`src/pc/lua/smlua_hooks.c:1427`), so every clock is declared in `main.lua`'s body: `round`,
+`chaos`, and one `reroll<i>` per player slot. There is no host-side clock code at all — the
+host's own write fires the hook locally, so it reads player *i*'s wait with the same call that
+player's machine uses for its own. A countdown a machine has never seen start reads as its
+whole length, not as zero, because zero is what every caller treats as run out. The identical
+code runs on a host, on a client and in single-player.
 
 What crosses the network is the event, never the time: `sh5_round` for a new round,
 `sh5_manual_reroll_seq` for an ANOTHER LEVEL the host actually granted, and

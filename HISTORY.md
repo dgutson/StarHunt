@@ -13,7 +13,7 @@ development history inherited from v0.9 to v1.1, which predates the roadmap.
 
 ## Completed roadmap items
 
-### 2026-09-18 — R-035: every countdown is counted on the machine showing it
+### 2026-09-19 — R-035: every countdown is counted on the machine showing it
 
 The round clock, the ANOTHER LEVEL wait and the Chaos reroll countdown were deadlines in the
 sync tables, written as `get_global_timer() + n` by the host and compared against
@@ -27,11 +27,34 @@ available.
 
 No countdown is synchronized any more. Each machine counts its own in real seconds from
 `clock_elapsed()` (`src/pc/utils/misc.c:90`, on `CLOCK_MONOTONIC` where the platform has one at
-`:46-54`), from a mark it set when it saw the countdown start. `SH.seconds_left(mark, length)`
-and `SH.update_local_clocks` in `modules/core.lua` are the whole mechanism; the host keeps its
-own marks for its own decisions — `host_round_mark` and `host_reroll_mark` in `round.lua`,
-`host_chaos_mark` in `chaos.lua` — and they never leave that machine. The same code runs on a
-host, on a client and in single-player.
+`:46-54`), from a mark it set when it saw the countdown start.
+
+The whole mechanism is three functions in `modules/core.lua` and nothing anywhere else.
+`SH.watch_clock(name, sync_table, key, length)` declares a countdown and registers a
+`hook_on_sync_table_change` callback that marks the moment the key is written;
+`SH.seconds_left(name)` reads one; `SH.set_clock_remaining(name, seconds)` places a mark back
+in time for the host's reconnect restore, its only caller. The engine calls that hook both for
+a local write (`src/pc/lua/smlua_sync_table.c:294`) and for a value arriving from the network
+(`:433`), and compares nothing against the value already there, so writing a key the value it
+already holds restarts the countdown on every machine — which is how `host_prepare_player`
+setting `sh5_manual_reroll_seq = 0` starts a player's wait in every round rather than only the
+first. Registration is load-time only (`src/pc/lua/smlua_hooks.c:1427`), so the three clocks
+are declared in `main.lua`'s body: `round`, `chaos`, and one `reroll<i>` for each of the
+sixteen player slots.
+
+There is no host-side clock code at all. The host's own write fires the hook on its own
+machine, so it reads player *i*'s remaining wait with `SH.seconds_left("reroll" .. i)` — the
+same call that player's machine makes for its own. `SH.update_local_clocks`, the marks in
+`local_runtime`, `host_round_mark`, `host_reroll_mark`, `host_chaos_mark`,
+`SH.arm_chaos_reroll`, `SH.round_seconds_left`, `SH.chaos_reroll_seconds_left` and
+`host_reroll_seconds_left` are all gone. `chaos.lua` bumps `sh5_chaos_modifier_seq`
+unconditionally: the counter means a reroll happened, and it is also what restarts the interval
+on the host, so a reroll that skipped it would run again on the next frame.
+
+A countdown a machine has never seen start reads as its whole length, not as zero, because
+zero is what every caller treats as run out: it is what ends a round and what makes the
+ANOTHER LEVEL row say READY. A name that was never declared reads zero, so a misspelling
+cannot invent a countdown.
 
 What crosses the network is the event, never the time: `sh5_round`, the new
 `sh5_manual_reroll_seq`, which the host bumps only when a level actually came back, and
@@ -40,26 +63,36 @@ What crosses the network is the event, never the time: `sh5_round`, the new
 `sh5_config_minutes`, which was already published.
 
 Dying no longer restarts the two minutes either. `host_assign_goal` set the deadline for every
-reassignment it made, including the one the forfeit branch asks for after a death. The mark now
-belongs to the two callers that mean it — a player entering the round, in `host_prepare_player`,
-and the button itself.
+reassignment it made, including the one the forfeit branch asks for after a death. The wait now
+starts only where it is meant to — a player entering the round, in `host_prepare_player`, and
+the button itself.
 
 The defect shipped in released v1.1: `v1.1-monolithic` carries the same subtraction at
 `main.lua:3933-3934` and sets the same deadline inside its goal assignment at `main.lua:1702`.
 
-`test/suite/clock.lua` is new and holds the rule down, including that no countdown moves when
-only the frame counter does. In `test/live/`, each client prints a `PROBE clock` line: the two
-clients' frame counters differ by hundreds of frames, because each process starts seconds after
-the last, and their countdowns agree to the second. `test/live/run.sh --without r035` takes the
-marking out and requires that line to go red, which it does.
+`test/harness.lua` now builds `gGlobalSyncTable` and each `gPlayerSyncTable[i]` as proxies that
+fire the registered callback on every write, the way the engine does, so the suite drives the
+real path instead of a poller. `test/suite/clock.lua` holds the rule down, including that no
+countdown moves when only the frame counter does, that writing a counter the value it already
+holds restarts it, and that every one of the sixteen player slots has a countdown of its own.
+In `test/live/`, each client prints a `PROBE clock` line: the two clients' frame counters
+differ by hundreds of frames, because each process starts seconds after the last, and their
+countdowns agree to the second. `ok` requires each countdown to read strictly less than its
+length, so a clock that never started fails it; `test/live/run.sh --without r035` removes the
+mark assignment and requires that line to go red, which it does.
 
-809 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
+814 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
 10 problems in 2 files, and `test/live/run.sh` PASSED with its eleven verdicts, as did both
-`--without` runs inverted. Mutation sweeps over every line this change wrote: the survivors
-are all `or` defaults on fields the code always writes beside them — `sh5_config_minutes` and
-`host_round_mark` are set on adjacent lines of `host_start_round`, `sh5_manual_reroll_seq` is
-zeroed by `host_prepare_player` before any grant, and `manual_reroll_remaining` is always in
-the record.
+`--without` runs inverted:
+
+```
+PROBE clock role=player1 frames=523 seconds=17.3 round_left=593 length=600 reroll_left=113 cooldown=120 ok=true
+PROBE clock role=player2 frames=277 seconds=9.2 round_left=593 length=600 reroll_left=113 cooldown=120 ok=true
+```
+
+Mutation sweeps over every line this change wrote closed two gaps — the reroll's Chaos-mode
+guard, and the loop that declares one clock per player slot — and left only `or` defaults on
+fields the code always writes beside them, listed in `REFACTOR_PLAN.md`.
 
 ### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
 

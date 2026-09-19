@@ -294,7 +294,7 @@ return function(t, harness)
 
         gGlobalSyncTable.sh5_active = 1
         gGlobalSyncTable.sh5_config_minutes = 2
-        api.runtime.round_mark = ctl.elapsed
+        gGlobalSyncTable.sh5_round = 1            -- starts the round's countdown
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[2].text, "ACTIVE 2:00", "the remaining time was reported wrong")
     end)
@@ -344,7 +344,8 @@ return function(t, harness)
         local api, ctl, m = menu()
         gGlobalSyncTable.sh5_active = 1
         gGlobalSyncTable.sh5_config_minutes = 1
-        api.runtime.round_mark = ctl.elapsed - 15       -- forty-five seconds left
+        gGlobalSyncTable.sh5_round = 1
+        ctl.elapsed = ctl.elapsed + 15                  -- forty-five seconds left
         api.runtime.config_selection = 5
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[1].text, "ACTIVE 0:45", "the seconds were counted on the wrong base")
@@ -354,7 +355,8 @@ return function(t, harness)
         local api, ctl, m = menu()
         gGlobalSyncTable.sh5_active = 1
         gGlobalSyncTable.sh5_config_minutes = 1
-        api.runtime.round_mark = ctl.elapsed - 80       -- twenty seconds past the end
+        gGlobalSyncTable.sh5_round = 1
+        ctl.elapsed = ctl.elapsed + 80                  -- twenty seconds past the end
         api.runtime.config_selection = 5
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[1].text, "ACTIVE 0:00", "an expired clock reported a negative time")

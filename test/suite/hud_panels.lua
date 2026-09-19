@@ -675,7 +675,8 @@ return function(t, harness)
     s.test("Chaos names the objective and counts down to the reroll", function()
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        api.runtime.chaos_mark = ctl.elapsed - (api.chaos_reroll_seconds - 5)
+        gGlobalSyncTable.sh5_chaos_modifier_seq = 1     -- starts the interval
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds - 5
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, GRAVITY)
         at(ctl, "LAST PLAYER STANDING", centered_x(160, 0.64), 3, 0.64, 255, 255, 255)
@@ -688,19 +689,22 @@ return function(t, harness)
     s.test("a reroll already due counts down to zero rather than past it", function()
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        api.runtime.chaos_mark = ctl.elapsed - api.chaos_reroll_seconds * 4
+        gGlobalSyncTable.sh5_chaos_modifier_seq = 1
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds * 4
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, nil)
         at(ctl, "NEW MODIFIERS IN: 0", centered_x(149, 0.40), 41, 0.40, 200, 210, 230)
     end)
 
-    s.test("a machine that has not seen a reroll yet counts zero", function()
+    s.test("a machine that has not seen a reroll yet counts the whole interval",
+    function()
+        -- Zero would read as a reroll that is already due. A machine that has
+        -- not been told one happened shows the interval it is waiting out.
         local api, ctl = fresh()
         gGlobalSyncTable.sh5_mode = api.chaos_mode
-        api.runtime.chaos_mark = nil
         ctl.hud.text = {}
         api.draw_objective_panel(GOAL, LOCKED, nil)
-        at(ctl, "NEW MODIFIERS IN: 0", centered_x(149, 0.40), 41, 0.40, 200, 210, 230)
+        at(ctl, "NEW MODIFIERS IN: 15", centered_x(157, 0.40), 41, 0.40, 200, 210, 230)
     end)
 
     s.test("an eliminated player is told so and shown nothing else", function()

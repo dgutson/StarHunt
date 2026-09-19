@@ -212,6 +212,28 @@ return function(t, harness)
         end
     end)
 
+    s.test("no other mode rerolls anybody's modifiers", function()
+        -- The reroll runs on HOOK_UPDATE in every mode. Only Chaos hands out
+        -- modifiers on an interval; in a star race the modifier belongs to the
+        -- goal, and a Normal round that followed a Chaos one would find the
+        -- interval long since up.
+        local api, ctl = chaos_round()
+        enrol(3)
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
+        api.chaos_reroll()
+        local seq = gGlobalSyncTable.sh5_chaos_modifier_seq
+        local modifier = gPlayerSyncTable[0].sh5_modifier
+
+        gGlobalSyncTable.sh5_mode = api.normal_mode
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds * 4
+        api.chaos_reroll()
+
+        t.eq(gGlobalSyncTable.sh5_chaos_modifier_seq, seq,
+            "a star race counted down to a Chaos reroll")
+        t.eq(gPlayerSyncTable[0].sh5_modifier, modifier,
+            "a star race rerolled a player's modifier out from under their goal")
+    end)
+
     s.test("the jump budget follows whichever modifier is the jump limit", function()
         -- sh5_jump_count is the player's remaining jumps. On Nightmare the jump
         -- limit can land in either slot of the pair, and reading only the first

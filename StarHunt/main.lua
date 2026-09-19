@@ -319,7 +319,6 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         chaos_maps = SH.chaos_maps,
         pick_chaos_pair = SH.pick_chaos_pair,
         chaos_reroll = SH.host_reroll_chaos_modifiers,
-        arm_chaos_reroll = SH.arm_chaos_reroll,
         chaos_reroll_seconds = CHAOS_REROLL_SECONDS,
         next_goal_delay = NEXT_GOAL_DELAY,
         pick_second_modifier = SH.pick_second_modifier,
@@ -332,11 +331,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         update_manual_reroll_menu = SH.update_manual_reroll_menu,
         update_config_menu_lock = SH.update_config_menu_lock,
         manual_reroll_cooldown_seconds = SH.manualRerollCooldownSeconds,
-        host_reroll_seconds_left = local_round.host_reroll_seconds_left,
         seconds_left = SH.seconds_left,
-        round_seconds_left = SH.round_seconds_left,
-        chaos_reroll_seconds_left = SH.chaos_reroll_seconds_left,
-        update_local_clocks = SH.update_local_clocks,
         toggle_menu = open_config_menu,
         chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
@@ -347,9 +342,6 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
 end
 
 -- The built-in HUD is rendered before HOOK_ON_HUD_RENDER on some clients.
--- First, so every countdown read this frame counts from a current mark.
--- HOOK_UPDATE fires in every play mode, including while the game is paused.
-hook_event(HOOK_UPDATE, SH.update_local_clocks)
 -- Keep its star/coin flags disabled during the update, before it can draw.
 hook_event(HOOK_UPDATE, update_native_hud_visibility)
 hook_event(HOOK_UPDATE, apply_counter_visibility)
@@ -446,6 +438,24 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_result_red_score = 0
     gGlobalSyncTable.sh5_result_blue_score = 0
     gGlobalSyncTable.sh5_config_minutes = 8
+end
+
+-- Every countdown in the mod. They are declared here because
+-- hook_on_sync_table_change can only be registered while the mod is loading,
+-- and after the seed above so that seeding a fresh save does not start one.
+-- Each countdown begins when its key is written -- on the machine that wrote it
+-- and on every machine the write reaches -- and SH.seconds_left is the only way
+-- to read one. The round's length is synchronized because it is a property of
+-- the round, the way its mode and difficulty are; only the counting is local.
+SH.watch_clock("round", gGlobalSyncTable, "sh5_round",
+    function() return (gGlobalSyncTable.sh5_config_minutes or 0) * 60 end)
+SH.watch_clock("chaos", gGlobalSyncTable, "sh5_chaos_modifier_seq", CHAOS_REROLL_SECONDS)
+-- One per player slot, because the host grants ANOTHER LEVEL to one player at a
+-- time. Index 0 is the local player on every machine, so a client reads its own
+-- wait as "reroll0" and the host reads player i's as "reroll" .. i.
+for i = 0, MAX_PLAYERS - 1 do
+    SH.watch_clock("reroll" .. i, gPlayerSyncTable[i], "sh5_manual_reroll_seq",
+        SH.manualRerollCooldownSeconds)
 end
 
 SH.update_lifetime_sync()

@@ -1,8 +1,2 @@
 modules/core.lua
-    local round = gGlobalSyncTable.sh5_round or 0
-    if round ~= local_runtime.clock_round_seen then
-        local_runtime.clock_round_seen = round
-        local_runtime.round_mark = now
-        local_runtime.reroll_mark = now
-        local_runtime.chaos_mark = now
-    end
+        clock.mark = clock_elapsed()

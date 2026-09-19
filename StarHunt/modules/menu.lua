@@ -66,7 +66,7 @@ end
 
 local function config_status_text()
     if not is_round_active() then return translated("WAITING", "ESPERANDO") end
-    local remaining = SH.round_seconds_left()
+    local remaining = SH.seconds_left("round")
     local minutes = math.floor(remaining / 60)
     local seconds = remaining % 60
     return translated("ACTIVE ", "ACTIVA ") .. string.format("%d:%02d", minutes, seconds)

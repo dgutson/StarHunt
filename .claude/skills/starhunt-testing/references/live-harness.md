@@ -94,8 +94,11 @@ between the two clients. The server still runs StarHunt as the host: it picks th
   each client joins `JOIN_DELAY` seconds later, with `--hide-loading-screen` so only the game
   loop moves either one — while the countdowns agree. **The probe is its own mod, so its
   `gGlobalSyncTable` is not StarHunt's**; it reads the round's length through
-  `api.global_sync`. `--without r035` removes the marking from `SH.update_local_clocks` and both
-  clients report `ok=false`.
+  `api.global_sync`. `--without r035` removes the mark assignment from `SH.watch_clock` in
+  `modules/core.lua`, which leaves every countdown stuck at its whole length, and both clients
+  report `ok=false`. That is what `ok` tests: each countdown must read strictly less than its
+  length, because a clock that never started reads as its whole length and would otherwise
+  pass.
 - **wdw** — the same claim for Wet-Dry World, set up the same way. Every object in both of its
   areas is `ALL_ACTS`, and its water level does not come from the act:
   `geo_wdw_set_initial_water_level` (`src/game/moving_texture.c:305`) derives it from

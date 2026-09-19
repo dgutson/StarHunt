@@ -196,8 +196,7 @@ return function(t, harness)
         api.host_start(15)
         t.eq(gGlobalSyncTable.sh5_start_frame, 500, "the round started at the wrong frame")
         t.eq(gGlobalSyncTable.sh5_config_minutes, 15, "the round kept the wrong length")
-        api.update_local_clocks()
-        t.eq(api.round_seconds_left(), 15 * 60, "15 minutes is 15 * 60 seconds")
+        t.eq(api.seconds_left("round"), 15 * 60, "15 minutes is 15 * 60 seconds")
     end)
 
     s.test("a star race needs one unused goal per player", function()
@@ -992,9 +991,10 @@ return function(t, harness)
 
     s.test("the round's first goal starts the cooldown", function()
         local api, ctl = race(2, {})
-        t.eq(api.host_reroll_seconds_left(0), api.manual_reroll_cooldown_seconds,
+        t.eq(api.seconds_left("reroll0"), api.manual_reroll_cooldown_seconds,
             "a player entering a round did not get the full cooldown")
-        api.update_local_clocks()
+        -- The host and the player read the same countdown: the write that
+        -- started it fired the change hook on the machine that made it.
         t.eq(api.manual_reroll_remaining(), api.manual_reroll_cooldown_seconds,
             "the player's own machine counted a different cooldown")
         t.eq(ctl, ctl, "")
@@ -1004,11 +1004,11 @@ return function(t, harness)
         local api, ctl = race(2, {})
         local before = gPlayerSyncTable[0].sh5_goal
         ctl.elapsed = ctl.elapsed + 60            -- one minute into the cooldown
-        local left = api.host_reroll_seconds_left(0)
+        local left = api.seconds_left("reroll0")
         gPlayerSyncTable[0].sh5_forfeit = 1       -- what a death publishes
         api.host_update()
         t.ne(gPlayerSyncTable[0].sh5_goal, before, "the death handed out no new goal")
-        t.eq(api.host_reroll_seconds_left(0), left,
+        t.eq(api.seconds_left("reroll0"), left,
             "dying pushed the button's cooldown back to the full two minutes")
     end)
 
@@ -1016,11 +1016,11 @@ return function(t, harness)
         local api, ctl = race(2, {})
         local before = gPlayerSyncTable[0].sh5_goal
         ctl.elapsed = ctl.elapsed + 60
-        local left = api.host_reroll_seconds_left(0)
+        local left = api.seconds_left("reroll0")
         gPlayerSyncTable[0].sh5_done = 1
         api.host_update()
         t.ne(gPlayerSyncTable[0].sh5_goal, before, "the star handed out no new goal")
-        t.eq(api.host_reroll_seconds_left(0), left,
+        t.eq(api.seconds_left("reroll0"), left,
             "finishing a star pushed the button's cooldown back")
     end)
 
@@ -1030,7 +1030,7 @@ return function(t, harness)
         gPlayerSyncTable[0].sh5_manual_reroll_request = 1
         ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds
         api.host_update()
-        t.eq(api.host_reroll_seconds_left(0), api.manual_reroll_cooldown_seconds,
+        t.eq(api.seconds_left("reroll0"), api.manual_reroll_cooldown_seconds,
             "the button did not start its own cooldown again")
         t.eq(gPlayerSyncTable[0].sh5_manual_reroll_seq, seq + 1,
             "nothing told the other machines to restart their own countdown")
@@ -1067,7 +1067,7 @@ return function(t, harness)
         gPlayerSyncTable[0].sh5_manual_reroll_request = 1
         api.host_update()
         t.eq(gPlayerSyncTable[0].sh5_goal, before, "a goal came out of an empty pool")
-        t.eq(api.host_reroll_seconds_left(0), 0,
+        t.eq(api.seconds_left("reroll0"), 0,
             "a reroll that handed out nothing still made the player wait again")
     end)
 
@@ -1075,7 +1075,7 @@ return function(t, harness)
         -- Nothing advances the clock while they are away, so what they left
         -- with is the whole cooldown.
         local api = reconnect(nil)
-        t.eq(api.host_reroll_seconds_left(1), api.manual_reroll_cooldown_seconds,
+        t.eq(api.seconds_left("reroll1"), api.manual_reroll_cooldown_seconds,
             "a player who dropped out came back with a fresh two minutes")
     end)
 
@@ -1089,7 +1089,7 @@ return function(t, harness)
         gPlayerSyncTable[1].sh5_enrolled = 0
         gPlayerSyncTable[1].sh5_goal = 0
         api.host_late_joiner(1)
-        t.eq(api.host_reroll_seconds_left(1), 30,
+        t.eq(api.seconds_left("reroll1"), 30,
             "a player who left with thirty seconds to wait came back with another two minutes")
     end)
 
@@ -1101,7 +1101,7 @@ return function(t, harness)
         local api = reconnect(function(_, ctl)
             ctl.elapsed = ctl.elapsed + 90
         end)
-        t.eq(api.host_reroll_seconds_left(1), api.manual_reroll_cooldown_seconds,
+        t.eq(api.seconds_left("reroll1"), api.manual_reroll_cooldown_seconds,
             "the time they spent disconnected was counted against their wait")
     end)
 

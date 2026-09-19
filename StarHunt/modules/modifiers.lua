@@ -644,7 +644,8 @@ SH.manual_reroll_remaining = function()
         or get_local_goal() == nil then
         return nil
     end
-    return SH.seconds_left(local_runtime.reroll_mark, SH.manualRerollCooldownSeconds)
+    -- Index 0 is always the local player, so this is this machine's own wait.
+    return SH.seconds_left("reroll0")
 end
 
 SH.manual_reroll_label = function()

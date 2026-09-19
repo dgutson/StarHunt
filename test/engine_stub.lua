@@ -7,12 +7,11 @@
 local stub = {}
 
 -- --------------------------------------------------------------------
--- constants (119)
+-- constants (118)
 -- --------------------------------------------------------------------
 id_bhvBowser = 72 --- @type BehaviorId
 id_bhvBowserBomb = 74 --- @type BehaviorId
 id_bhvBowserShockWave = 82 --- @type BehaviorId
-id_bhvBowsersSub = 83 --- @type BehaviorId
 id_bhvCameraLakitu = 99 --- @type BehaviorId
 id_bhvExplosion = 161 --- @type BehaviorId
 id_bhvFlameMovingForwardGrowing = 182 --- @type BehaviorId
@@ -141,10 +140,11 @@ gServerSettings = {}
 gTextures = {}
 
 -- --------------------------------------------------------------------
--- engine functions (55), inert by default
+-- engine functions (57), inert by default
 -- --------------------------------------------------------------------
 stub.functions = {
     "atan2s",
+    "clock_elapsed",
     "count_objects_with_behavior",
     "dist_between_objects",
     "djui_chat_message_create",
@@ -161,13 +161,13 @@ stub.functions = {
     "djui_popup_create_global",
     "get_behavior_from_id",
     "get_current_save_file_num",
-    "clock_elapsed",
     "get_global_timer",
     "get_level_course_num",
     "get_ttc_speed_setting",
     "hook_chat_command",
     "hook_event",
     "hook_mod_menu_button",
+    "hook_on_sync_table_change",
     "hud_get_value",
     "hud_hide",
     "hud_is_hidden",
