@@ -68,10 +68,8 @@ local local_seen_round = nil
 local local_seen_result = nil
 local local_start_banner_until = -1
 
-local function format_remaining_time(frames)
-    local minutes = math.floor(frames / (60 * FRAMES_PER_SECOND))
-    local seconds = math.floor((frames / FRAMES_PER_SECOND) % 60)
-    return string.format("%d:%02d", minutes, seconds)
+local function format_remaining_time(seconds)
+    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
 local function measure_hud_text(text)
@@ -416,11 +414,9 @@ SH.draw_objective_panel = function(goal, modifier_data, modifier_data_2)
             SH.draw_scaled_centered_text(modifier_text(modifier_data_2),
                 29, 0.48, maximum_width, 255, 145, 80)
         end
-        local reroll = math.max(0,
-            (gGlobalSyncTable.sh5_chaos_next_reroll or 0) - get_global_timer())
         SH.draw_scaled_centered_text(
             translated("NEW MODIFIERS IN: ", "NUEVOS MODIFICADORES EN: ")
-                .. tostring(math.ceil(reroll / FRAMES_PER_SECOND)),
+                .. tostring(SH.seconds_left("chaos")),
             41, 0.40, maximum_width, 200, 210, 230)
         return
     end
@@ -647,7 +643,7 @@ local function draw_hud()
     local goal = get_local_goal()
     local modifiers = SH.get_local_modifiers()
     local modifier_data = modifiers[1]
-    local remaining = math.max(0, (gGlobalSyncTable.sh5_end_frame or get_global_timer()) - get_global_timer())
+    local remaining = SH.seconds_left("round")
     local score = gPlayerSyncTable[0].sh5_score or 0
     SH.draw_gun_mod_hud_compatibility()
     SH.draw_round_status_panels(remaining, score)

@@ -293,8 +293,8 @@ return function(t, harness)
         t.eq(ctl.popups[1].text, "WAITING", "a waiting lobby did not say so")
 
         gGlobalSyncTable.sh5_active = 1
-        gGlobalSyncTable.sh5_end_frame = 120 * 30            -- two minutes at 30fps
-        ctl.timer = 0
+        gGlobalSyncTable.sh5_config_minutes = 2
+        gGlobalSyncTable.sh5_round = 1            -- starts the round's countdown
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[2].text, "ACTIVE 2:00", "the remaining time was reported wrong")
     end)
@@ -343,8 +343,9 @@ return function(t, harness)
     s.test("the status counts seconds up to sixty, not thirty", function()
         local api, ctl, m = menu()
         gGlobalSyncTable.sh5_active = 1
-        gGlobalSyncTable.sh5_end_frame = 45 * 30      -- forty-five seconds at 30fps
-        ctl.timer = 0
+        gGlobalSyncTable.sh5_config_minutes = 1
+        gGlobalSyncTable.sh5_round = 1
+        ctl.elapsed = ctl.elapsed + 15                  -- forty-five seconds left
         api.runtime.config_selection = 5
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[1].text, "ACTIVE 0:45", "the seconds were counted on the wrong base")
@@ -353,8 +354,9 @@ return function(t, harness)
     s.test("a status read after the clock ran out says zero, not a negative", function()
         local api, ctl, m = menu()
         gGlobalSyncTable.sh5_active = 1
-        gGlobalSyncTable.sh5_end_frame = 0
-        ctl.timer = 600                          -- twenty seconds past the end
+        gGlobalSyncTable.sh5_config_minutes = 1
+        gGlobalSyncTable.sh5_round = 1
+        ctl.elapsed = ctl.elapsed + 80                  -- twenty seconds past the end
         api.runtime.config_selection = 5
         press(api, m, A_BUTTON)
         t.eq(ctl.popups[1].text, "ACTIVE 0:00", "an expired clock reported a negative time")
@@ -460,8 +462,7 @@ return function(t, harness)
         api.runtime.config_selection = 6
         gGlobalSyncTable.sh5_config_minutes = 999
         press(api, m, A_BUTTON)
-        t.eq(gGlobalSyncTable.sh5_end_frame - gGlobalSyncTable.sh5_start_frame,
-            20 * 60 * 30, "999 minutes reached the round")
+        t.eq(gGlobalSyncTable.sh5_config_minutes, 20, "999 minutes reached the round")
     end)
 
     -- ---------------------------------------------------------------------

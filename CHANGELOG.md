@@ -88,6 +88,15 @@ que copiar `main.lua` solo no alcanza.
   con normalidad. Si OTRO NIVEL todavía está en espera, la pausa se queda
   abierta y el aviso dice cuánto falta.
 
+- Mantenimiento del 18 de septiembre: los relojes ya marcan lo mismo para
+  todos. El reloj de la ronda, la espera de OTRO NIVEL y la cuenta atrás de
+  Chaos se medían en cuadros dibujados por cada ordenador, que empiezan en cero
+  al abrir el juego, así que a quien entraba más tarde que el host OTRO NIVEL le
+  decía 5:00 en vez de 2:00 y nunca llegaba a cero. Ahora cada máquina cuenta en
+  segundos de verdad, así que también dejan de irse los relojes cuando el juego
+  se ralentiza o se pasa por una pantalla de carga. Además, morir ya no reinicia
+  la espera de OTRO NIVEL: los dos minutos corren desde que el jugador entra en
+  la ronda y solo el propio botón los vuelve a empezar.
 - Mantenimiento del 17 de septiembre: en Wet-Dry World los jugadores se ven, se
   tocan y pelean entre sí aunque tengan actos distintos. Nada en ese curso
   depende del acto, y el nivel del agua —lo único en lo que dos jugadores

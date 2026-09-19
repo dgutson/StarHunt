@@ -73,7 +73,7 @@ local capped_horizontal_velocity = local_modifiers.capped_horizontal_velocity
 local grant_infinite_lives = local_modifiers.grant_infinite_lives
 local keep_moat_lowered = local_modifiers.keep_moat_lowered
 local run_static_modifier_checks = local_modifiers.run_static_modifier_checks
-local CHAOS_REROLL_FRAMES = require("modules/chaos").CHAOS_REROLL_FRAMES
+local CHAOS_REROLL_SECONDS = require("modules/chaos").CHAOS_REROLL_SECONDS
 local local_round = require("modules/round")
 local on_before_boss_cutscene = local_round.on_before_boss_cutscene
 local local_goal_warp_update = local_round.local_goal_warp_update
@@ -319,7 +319,7 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         chaos_maps = SH.chaos_maps,
         pick_chaos_pair = SH.pick_chaos_pair,
         chaos_reroll = SH.host_reroll_chaos_modifiers,
-        chaos_reroll_frames = CHAOS_REROLL_FRAMES,
+        chaos_reroll_seconds = CHAOS_REROLL_SECONDS,
         next_goal_delay = NEXT_GOAL_DELAY,
         pick_second_modifier = SH.pick_second_modifier,
         draw_darkness_behind = SH.draw_darkness_behind,
@@ -334,7 +334,8 @@ if rawget(_G, "STARHUNT_TEST_MODE") then
         pause_menu_labels = SH.pause_menu_labels,
         pause_selection = function() return local_runtime.pause_selection end,
         update_config_menu_lock = SH.update_config_menu_lock,
-        manual_reroll_cooldown = SH.manualRerollCooldown,
+        manual_reroll_cooldown_seconds = SH.manualRerollCooldownSeconds,
+        seconds_left = SH.seconds_left,
         toggle_menu = open_config_menu,
         chat_command = starhunt_command,
         is_menu_open = function() return local_runtime.config_open end,
@@ -414,7 +415,6 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_return_seq = 0
     gGlobalSyncTable.sh5_mode = SH.Mode.NORMAL
     gGlobalSyncTable.sh5_difficulty = SH.Difficulty.MEDIUM
-    gGlobalSyncTable.sh5_chaos_next_reroll = 0
     gGlobalSyncTable.sh5_chaos_level = 0
     gGlobalSyncTable.sh5_chaos_act = 1
     gGlobalSyncTable.sh5_chaos_modifier_1 = 0
@@ -443,6 +443,24 @@ if network_is_server() and gGlobalSyncTable.sh5_active == nil then
     gGlobalSyncTable.sh5_result_red_score = 0
     gGlobalSyncTable.sh5_result_blue_score = 0
     gGlobalSyncTable.sh5_config_minutes = 8
+end
+
+-- Every countdown in the mod. They are declared here because
+-- hook_on_sync_table_change can only be registered while the mod is loading,
+-- and after the seed above so that seeding a fresh save does not start one.
+-- Each countdown begins when its key is written -- on the machine that wrote it
+-- and on every machine the write reaches -- and SH.seconds_left is the only way
+-- to read one. The round's length is synchronized because it is a property of
+-- the round, the way its mode and difficulty are; only the counting is local.
+SH.watch_clock("round", gGlobalSyncTable, "sh5_round",
+    function() return (gGlobalSyncTable.sh5_config_minutes or 0) * 60 end)
+SH.watch_clock("chaos", gGlobalSyncTable, "sh5_chaos_modifier_seq", CHAOS_REROLL_SECONDS)
+-- One per player slot, because the host grants ANOTHER LEVEL to one player at a
+-- time. Index 0 is the local player on every machine, so a client reads its own
+-- wait as "reroll0" and the host reads player i's as "reroll" .. i.
+for i = 0, MAX_PLAYERS - 1 do
+    SH.watch_clock("reroll" .. i, gPlayerSyncTable[i], "sh5_manual_reroll_seq",
+        SH.manualRerollCooldownSeconds)
 end
 
 SH.update_lifetime_sync()

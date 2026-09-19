@@ -139,10 +139,11 @@ gServerSettings = {}
 gTextures = {}
 
 -- --------------------------------------------------------------------
--- engine functions (58), inert by default
+-- engine functions (60), inert by default
 -- --------------------------------------------------------------------
 stub.functions = {
     "atan2s",
+    "clock_elapsed",
     "count_objects_with_behavior",
     "dist_between_objects",
     "djui_chat_message_create",
@@ -166,6 +167,7 @@ stub.functions = {
     "hook_chat_command",
     "hook_event",
     "hook_mod_menu_button",
+    "hook_on_sync_table_change",
     "hud_get_value",
     "hud_hide",
     "hud_is_hidden",

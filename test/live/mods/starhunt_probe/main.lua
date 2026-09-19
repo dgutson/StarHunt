@@ -749,6 +749,31 @@ local function update_player()
             return
         end
         if since < AREA_SETTLE_FRAMES then return end
+        -- **The countdowns, measured on a joined client.** This process started
+        -- JOIN_DELAY seconds after the server's, so its frame counter is
+        -- hundreds of frames behind -- run.sh starts the server first and
+        -- passes --hide-loading-screen, so nothing but the game loop moves
+        -- either one. Every countdown here is nevertheless counted from this
+        -- machine's own mark, in real seconds, so it reads the same as the
+        -- server's. `ok` is what run.sh judges, and it requires each countdown
+        -- to have actually started and moved: strictly less than its whole
+        -- length, because a clock that was never started reads as its whole
+        -- length and would otherwise pass.
+        if CASE[phase] == "split" then
+            local round_left = api.seconds_left("round")
+            local cooldown = api.manual_reroll_cooldown_seconds
+            local reroll_left = api.manual_reroll_remaining() or -1
+            -- Through the test API: every mod gets its own gGlobalSyncTable,
+            -- so this one cannot read StarHunt's directly.
+            local length = (api.global_sync.sh5_config_minutes or 0) * 60
+            say("clock", "role=player" .. MY_GLOBAL
+                .. " frames=" .. get_global_timer()
+                .. " seconds=" .. string.format("%.1f", clock_elapsed())
+                .. " round_left=" .. round_left .. " length=" .. length
+                .. " reroll_left=" .. reroll_left .. " cooldown=" .. cooldown
+                .. " ok=" .. tostring(round_left > 0 and round_left < length
+                    and reroll_left >= 0 and reroll_left < cooldown))
+        end
         -- What the submarine and the poles actually read. Both clients must
         -- report the same number, or the premise that the course looks the same
         -- from every act is wrong and the "ddd" verdict below means nothing.

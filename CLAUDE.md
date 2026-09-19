@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 StarHunt v1.1 is a Lua mod for **sm64coopdx**. There is no build system and no package manager.
 
     StarHunt/        <- the mod itself; this folder is what goes into sm64coopdx/mods/
-      main.lua       <- 442 lines: header, requires, hook block, sync-table seed, test API
+      main.lua       <- 467 lines: header, requires, hook block, sync-table seed, test API
       modules/       <- the thirteen modules the mod is actually made of
     test/            <- test suite, deliberately OUTSIDE the mod folder
     tools/           <- engine-stub and linter-data generators, the mutation-testing
@@ -91,17 +91,17 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,050 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
-| `modifiers.lua` | 841 | the local player's modifier effects and the load-time self-check |
+| `round.lua` | 1,060 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 827 | the 93-star catalog, its readers, star interaction and visibility |
-| `hud.lua` | 709 | text layer, picture layer and frame; nothing requires it |
+| `modifiers.lua` | 844 | the local player's modifier effects and the load-time self-check |
+| `hud.lua` | 731 | text layer, picture layer and frame; nothing requires it |
 | `boss.lua` | 538 | Bowser's data, health pool, attack queue and hazards |
-| `menu.lua` | 327 | the `/starhunt` config menu and its input |
+| `menu.lua` | 419 | the `/starhunt` config menu and its input |
 | `team.lua` | 274 | rosters, palettes and PvP |
 | `audit.lua` | 267 | `goal_traits`, `audit_modifier`, `rebuild_audited_modifiers` |
-| `core.lua` | 250 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
-| `i18n.lua` | 254 | six languages and their persistence |
-| `chaos.lua` | 154 | Chaos's map, reroll and elimination |
+| `i18n.lua` | 258 | six languages and their persistence |
+| `core.lua` | 312 | `SH`, `Team`, `local_runtime` and the cross-cutting helpers |
+| `chaos.lua` | 156 | Chaos's map, reroll and elimination |
 | `difficulty.lua` | 110 | difficulty scaling; loaded for its side effect only, returns `{}` |
 | `save.lua` | 80 | the temporary star flag and its removal |
 
@@ -130,6 +130,35 @@ difficulty, Boss health and attack queue, Chaos state, scores) or in `gPlayerSyn
 Clients never write authoritative values: functions named `host_*` run only under
 `network_is_server()`, and clients read the synced result. When adding state that late joiners
 or a host migration must survive, it belongs in a sync table, not in a local variable.
+
+**No deadline is ever synchronized.** Every countdown is counted on the machine showing it,
+from a mark that machine set when it saw the countdown start, in real seconds from
+`clock_elapsed()`. The whole mechanism is three functions in `core.lua` — `SH.watch_clock`,
+`SH.seconds_left(name)` and `SH.set_clock_remaining` — and no other module holds clock code.
+
+A clock watches one synchronized key: `hook_on_sync_table_change` fires on a local write
+(`src/pc/lua/smlua_sync_table.c:294`) and on a value arriving from the network (`:433`), with
+no comparison against the value already there, so **writing a key the value it already holds
+is what restarts a countdown everywhere**. Registration is load-time only
+(`src/pc/lua/smlua_hooks.c:1427`), so every clock is declared in `main.lua`'s body: `round`,
+`chaos`, and one `reroll<i>` per player slot. There is no host-side clock code at all — the
+host's own write fires the hook locally, so it reads player *i*'s wait with the same call that
+player's machine uses for its own. A countdown a machine has never seen start reads as its
+whole length, not as zero, because zero is what every caller treats as run out. The identical
+code runs on a host, on a client and in single-player.
+
+What crosses the network is the event, never the time: `sh5_round` for a new round,
+`sh5_manual_reroll_seq` for an ANOTHER LEVEL the host actually granted, and
+`sh5_chaos_modifier_seq` for a Chaos reroll. The round's length rides along as
+`sh5_config_minutes`, which is a property of the round like its mode and difficulty.
+
+**Never put a frame number in a sync table, and never measure a duration in frames.**
+`get_global_timer()` counts frames this process has drawn (`src/game/game_init.c:317`): it
+starts at zero when that copy of the game opens, runs at 60 a second on the loading screen
+(`src/pc/pc_main.c:403`) against 30 in the game loop, and never catches up after a stutter,
+because the main loop runs one iteration per call (`src/pc/gfx/gfx_sdl.c:192-194`) and only
+delays. It is right for what is genuinely counted in frames and nothing else — the warp delays,
+the modifier clocks, the refresh intervals.
 
 Boss attacks use a circular queue of 8 slots (`sh5_boss_attack_queue_1..8`) rather than a single
 "latest attack" field, because a single field lost attacks under lag. Timed effects compare

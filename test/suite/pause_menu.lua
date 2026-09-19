@@ -23,8 +23,11 @@ return function(t, harness)
         sync.sh5_goal = 1
         sync.sh5_manual_reroll_request = 0
         sync.sh5_manual_reroll_ack = 0
-        sync.sh5_manual_reroll_ready_frame = ctl.timer
+        sync.sh5_manual_reroll_seq = 0
         ctl.begin_round(api, api.normal_mode, api.medium, api.goals[1].level)
+        -- The write above started the two minutes; this runs them out, so the
+        -- row reads READY unless a test starts the wait again.
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds
         ctl.paused = true
         api.update_pause_menu()
         return api, ctl
@@ -120,16 +123,18 @@ return function(t, harness)
 
     s.test("the countdown on the row is the one the cooldown has left", function()
         local api, ctl = paused_round()
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 20 * 30
+        local cooldown = api.manual_reroll_cooldown_seconds
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 1
+        ctl.elapsed = ctl.elapsed + cooldown - 20
         t.eq(api.pause_menu_labels()[2], "ANOTHER LEVEL - 0:20",
             "the row did not carry the remaining cooldown")
         -- The cooldown is two minutes, so most of it is read across a minute.
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 90 * 30
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 2
+        ctl.elapsed = ctl.elapsed + cooldown - 90
         t.eq(api.pause_menu_labels()[2], "ANOTHER LEVEL - 1:30",
             "the row did not carry minutes and seconds apart")
         -- What the row reads the moment a goal is assigned.
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame =
-            ctl.timer + api.manual_reroll_cooldown
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 3
         t.eq(api.pause_menu_labels()[2], "ANOTHER LEVEL - 2:00",
             "a full cooldown did not read as two minutes")
     end)
@@ -258,7 +263,8 @@ return function(t, harness)
         -- FONT_HUD draws ':' as an 'X', so "ANOTHER LEVEL - 0:20" has to go
         -- through draw_hud_text like every other line on this HUD.
         local api, ctl = paused_round()
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 20 * 30
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 1
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds - 20
         ctl.hud.text = {}
         api.draw_hud()
         for _, call in ipairs(ctl.hud.text) do
@@ -366,7 +372,8 @@ return function(t, harness)
 
     s.test("a reroll still on cooldown leaves the pause open", function()
         local api, ctl = paused_round()
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 20 * 30
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 1
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds - 20
         press(api, D_JPAD)
         press(api, A_BUTTON)
         t.eq(gPlayerSyncTable[0].sh5_manual_reroll_request, 0,
@@ -376,7 +383,8 @@ return function(t, harness)
         local last = ctl.popups[#ctl.popups]
         t.eq(last ~= nil and last.text or "", "ANOTHER LEVEL AVAILABLE IN 0:20",
             "the popup did not say how long is left")
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 90 * 30
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 2
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds - 90
         press(api, A_BUTTON)
         last = ctl.popups[#ctl.popups]
         t.eq(last ~= nil and last.text or "", "ANOTHER LEVEL AVAILABLE IN 1:30",
@@ -397,9 +405,10 @@ return function(t, harness)
         t.eq(ctl.unpauses, 1, "the pause outlived the first ask")
     end)
 
-    s.test("one frame of cooldown is still a cooldown", function()
+    s.test("one second of cooldown is still a cooldown", function()
         local api, ctl = paused_round()
-        gPlayerSyncTable[0].sh5_manual_reroll_ready_frame = ctl.timer + 1
+        gPlayerSyncTable[0].sh5_manual_reroll_seq = 1
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds - 1
         press(api, D_JPAD)
         press(api, A_BUTTON)
         t.eq(gPlayerSyncTable[0].sh5_manual_reroll_request, 0,

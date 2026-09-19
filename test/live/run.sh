@@ -218,16 +218,29 @@ else
     #   wdw    -- the same question for Wet-Dry World, whose objects are ALL_ACTS
     #             in both areas and whose water level is not derived from the
     #             act. The mod must leave that pair alone as well.
+    #   clock  -- not a pair at all. Each client prints its frame counter, its
+    #             seconds, and what the round clock and ANOTHER LEVEL read. The
+    #             frame counters differ by hundreds of frames, because each
+    #             process started JOIN_DELAY seconds after the last; the
+    #             countdowns must not, because each is counted on the machine
+    #             showing it, in real seconds, from its own mark.
     # Which case each named removal is expected to break. A removal whose case is
     # not named here would report a pass for doing nothing.
-    declare -A WITHOUT_CASE=( [crossact]=split )
+    declare -A WITHOUT_CASE=( [crossact]=split [r030]=hidden [r035]=clock )
+    # And what "that case went red" reads as: the pair cases report a verdict
+    # per case, the clock reports its own answer.
+    declare -A WITHOUT_RED=( [crossact]="case=split passed_through=true"
+                             [r030]="case=hidden passed_through=false"
+                             [r035]="^PROBE clock role=player.*ok=false" )
     # Only look the removal up when there is one: under `set -u` an empty
     # subscript on an associative array is an error, printed on every ordinary
     # run.
     WITHOUT_BREAKS=""
+    WITHOUT_RED_PATTERN=""
     if [[ -n "$WITHOUT" ]]; then
         WITHOUT_BREAKS="${WITHOUT_CASE[$WITHOUT]:-}"
-        if [[ -z "$WITHOUT_BREAKS" ]]; then
+        WITHOUT_RED_PATTERN="${WITHOUT_RED[$WITHOUT]:-}"
+        if [[ -z "$WITHOUT_BREAKS" || -z "$WITHOUT_RED_PATTERN" ]]; then
             echo "FAILED: '$WITHOUT' has no expected case in WITHOUT_CASE, so there is"
             echo "nothing to check it against. Add it beside this line."
             echo "logs: $WORK"
@@ -275,6 +288,8 @@ else
     wdw=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=wdw passed_through=false")
     # One distinct value across the clients means every player in Dire Dire Docks
     # reads the same submarine and the same poles.
+    clock_seen=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE clock role=player")
+    clock_ok=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE clock role=player.*ok=true")
     gates_seen=$(cat "$WORK"/*.log 2>/dev/null | grep -c "^PROBE saveflags")
     gates_agree=$(cat "$WORK"/*.log 2>/dev/null | sed -n 's/^PROBE saveflags .*ddd_gate=//p' | sort -u | wc -l)
     # With `--without <name>` the whole run is inverted: the point is to show
@@ -286,7 +301,7 @@ else
     # pushed the two bodies apart -- so a removal has been noticed when its case
     # reports the opposite.
     if [[ -n "$WITHOUT" ]]; then
-        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "case=$WITHOUT_BREAKS passed_through=true")
+        broke=$(cat "$WORK"/*.log 2>/dev/null | grep -c "$WITHOUT_RED_PATTERN")
         if (( shared < 2 )); then
             echo "INCONCLUSIVE: the control case did not collide even with '$WITHOUT'"
             echo "removed, so this run says nothing about whether the removal mattered."
@@ -344,6 +359,11 @@ else
         echo "apart while standing in the same act. Every object in that course is"
         echo "ALL_ACTS and its water level does not come from the act, so the mod is"
         echo "isolating a pair whose worlds agree (R-029)."
+    elif (( clock_seen < 2 || clock_ok < 2 )); then
+        echo "FAILED: a joined client's countdowns do not read as the round's own."
+        echo "Each process started seconds after the last, so their frame counters"
+        echo "differ by hundreds of frames; a countdown that followed one of those"
+        echo "is wrong by that much (R-035). See the clock lines above."
     else
         echo "PASSED: two players each standing in their own act of Tick Tock Clock"
         echo "were pushed apart by the engine at its 74 units (R-028), two players in"
@@ -355,6 +375,8 @@ else
         echo "(R-034). The jitter lines for the other cases are measurements rather"
         echo "than verdicts: error_max is how far each client's own copy of the other"
         echo "body drifted from where its owner said it was."
+        echo "Every countdown a joined client showed was the round's own,"
+        echo "despite its frame counter (R-035)."
         status=0
     fi
 fi
