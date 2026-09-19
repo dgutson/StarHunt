@@ -53,9 +53,13 @@ clients' frame counters differ by hundreds of frames, because each process start
 the last, and their countdowns agree to the second. `test/live/run.sh --without r035` takes the
 marking out and requires that line to go red, which it does.
 
-805 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
+809 passed / 0 failed, luacheck 2 warnings / 0 errors in 48 files, lua-language-server
 10 problems in 2 files, and `test/live/run.sh` PASSED with its eleven verdicts, as did both
-`--without` runs inverted.
+`--without` runs inverted. Mutation sweeps over every line this change wrote: the survivors
+are all `or` defaults on fields the code always writes beside them — `sh5_config_minutes` and
+`host_round_mark` are set on adjacent lines of `host_start_round`, `sh5_manual_reroll_seq` is
+zeroed by `host_prepare_player` before any grant, and `manual_reroll_remaining` is always in
+the record.
 
 ### 2026-09-17 — R-029: Wet-Dry World is one world, and its water level is the engine's to set
 

@@ -1036,6 +1036,26 @@ return function(t, harness)
             "nothing told the other machines to restart their own countdown")
     end)
 
+    s.test("each granted reroll bumps the counter the other machines watch", function()
+        -- sh5_manual_reroll_seq is what tells every machine to restart its own
+        -- countdown. A counter that stuck after the first grant would leave the
+        -- second reroll's cooldown running from the first one's mark.
+        local api, ctl = race(2, {})
+        gGlobalSyncTable.sh5_config_minutes = 600     -- long enough for two waits
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_seq, 0,
+            "a player entering the round did not start at zero")
+
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds
+        gPlayerSyncTable[0].sh5_manual_reroll_request = 1
+        api.host_update()
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_seq, 1, "the first grant did not count")
+
+        ctl.elapsed = ctl.elapsed + api.manual_reroll_cooldown_seconds
+        gPlayerSyncTable[0].sh5_manual_reroll_request = 2
+        api.host_update()
+        t.eq(gPlayerSyncTable[0].sh5_manual_reroll_seq, 2, "the second grant did not count")
+    end)
+
     s.test("a reroll that finds no goal leaves the button ready", function()
         local api, ctl = harness.load()
         connect(2)
@@ -1057,6 +1077,32 @@ return function(t, harness)
         local api = reconnect(nil)
         t.eq(api.host_reroll_seconds_left(1), api.manual_reroll_cooldown_seconds,
             "a player who dropped out came back with a fresh two minutes")
+    end)
+
+    s.test("a reconnecting player resumes a part-spent wait, not a fresh one",
+    function()
+        local api, ctl = race(2, { [0] = 1, [1] = 5 })
+        ctl.elapsed = ctl.elapsed + 90            -- thirty seconds of it left
+        api.remember_player(1)
+        gNetworkPlayers[1].connected = false
+        gNetworkPlayers[1].connected = true
+        gPlayerSyncTable[1].sh5_enrolled = 0
+        gPlayerSyncTable[1].sh5_goal = 0
+        api.host_late_joiner(1)
+        t.eq(api.host_reroll_seconds_left(1), 30,
+            "a player who left with thirty seconds to wait came back with another two minutes")
+    end)
+
+    s.test("the wait a reconnecting player resumes is the one they left with",
+    function()
+        -- A slot is not a person: the mark held for that index while they were
+        -- away belongs to whoever had the slot in the meantime. What comes back
+        -- has to be the remainder stored in their own record.
+        local api = reconnect(function(_, ctl)
+            ctl.elapsed = ctl.elapsed + 90
+        end)
+        t.eq(api.host_reroll_seconds_left(1), api.manual_reroll_cooldown_seconds,
+            "the time they spent disconnected was counted against their wait")
     end)
 
     -- ---------------------------------------------------------------------
@@ -1374,6 +1420,18 @@ return function(t, harness)
         api.host_start(15)
         return api, ctl
     end
+
+    s.test("a Chaos round waits a whole interval for its first reroll", function()
+        local api, ctl = chaos_round(2)
+        local seq = gGlobalSyncTable.sh5_chaos_modifier_seq or 0
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_modifier_seq, seq,
+            "the round rerolled on its very first frame")
+        ctl.elapsed = ctl.elapsed + api.chaos_reroll_seconds
+        api.host_update()
+        t.eq(gGlobalSyncTable.sh5_chaos_modifier_seq, seq + 1,
+            "the first reroll never came")
+    end)
 
     -- host_start_round already seeds sh5_chaos_alive with the connected player
     -- count, so a test where nobody has dropped out agrees with the loop even

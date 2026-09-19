@@ -276,7 +276,6 @@ local function host_end_round(reason)
             sync.sh5_jump_count = -1
             sync.sh5_manual_reroll_request = 0
             sync.sh5_manual_reroll_ack = 0
-            host_reroll_mark[i] = nil
             sync.sh5_enrolled = 0
             sync.sh5_team = Team.Color.NONE
             sync.sh5_chaos_eliminated = 0

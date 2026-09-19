@@ -91,7 +91,7 @@ is the same information by size, so you can judge what a file costs to read:
 
 | module | lines | holds |
 |---|---|---|
-| `round.lua` | 1,121 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
+| `round.lua` | 1,120 | the round, both sides: the host half picks goals, counts stars and ends the round; the client half reacts to what the host published |
 | `goals.lua` | 927 | the 93-star catalog, its readers, star interaction and visibility |
 | `modifiers.lua` | 839 | the local player's modifier effects and the load-time self-check |
 | `hud.lua` | 705 | text layer, picture layer and frame; nothing requires it |
